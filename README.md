@@ -91,6 +91,8 @@ The approval CLI warns about possible issues before approval, including too many
 
 These warnings do not block approval. They are review helpers only.
 
+If a draft has warnings, interactive approval asks for one extra confirmation before approving. Pressing Enter defaults to No. This prevents accidental approval of drafts with obvious issues while still allowing Topher to approve intentionally.
+
 Specifically, `_audit_draft` checks each draft for:
 
 - **Too many hashtags** — Instagram > 6, Facebook > 3, LinkedIn > 3, Google Business Profile > 0

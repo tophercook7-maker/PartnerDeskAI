@@ -232,6 +232,18 @@ def cmd_review() -> int:
             break
 
         if choice == "a":
+            # v0.7: when warnings exist, require one extra confirmation. The
+            # default is No — pressing Enter (or anything other than y/Y)
+            # leaves the draft as 'draft' and counts it as skipped.
+            warnings = _audit_draft(draft)
+            if warnings:
+                confirm = input(
+                    f"Approve despite {len(warnings)} warning(s)? [y/N]: "
+                ).strip().lower()
+                if confirm != "y":
+                    skipped += 1
+                    print("  · skipped (approval declined)")
+                    continue
             approval_manager.mark_status(draft["id"], "approved")
             approval_manager.record_history(draft["topic"], draft["platform"])
             touched_dates.add(draft["created_at"][:10])
