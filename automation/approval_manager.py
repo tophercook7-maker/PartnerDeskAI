@@ -93,6 +93,20 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+def get_post(post_id: int) -> dict | None:
+    """Fetch a single post by id (any status). Returns None if not found."""
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT id, platform, topic, content, hashtags, image_idea, status, created_at "
+            "FROM posts WHERE id = ?",
+            (post_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return dict(row) if row else None
+
+
 def list_pending() -> list[dict]:
     """All posts currently in 'draft' status, oldest first."""
     conn = _connect()

@@ -66,10 +66,15 @@ PartnerDeskAI/
 
 4. **Review drafts and approve**
    ```bash
-   python automation/approval_cli.py            # interactive review
-   python automation/approval_cli.py list       # non-interactive list
-   python automation/approval_cli.py status     # counts by status
+   python automation/approval_cli.py                  # interactive review of pending drafts
+   python automation/approval_cli.py list             # multi-line summary of pending drafts
+   python automation/approval_cli.py status           # counts by status
+   python automation/approval_cli.py preview <id>     # full content for one post (any status)
    ```
+
+   Each `list` entry shows the post id, platform, status, topic, resolved markdown file path, and hashtags detected in the body. The interactive review surfaces the same fields in each draft's header.
+
+   Hashtag detection uses a simple `#[A-Za-z0-9_]+` regex on the stored draft body, so what you see is what Parker actually wrote — useful for spotting an off-brand or duplicated tag before approving.
 
    In the interactive review you can press:
    - `a` — approve (sets `status='approved'` + adds row to `post_history`)

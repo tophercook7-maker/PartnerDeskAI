@@ -4,9 +4,11 @@ approval_cli.py
 Local interactive review tool for Parker Promo drafts.
 
 Usage:
-    python automation/approval_cli.py            # review pending drafts
-    python automation/approval_cli.py list       # non-interactive list
-    python automation/approval_cli.py status     # count by status
+    python automation/approval_cli.py                 # interactive review of pending drafts
+    python automation/approval_cli.py list            # multi-line summary of pending drafts
+                                                      #   (id, platform, status, topic, file, tags)
+    python automation/approval_cli.py status          # counts by status
+    python automation/approval_cli.py preview <id>    # print the full draft content for one post
 
 Approve -> sets posts.status = 'approved' AND inserts a post_history row,
             so Parker won't repeat the topic on future runs.
@@ -14,6 +16,7 @@ Reject  -> sets posts.status = 'rejected'. History is not touched.
 Skip    -> leaves status as 'draft' for next time.
 """
 
+import re
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -27,6 +30,45 @@ import file_manager
 
 HR = "─" * 64
 
+# Simple, conservative hashtag pattern. Doesn't match markdown headers like
+# "# Platform" because the regex requires no space between '#' and the word.
+HASHTAG_RE = re.compile(r"#[A-Za-z0-9_]+")
+
+
+def _extract_hashtags(text: str) -> list[str]:
+    """Return hashtags from a draft body in order of first appearance, deduped."""
+    if not text:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for tag in HASHTAG_RE.findall(text):
+        if tag not in seen:
+            seen.add(tag)
+            out.append(tag)
+    return out
+
+
+def _md_path_for(draft: dict) -> Path | None:
+    """Resolve the markdown file path for a draft, or None."""
+    return file_manager.file_for_platform(draft["created_at"][:10], draft["platform"])
+
+
+def _format_summary(draft: dict) -> str:
+    """Multi-line summary used by `list` and `preview`."""
+    md_path = _md_path_for(draft)
+    tags = _extract_hashtags(draft.get("content", ""))
+
+    file_line = "(no markdown file resolved)"
+    if md_path:
+        file_line = str(md_path) + ("" if md_path.exists() else "  (missing)")
+
+    return (
+        f"[#{draft['id']}] {draft['platform']}  ·  status: {draft['status']}  ·  {draft['created_at']}\n"
+        f"     Topic: {draft.get('topic') or '(no topic)'}\n"
+        f"     File:  {file_line}\n"
+        f"     Tags:  {' '.join(tags) if tags else '(none)'}"
+    )
+
 
 def _print_draft(idx: int, total: int, draft: dict) -> None:
     print()
@@ -36,11 +78,14 @@ def _print_draft(idx: int, total: int, draft: dict) -> None:
     if draft.get("image_idea"):
         print(f"Image:  {draft['image_idea']}")
 
-    md_path = file_manager.file_for_platform(
-        draft["created_at"][:10], draft["platform"]
-    )
+    md_path = _md_path_for(draft)
     if md_path and md_path.exists():
         print(f"File:   {md_path}")
+
+    tags = _extract_hashtags(draft.get("content", ""))
+    if tags:
+        print(f"Tags:   {' '.join(tags)}")
+
     print(HR)
     print(draft["content"].strip())
     print(HR)
@@ -128,10 +173,31 @@ def cmd_list() -> int:
     if not pending:
         print("No drafts pending.")
         return 0
-    print(f"{'ID':<4} {'PLATFORM':<25} {'TOPIC':<40} CREATED")
+    print(f"Pending drafts: {len(pending)}")
     for d in pending:
-        topic = (d["topic"] or "")[:38]
-        print(f"{d['id']:<4} {d['platform']:<25} {topic:<40} {d['created_at']}")
+        print()
+        print(_format_summary(d))
+    return 0
+
+
+def cmd_preview(post_id: int) -> int:
+    post = approval_manager.get_post(post_id)
+    if not post:
+        print(f"Post not found: id {post_id}")
+        return 1
+
+    print(_format_summary(post))
+    print()
+
+    md_path = _md_path_for(post)
+    if md_path and md_path.exists():
+        print(f"--- {md_path} ---")
+        print(md_path.read_text(encoding="utf-8"))
+        print("--- end of file ---")
+    else:
+        print("(markdown file not found — showing stored DB content)")
+        print()
+        print(post.get("content", "") or "(empty)")
     return 0
 
 
@@ -154,8 +220,18 @@ def main(argv: list[str]) -> int:
         return cmd_list()
     if cmd == "status":
         return cmd_status()
+    if cmd == "preview":
+        if len(argv) < 3:
+            print("Usage: python automation/approval_cli.py preview <post_id>")
+            return 2
+        try:
+            post_id = int(argv[2])
+        except ValueError:
+            print(f"Invalid post id: {argv[2]}")
+            return 2
+        return cmd_preview(post_id)
     print(f"Unknown command: {cmd}")
-    print("Usage: python automation/approval_cli.py [review|list|status]")
+    print("Usage: python automation/approval_cli.py [review|list|status|preview <id>]")
     return 2
 
 
