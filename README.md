@@ -12,6 +12,16 @@ Nothing is auto-posted.
 
 ---
 
+## Daily ops runner
+
+```bash
+python3 automation/daily_ops.py
+```
+
+Runs the daily generation, writes a status snapshot, and writes the morning summary. This is the command launchd can eventually call instead of running individual scripts.
+
+---
+
 ## Status snapshot
 
 ```bash
