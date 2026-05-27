@@ -84,6 +84,72 @@ That's it.
 
 ---
 
+## Scheduling (macOS)
+
+`daily_runner.py` is wired to run automatically at **9:00 AM daily** via `launchd`.
+
+The agent definition lives at:
+```
+~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
+```
+
+### Inspect / verify
+```bash
+launchctl list | grep partnerdeskai
+```
+Output `-  0  com.mixedmakershop.partnerdeskai.daily` means it's loaded and hasn't failed.
+
+### Change the time
+Edit the `StartCalendarInterval` block in the plist (`Hour` / `Minute`), then reload:
+```bash
+launchctl unload ~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
+launchctl load   ~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
+```
+
+### Stop / uninstall
+```bash
+launchctl unload ~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
+rm ~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
+```
+
+### Where the scheduled run logs go
+- `logs/YYYY-MM-DD.log` — the app's own log (same as a manual run)
+- `logs/launchd.out.log` — stdout captured by launchd
+- `logs/launchd.err.log` — stderr captured by launchd
+
+> **Note:** launchd user agents run only while you're logged in. If the Mac is asleep at 9 AM, the missed run fires as soon as it wakes.
+
+### Plist template (in case you ever delete it)
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.mixedmakershop.partnerdeskai.daily</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
+        <string>/Users/christophercook/Documents/PartnerDeskAI/automation/daily_runner.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/christophercook/Documents/PartnerDeskAI</string>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key><integer>9</integer>
+        <key>Minute</key><integer>0</integer>
+    </dict>
+    <key>RunAtLoad</key><false/>
+    <key>StandardOutPath</key>
+    <string>/Users/christophercook/Documents/PartnerDeskAI/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/christophercook/Documents/PartnerDeskAI/logs/launchd.err.log</string>
+</dict>
+</plist>
+```
+
+---
+
 ## Environment Variables
 
 | Variable          | Purpose                          | Default          |
