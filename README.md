@@ -199,6 +199,23 @@ Each entry has a `topic`, `category`, `score` (higher = preferred), plus `times_
 
 Edit `memory/topic_bank.json` any time to add, remove, or re-score topics. The file is plain JSON — no migration needed.
 
+### Topic bank CLI
+
+For convenience, `automation/topic_cli.py` is a small command-line tool for managing the bank without hand-editing JSON:
+
+```bash
+python3 automation/topic_cli.py list                                     # show all topics
+python3 automation/topic_cli.py show "Digital Business Cards"            # full details for one topic
+python3 automation/topic_cli.py add "QR Code Menus" --score 8 \
+    --category service --notes "Good for restaurants and cafes."         # add a new topic
+python3 automation/topic_cli.py rescore "AI Business Systems" 10         # change a topic's score
+python3 automation/topic_cli.py renote "Website Cleanup" "Updated angle" # replace notes
+python3 automation/topic_cli.py remove "Old Topic"                       # delete a topic
+python3 automation/topic_cli.py reset                                    # zero all usage counters
+```
+
+Topic names are matched case-insensitively. Scores must be 1–10.
+
 ---
 
 ## Roadmap (Not Yet Built)

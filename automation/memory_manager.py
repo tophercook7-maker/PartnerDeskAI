@@ -103,12 +103,13 @@ def load_topic_bank() -> dict:
     """
     if not TOPIC_BANK_PATH.exists():
         TOPIC_BANK_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _save_topic_bank(_DEFAULT_TOPIC_BANK)
+        save_topic_bank(_DEFAULT_TOPIC_BANK)
         return json.loads(json.dumps(_DEFAULT_TOPIC_BANK))  # deep copy
     return json.loads(TOPIC_BANK_PATH.read_text(encoding="utf-8"))
 
 
-def _save_topic_bank(bank: dict) -> None:
+def save_topic_bank(bank: dict) -> None:
+    """Persist the topic bank to disk as pretty-printed JSON."""
     TOPIC_BANK_PATH.write_text(json.dumps(bank, indent=2) + "\n", encoding="utf-8")
 
 
@@ -186,6 +187,6 @@ def update_topic_usage(topic: str) -> bool:
         if t["topic"] == topic:
             t["times_used"] = int(t.get("times_used", 0)) + 1
             t["last_used"] = today
-            _save_topic_bank(bank)
+            save_topic_bank(bank)
             return True
     return False
