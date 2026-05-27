@@ -20,6 +20,8 @@ python3 automation/daily_checklist.py
 
 Shows the daily action list: generate drafts, review pending posts, clean hashtags, and run status. Read-only.
 
+Checklist boxes are automatically marked `[x]` when that part of the daily workflow is complete.
+
 ---
 
 ## Daily status

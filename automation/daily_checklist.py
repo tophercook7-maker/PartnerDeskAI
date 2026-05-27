@@ -53,6 +53,11 @@ def _top_missing_hashtags(limit: int = 5) -> list[tuple[str, int]]:
     return items[:limit]
 
 
+def _box(complete: bool) -> str:
+    """Render a checklist marker: [x] when done, [ ] when action still needed."""
+    return "[x]" if complete else "[ ]"
+
+
 def main() -> int:
     data = status_mod._gather_status()
 
@@ -66,9 +71,19 @@ def main() -> int:
         print("    Run python3 automation/health_check.py")
     print()
 
-    # 1) Today's drafts
+    # Compute completion state for each item up front so the box markers
+    # and the descriptive lines below agree.
     today = data["today"]
-    print("[ ] Generate today's drafts")
+    review = data["review"]
+    missing = _top_missing_hashtags(limit=5)
+
+    generated_done = today["exists"] and today["markdown_files"] >= 4
+    review_done    = review["pending_drafts"] == 0
+    hashtags_done  = not missing
+    status_done    = health == "PASS"
+
+    # 1) Today's drafts
+    print(f"{_box(generated_done)} Generate today's drafts")
     if today["exists"] and today["markdown_files"] > 0:
         print(f"    Status: already generated — {today['markdown_files']} markdown files found.")
     elif today["exists"]:
@@ -80,8 +95,7 @@ def main() -> int:
     print()
 
     # 2) Approval queue
-    review = data["review"]
-    print("[ ] Review pending drafts")
+    print(f"{_box(review_done)} Review pending drafts")
     print(f"    Pending:  {review['pending_drafts']}")
     print(f"    Warnings: {review['drafts_with_warnings']}")
     print(f"    Clean:    {review['clean_drafts']}")
@@ -90,8 +104,7 @@ def main() -> int:
     print()
 
     # 3) Hashtag cleanup
-    print("[ ] Clean hashtag bank")
-    missing = _top_missing_hashtags(limit=5)
+    print(f"{_box(hashtags_done)} Clean hashtag bank")
     if not missing:
         print("    Curated hashtag bank looks clean — no missing tags in pending drafts.")
     else:
@@ -103,8 +116,8 @@ def main() -> int:
         print("    Absorb:  python3 automation/hashtag_cli.py absorb \"<tag>\" --platforms <...>")
     print()
 
-    # 4) Status check (always shown as a closing inspection step)
-    print("[ ] Run status check")
+    # 4) Status check (closing inspection — [x] when health passes)
+    print(f"{_box(status_done)} Run status check")
     print("    Command: python3 automation/status.py")
     print()
 
