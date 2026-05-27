@@ -48,6 +48,14 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
 # Low temperature keeps the output structurally clean and easy to parse.
 TEMPERATURE = 0.6
 
+# How many curated hashtags to pull per platform. Platforms not listed (or
+# set to 0) won't receive a hashtag list. Matches Parker's prompt: Instagram
+# uses 5–10, LinkedIn caps at ~3, Facebook & GBP don't typically use them.
+HASHTAG_COUNTS = {
+    "instagram": 8,
+    "linkedin": 3,
+}
+
 
 # --- Prompt builder --------------------------------------------------------
 
@@ -62,10 +70,20 @@ def build_user_prompt(
     recent_ctas: list[str],
     chosen_offer: str,
     recent_offers: list[str],
+    hashtags_by_platform: dict[str, list[str]],
 ) -> str:
     """Compose the user-side message that primes Parker for today's run."""
     def _join(items: list[str]) -> str:
         return "; ".join(items) if items else "none yet"
+
+    hashtag_block_lines = []
+    for platform, tags in hashtags_by_platform.items():
+        if not tags:
+            continue
+        # Pretty platform label: instagram -> Instagram, linkedin -> LinkedIn.
+        label = "LinkedIn" if platform == "linkedin" else platform.capitalize()
+        hashtag_block_lines.append(f"Hashtags for {label}: {' '.join(tags)}")
+    hashtag_block = "\n".join(hashtag_block_lines) if hashtag_block_lines else "No curated hashtags for this run."
 
     return (
         f"Today's date: {today}\n\n"
@@ -75,6 +93,8 @@ def build_user_prompt(
         f"Avoid recently used CTAs: {_join(recent_ctas)}\n\n"
         f"Recommended offer angle for today:\n{chosen_offer}\n"
         f"Avoid recently used offers: {_join(recent_offers)}\n\n"
+        f"Curated hashtags (use these — do not invent new ones unless absolutely needed):\n"
+        f"{hashtag_block}\n\n"
         f"--- BUSINESS PROFILE ---\n{business_profile}\n\n"
         f"--- POSTING SCHEDULE ---\n{schedule_json}\n\n"
         f"--- RECENT POST HISTORY ---\n{history_text}\n\n"
@@ -83,7 +103,9 @@ def build_user_prompt(
         "single topic for the day. Weave the recommended CTA (verbatim or "
         "lightly rephrased) into each platform post where natural. Reference "
         "the recommended offer angle in posts where it fits — don't force it "
-        "into every post. Do not repeat any recent topic, CTA, or offer."
+        "into every post. For Instagram and LinkedIn use the curated hashtag "
+        "lists exactly as provided. Do not repeat any recent topic, CTA, or "
+        "offer."
     )
 
 
@@ -153,16 +175,22 @@ def main() -> None:
     history_text = memory_manager.format_history_for_prompt(history)
     log_lines.append(f"Loaded {len(history)} recent history rows")
 
-    # 3. Rotation memory: pick topic + CTA + offer, gather recent for each.
+    # 3. Rotation memory: pick topic + CTA + offer + hashtags, gather recents.
     chosen_topic = memory_manager.choose_topic()
     recent_topics_list = memory_manager.get_recent_topics(limit=10)
     chosen_cta = memory_manager.choose_cta()
     recent_ctas_list = memory_manager.get_recent_ctas(limit=5)
     chosen_offer = memory_manager.choose_offer()
     recent_offers_list = memory_manager.get_recent_offers(limit=5)
+    hashtags_by_platform = {
+        platform: memory_manager.choose_hashtags(platform, count)
+        for platform, count in HASHTAG_COUNTS.items()
+    }
     log_lines.append(f"Chose topic: {chosen_topic}")
     log_lines.append(f"Chose CTA:   {chosen_cta}")
     log_lines.append(f"Chose offer: {chosen_offer}")
+    for platform, tags in hashtags_by_platform.items():
+        log_lines.append(f"Chose hashtags for {platform}: {tags}")
 
     # 4. Build prompt
     today = datetime.now().strftime("%Y-%m-%d")
@@ -177,6 +205,7 @@ def main() -> None:
         recent_ctas=recent_ctas_list,
         chosen_offer=chosen_offer,
         recent_offers=recent_offers_list,
+        hashtags_by_platform=hashtags_by_platform,
     )
 
     # 5. Call OpenAI
@@ -233,6 +262,10 @@ def main() -> None:
         log_lines.append(f"CTA bank updated:   {chosen_cta}")
     if chosen_offer and memory_manager.update_offer_usage(chosen_offer):
         log_lines.append(f"Offer bank updated: {chosen_offer}")
+    all_chosen_tags = [t for tags in hashtags_by_platform.values() for t in tags]
+    if all_chosen_tags:
+        n_tags = memory_manager.update_hashtag_usage(all_chosen_tags)
+        log_lines.append(f"Hashtag bank updated: {n_tags} tag(s)")
 
     file_manager.append_log(log_lines)
     print("Done.")

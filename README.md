@@ -262,6 +262,38 @@ Same rules as the topic CLI: names matched case-insensitively, scores 1–10.
 
 ---
 
+## Hashtag Rotation
+
+`memory/hashtag_bank.json` is a platform-aware bank of curated hashtags. Each entry has a `tag`, a `platforms` list (which platforms it's valid for), `category`, `score`, `times_used`, `last_used`, and `notes`.
+
+On each run, Parker receives a curated set per platform:
+
+- **Instagram**: 8 hashtags (configurable in `daily_runner.py` via `HASHTAG_COUNTS`)
+- **LinkedIn**: 3 hashtags
+- **Facebook** and **Google Business Profile**: none — Parker's prompt skips hashtags on those platforms
+
+Hashtags are picked score-weighted and rotated by recency (anything used in the last 7 days is skipped first, then falls back if the bank is too small). After a successful run, `times_used` and `last_used` update for every chosen tag.
+
+### Hashtag bank CLI
+
+```bash
+python3 automation/hashtag_cli.py list                                # all tags
+python3 automation/hashtag_cli.py list --platform instagram           # filter by platform
+python3 automation/hashtag_cli.py show "#LocalBusiness"
+python3 automation/hashtag_cli.py add  "#SaaSAlternative" \
+    --platforms instagram,linkedin --score 8 \
+    --category positioning --notes "Pairs with no-subscription offer."
+python3 automation/hashtag_cli.py rescore      "#LocalBusiness" 10
+python3 automation/hashtag_cli.py renote       "#Branding" "New angle"
+python3 automation/hashtag_cli.py setplatforms "#Branding" instagram,linkedin
+python3 automation/hashtag_cli.py remove       "#OldTag"
+python3 automation/hashtag_cli.py reset
+```
+
+Tag names are case-insensitive. Scores must be 1–10. `--platforms` is comma-separated.
+
+---
+
 ## Roadmap (Not Yet Built)
 
 These are intentionally **not** part of v0.1. Don't add them until they're actually needed:

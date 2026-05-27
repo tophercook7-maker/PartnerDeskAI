@@ -1,0 +1,125 @@
+{
+  "hashtags": [
+    {
+      "tag": "#SmallBusiness",
+      "platforms": [
+        "instagram",
+        "facebook",
+        "linkedin"
+      ],
+      "category": "general",
+      "times_used": 0,
+      "last_used": null,
+      "score": 8,
+      "notes": "Broad small business visibility tag."
+    },
+    {
+      "tag": "#LocalBusiness",
+      "platforms": [
+        "instagram",
+        "facebook",
+        "linkedin"
+      ],
+      "category": "local",
+      "times_used": 0,
+      "last_used": null,
+      "score": 9,
+      "notes": "Good for local service businesses and shops."
+    },
+    {
+      "tag": "#WebsiteDesign",
+      "platforms": [
+        "instagram",
+        "linkedin"
+      ],
+      "category": "websites",
+      "times_used": 0,
+      "last_used": null,
+      "score": 8,
+      "notes": "Useful for website-related posts."
+    },
+    {
+      "tag": "#DigitalBusinessCard",
+      "platforms": [
+        "instagram",
+        "facebook"
+      ],
+      "category": "tap-hub",
+      "times_used": 0,
+      "last_used": null,
+      "score": 9,
+      "notes": "Good for NFC/tap hub content."
+    },
+    {
+      "tag": "#BusinessAutomation",
+      "platforms": [
+        "instagram",
+        "linkedin"
+      ],
+      "category": "ai-systems",
+      "times_used": 0,
+      "last_used": null,
+      "score": 8,
+      "notes": "Good for AI systems and workflow posts."
+    },
+    {
+      "tag": "#Branding",
+      "platforms": [
+        "instagram",
+        "linkedin"
+      ],
+      "category": "branding",
+      "times_used": 0,
+      "last_used": null,
+      "score": 7,
+      "notes": "Useful for brand cleanup and identity posts."
+    },
+    {
+      "tag": "#ShopLocal",
+      "platforms": [
+        "instagram",
+        "facebook"
+      ],
+      "category": "local",
+      "times_used": 0,
+      "last_used": null,
+      "score": 7,
+      "notes": "Good for local community-facing posts."
+    },
+    {
+      "tag": "#EntrepreneurLife",
+      "platforms": [
+        "instagram"
+      ],
+      "category": "business",
+      "times_used": 0,
+      "last_used": null,
+      "score": 6,
+      "notes": "Use sparingly for Instagram."
+    },
+    {
+      "tag": "#AIForBusiness",
+      "platforms": [
+        "instagram",
+        "linkedin"
+      ],
+      "category": "ai-systems",
+      "times_used": 0,
+      "last_used": null,
+      "score": 8,
+      "notes": "Surfaces AI-curious small business audiences."
+    },
+    {
+      "tag": "#SmallBizTips",
+      "platforms": [
+        "instagram",
+        "facebook"
+      ],
+      "category": "educational",
+      "times_used": 0,
+      "last_used": null,
+      "score": 7,
+      "notes": "Pairs well with educational posts."
+    }
+  ]
+}

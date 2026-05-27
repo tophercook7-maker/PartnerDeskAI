@@ -19,6 +19,7 @@ DB_PATH = ROOT / "database" / "partnerdesk.db"
 TOPIC_BANK_PATH = MEMORY_DIR / "topic_bank.json"
 CTA_BANK_PATH = MEMORY_DIR / "cta_bank.json"
 OFFER_BANK_PATH = MEMORY_DIR / "offer_bank.json"
+HASHTAG_BANK_PATH = MEMORY_DIR / "hashtag_bank.json"
 
 # Defaults used when a bank JSON file is missing on disk.
 _DEFAULT_CTA_BANK = {
@@ -58,6 +59,41 @@ _DEFAULT_OFFER_BANK = {
         {"offer": "Limited spots open this month", "category": "scarcity",
          "times_used": 0, "last_used": None, "score": 6,
          "notes": "Use sparingly so it doesn't feel manipulative or repetitive."},
+    ]
+}
+
+_DEFAULT_HASHTAG_BANK = {
+    "hashtags": [
+        {"tag": "#SmallBusiness", "platforms": ["instagram", "facebook", "linkedin"],
+         "category": "general", "times_used": 0, "last_used": None, "score": 8,
+         "notes": "Broad small business visibility tag."},
+        {"tag": "#LocalBusiness", "platforms": ["instagram", "facebook", "linkedin"],
+         "category": "local", "times_used": 0, "last_used": None, "score": 9,
+         "notes": "Good for local service businesses and shops."},
+        {"tag": "#WebsiteDesign", "platforms": ["instagram", "linkedin"],
+         "category": "websites", "times_used": 0, "last_used": None, "score": 8,
+         "notes": "Useful for website-related posts."},
+        {"tag": "#DigitalBusinessCard", "platforms": ["instagram", "facebook"],
+         "category": "tap-hub", "times_used": 0, "last_used": None, "score": 9,
+         "notes": "Good for NFC/tap hub content."},
+        {"tag": "#BusinessAutomation", "platforms": ["instagram", "linkedin"],
+         "category": "ai-systems", "times_used": 0, "last_used": None, "score": 8,
+         "notes": "Good for AI systems and workflow posts."},
+        {"tag": "#Branding", "platforms": ["instagram", "linkedin"],
+         "category": "branding", "times_used": 0, "last_used": None, "score": 7,
+         "notes": "Useful for brand cleanup and identity posts."},
+        {"tag": "#ShopLocal", "platforms": ["instagram", "facebook"],
+         "category": "local", "times_used": 0, "last_used": None, "score": 7,
+         "notes": "Good for local community-facing posts."},
+        {"tag": "#EntrepreneurLife", "platforms": ["instagram"],
+         "category": "business", "times_used": 0, "last_used": None, "score": 6,
+         "notes": "Use sparingly for Instagram."},
+        {"tag": "#AIForBusiness", "platforms": ["instagram", "linkedin"],
+         "category": "ai-systems", "times_used": 0, "last_used": None, "score": 8,
+         "notes": "Surfaces AI-curious small business audiences."},
+        {"tag": "#SmallBizTips", "platforms": ["instagram", "facebook"],
+         "category": "educational", "times_used": 0, "last_used": None, "score": 7,
+         "notes": "Pairs well with educational posts."},
     ]
 }
 
@@ -201,6 +237,52 @@ def _choose_from_bank(
     return chosen[name_key]
 
 
+def _choose_n_from_bank(
+    items: list[dict],
+    name_key: str,
+    n: int,
+    recent_window_days: int = 7,
+) -> list[str]:
+    """
+    Pick up to `n` items without replacement from a pre-filtered list, using
+    the same recency-aware, score-weighted logic as `_choose_from_bank`.
+
+    Used for domains where the daily pick is a set rather than a single value
+    (e.g. hashtags). If fewer than `n` non-recent items exist, recent items
+    are added back to fill the quota, oldest-used first.
+    """
+    if not items or n <= 0:
+        return []
+    cutoff = datetime.now() - timedelta(days=recent_window_days)
+
+    def _is_recent(t: dict) -> bool:
+        last = t.get("last_used")
+        if not last:
+            return False
+        try:
+            return datetime.fromisoformat(last) >= cutoff
+        except (TypeError, ValueError):
+            return False
+
+    fresh = [t for t in items if not _is_recent(t)]
+    if len(fresh) < n:
+        # Need to dip into recent ones — oldest-used first so we still rotate.
+        recent = sorted(
+            (t for t in items if t not in fresh),
+            key=lambda t: t.get("last_used") or "0000-00-00",
+        )
+        fresh = fresh + recent
+
+    pool = fresh[:]
+    chosen: list[str] = []
+    while pool and len(chosen) < n:
+        weights = [max(1, int(t.get("score", 5))) for t in pool]
+        pick = random.choices(pool, weights=weights, k=1)[0]
+        chosen.append(pick[name_key])
+        pool.remove(pick)
+    return chosen
+
+
 def _record_usage(items: list[dict], name_key: str, name: str) -> bool:
     """Increment times_used and set last_used=today for the matching item."""
     today = datetime.now().strftime("%Y-%m-%d")
@@ -320,3 +402,62 @@ def update_offer_usage(offer: str) -> bool:
         save_offer_bank(bank)
         return True
     return False
+
+
+# --- Hashtag Rotation (v0.4) ---------------------------------------------
+
+def load_hashtag_bank() -> dict:
+    return _load_bank(HASHTAG_BANK_PATH, _DEFAULT_HASHTAG_BANK)
+
+
+def save_hashtag_bank(bank: dict) -> None:
+    _save_bank(HASHTAG_BANK_PATH, bank)
+
+
+def _hashtags_for_platform(bank: dict, platform: str) -> list[dict]:
+    """Return only hashtag entries whose `platforms` list includes `platform`."""
+    p = platform.lower()
+    return [
+        t for t in bank.get("hashtags", [])
+        if p in [x.lower() for x in t.get("platforms", [])]
+    ]
+
+
+def choose_hashtags(platform: str, count: int) -> list[str]:
+    """
+    Pick up to `count` hashtags eligible for the given platform, score-weighted
+    and avoiding ones used in the last 7 days. If the platform has fewer than
+    `count` eligible tags total, returns whatever is available.
+    """
+    bank = load_hashtag_bank()
+    eligible = _hashtags_for_platform(bank, platform)
+    return _choose_n_from_bank(eligible, "tag", count)
+
+
+def get_recent_hashtags(platform: str, limit: int = 10) -> list[str]:
+    """Hashtags most recently used on a given platform. Source: hashtag_bank.last_used."""
+    bank = load_hashtag_bank()
+    eligible = _hashtags_for_platform(bank, platform)
+    return _recent_from_bank(eligible, "tag", limit)
+
+
+def update_hashtag_usage(tags: list[str]) -> int:
+    """
+    Increment times_used and set last_used=today for each tag in `tags`.
+    Matching is case-insensitive on the `tag` field. Returns the number
+    of bank entries that were updated.
+    """
+    if not tags:
+        return 0
+    bank = load_hashtag_bank()
+    today = datetime.now().strftime("%Y-%m-%d")
+    lower_targets = {t.lower() for t in tags}
+    n = 0
+    for entry in bank.get("hashtags", []):
+        if entry.get("tag", "").lower() in lower_targets:
+            entry["times_used"] = int(entry.get("times_used", 0)) + 1
+            entry["last_used"] = today
+            n += 1
+    if n:
+        save_hashtag_bank(bank)
+    return n
