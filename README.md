@@ -12,6 +12,20 @@ Nothing is auto-posted.
 
 ---
 
+## Health Check
+
+Before running the daily generator (or after pulling new changes), verify the project is set up correctly:
+
+```bash
+python3 automation/health_check.py
+```
+
+The check verifies, in order: required folders, required files (including `daily_runner.py`), that `OPENAI_API_KEY` and `OPENAI_MODEL` are set in `.env`, the SQLite database connects and has the `posts` and `post_history` tables, all four memory banks exist and have at least one entry, and the approval queue is readable. It also reports how many drafts are currently pending and how many of those have warnings.
+
+Exits `0` if everything passes, `1` if anything fails. Read-only — never modifies files, the database, or environment variables, and never calls OpenAI.
+
+---
+
 ## Folder Structure
 
 ```
