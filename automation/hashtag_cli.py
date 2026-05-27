@@ -14,6 +14,8 @@ Usage:
     python automation/hashtag_cli.py remove      "#Tag"
     python automation/hashtag_cli.py reset
     python automation/hashtag_cli.py audit-missing [--min-count N]   # read-only scan
+    python automation/hashtag_cli.py absorb "#Tag" --platforms instagram linkedin \
+        --score 8 --category brand --notes "..."                     # add from audit
 
 Rules:
 - Tags can be entered with or without a leading '#'; they're always stored with one.
@@ -211,6 +213,80 @@ def cmd_remove(args: argparse.Namespace) -> int:
     return 0
 
 
+def _find_casing_in_pending_drafts(target_lower: str) -> str | None:
+    """
+    Return the first casing seen in pending drafts for the given lowercased
+    tag, or None if no pending draft uses it. Read-only.
+    """
+    for draft in approval_manager.list_pending():
+        content = draft.get("content") or ""
+        for tag in _HASHTAG_RE.findall(content):
+            if tag.lower() == target_lower:
+                return tag
+    return None
+
+
+def cmd_absorb(args: argparse.Namespace) -> int:
+    """
+    Add a hashtag (typically one surfaced by `audit-missing`) into the bank.
+    If the tag exists in pending drafts, the casing Parker actually used wins
+    over the input casing. If not, the user is prompted to confirm.
+    """
+    requested = _normalize_tag(args.tag)
+    if not requested:
+        print("Tag cannot be empty.")
+        return 2
+
+    if not 1 <= args.score <= 10:
+        print("Score must be between 1 and 10.")
+        return 2
+
+    valid, invalid = _validate_platforms(args.platforms)
+    if invalid:
+        print(f"Unknown platform(s): {', '.join(invalid)}")
+        print(f"Allowed: {', '.join(sorted(ALLOWED_PLATFORMS))}")
+        return 2
+    if not valid:
+        print("At least one platform is required.")
+        return 2
+
+    bank = memory_manager.load_hashtag_bank()
+    existing = _find(bank, requested)
+    if existing:
+        print(f"Hashtag already exists in bank: {existing['tag']}")
+        print("Use `rescore`, `renote`, or `setplatforms` to change it.")
+        return 1
+
+    seen = _find_casing_in_pending_drafts(requested.lower())
+    if seen:
+        stored_tag = seen
+    else:
+        reply = input(
+            f"{requested} was not found in pending drafts. Add anyway? [y/N]: "
+        ).strip().lower()
+        if reply != "y":
+            print("Cancelled.")
+            return 0
+        stored_tag = requested
+
+    bank.setdefault("hashtags", []).append({
+        "tag": stored_tag,
+        "platforms": valid,
+        "category": args.category,
+        "times_used": 0,
+        "last_used": None,
+        "score": args.score,
+        "notes": args.notes,
+    })
+    memory_manager.save_hashtag_bank(bank)
+
+    print(f"Absorbed {stored_tag} into hashtag bank.")
+    print(f"Platforms: {', '.join(valid)}")
+    print(f"Score: {args.score}")
+    print(f"Category: {args.category}")
+    return 0
+
+
 def cmd_audit_missing(args: argparse.Namespace) -> int:
     """
     Scan pending drafts for hashtags not currently in the bank.
@@ -343,6 +419,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--min-count", type=int, default=1,
         help="hide tags used fewer than this many times (default 1)",
     )
+
+    sp = sub.add_parser(
+        "absorb",
+        help="add a hashtag (often one from `audit-missing`) into the bank",
+    )
+    sp.add_argument("tag", help="the hashtag, with or without leading '#'")
+    sp.add_argument("--platforms", required=True, nargs="+",
+                    help="space-separated platforms: instagram, facebook, linkedin, google_business_profile")
+    sp.add_argument("--score", type=int, default=7, help="1–10 (default 7)")
+    sp.add_argument("--category", default="general", help="free-form tag (default 'general')")
+    sp.add_argument("--notes", default="Absorbed from pending draft audit.",
+                    help="short description (default mentions audit origin)")
     return p
 
 
@@ -358,6 +446,7 @@ def main(argv: list[str]) -> int:
         "remove":        cmd_remove,
         "reset":         cmd_reset,
         "audit-missing": cmd_audit_missing,
+        "absorb":        cmd_absorb,
     }
     return handlers[args.command](args)
 

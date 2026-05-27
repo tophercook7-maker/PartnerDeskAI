@@ -341,6 +341,24 @@ python3 automation/hashtag_cli.py audit-missing --min-count 2  # hide one-off ta
 
 The command never writes to the bank, the database, or any post statuses. It groups tags case-insensitively and shows both an at-a-glance summary and a per-tag detail block with the posts where each tag appeared.
 
+### Absorbing a missing hashtag
+
+Once a tag from `audit-missing` looks worth keeping, absorb it into the bank with an explicit, named approval step:
+
+```bash
+python3 automation/hashtag_cli.py absorb "#mixedmakershop" \
+    --platforms instagram facebook linkedin \
+    --score 8 --category brand \
+    --notes "Brand tag used in Parker drafts"
+```
+
+Rules:
+- The tag is normalized (leading `#` added if missing).
+- If the tag appears in any pending draft, the casing Parker actually used is preserved (`#mixedmakershop` becomes `#MixedMakerShop` if that's how it was emitted).
+- If the tag is **not** found in pending drafts, the command asks `Add anyway? [y/N]:` — Enter cancels.
+- Duplicates are refused with exit code 1; use `rescore`, `renote`, or `setplatforms` to modify an existing entry.
+- Required flags: `tag`, `--platforms`. Optional: `--score` (default 7), `--category` (default `general`), `--notes` (default mentions audit origin).
+
 ---
 
 ## Roadmap (Not Yet Built)
