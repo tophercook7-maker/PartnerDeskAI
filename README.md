@@ -12,6 +12,16 @@ Nothing is auto-posted.
 
 ---
 
+## Daily status
+
+```bash
+python3 automation/status.py
+```
+
+Shows health, post counts, warning counts, memory bank counts, today's draft folder, latest log file, and the suggested next action. Read-only — never writes files, never calls OpenAI.
+
+---
+
 ## Health Check
 
 Before running the daily generator (or after pulling new changes), verify the project is set up correctly:
