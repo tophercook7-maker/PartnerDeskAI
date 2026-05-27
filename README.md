@@ -20,6 +20,14 @@ python3 automation/status.py
 
 Shows health, post counts, warning counts, memory bank counts, today's draft folder, latest log file, and the suggested next action. Read-only — never writes files, never calls OpenAI.
 
+For automation, scripts, or future dashboards, add `--json` to get the same data as machine-readable JSON (nothing else is printed):
+
+```bash
+python3 automation/status.py --json
+```
+
+The JSON shape is stable: `health`, `posts`, `review`, `memory_banks`, `today`, `latest_log` (or `null`), and `next_action`.
+
 ---
 
 ## Health Check

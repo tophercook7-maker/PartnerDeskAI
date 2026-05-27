@@ -9,11 +9,13 @@ action. Reuses the pure `check_*` helpers from `health_check.py` so the
 PASS/FAIL signal stays consistent across both commands.
 
 Usage:
-    python3 automation/status.py
+    python3 automation/status.py            # human-readable
+    python3 automation/status.py --json     # machine-readable JSON (no other output)
 
 Never writes files, never modifies the database, never calls OpenAI.
 """
 
+import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -97,56 +99,106 @@ def _print_section(title: str) -> None:
     print(f"{title}:")
 
 
-def main() -> int:
+def _gather_status() -> dict:
+    """
+    Build the canonical status data. Pure function — no printing or I/O
+    beyond what the existing read-only helpers do.
+    """
+    health_ok, errors, pending, warned = _gather_health()
+    counts = approval_manager.status_counts()
+    folder, today_exists, md_count = _today_folder_info()
+    latest = _latest_log()
+
+    return {
+        "health": {
+            "status":   "PASS" if health_ok else "FAIL",
+            "failures": errors,
+        },
+        "posts": {
+            "approved": counts.get("approved", 0),
+            "draft":    counts.get("draft", 0),
+            "rejected": counts.get("rejected", 0),
+        },
+        "review": {
+            "pending_drafts":       pending,
+            "drafts_with_warnings": warned,
+            "clean_drafts":         max(0, pending - warned),
+        },
+        "memory_banks": {
+            "topics":   _bank_count(memory_manager.TOPIC_BANK_PATH,   memory_manager.load_topic_bank,   "topics"),
+            "ctas":     _bank_count(memory_manager.CTA_BANK_PATH,     memory_manager.load_cta_bank,     "ctas"),
+            "offers":   _bank_count(memory_manager.OFFER_BANK_PATH,   memory_manager.load_offer_bank,   "offers"),
+            "hashtags": _bank_count(memory_manager.HASHTAG_BANK_PATH, memory_manager.load_hashtag_bank, "hashtags"),
+        },
+        "today": {
+            "folder":         folder.relative_to(ROOT).as_posix(),
+            "exists":         today_exists,
+            "markdown_files": md_count,
+        },
+        "latest_log": (
+            {
+                "path":     latest[0].relative_to(ROOT).as_posix(),
+                "modified": latest[1],
+            }
+            if latest else None
+        ),
+        "next_action": _next_action(health_ok, pending, today_exists),
+    }
+
+
+def _render_human(data: dict) -> None:
+    """Reproduce the v1.3 human-readable layout from the gathered data dict."""
     print("PartnerDeskAI Status")
     print()
+    print(f"Health: {data['health']['status']}")
 
-    health_ok, _errors, pending, warned = _gather_health()
-    print(f"Health: {'PASS' if health_ok else 'FAIL'}")
-
-    counts = approval_manager.status_counts()
     _print_section("Posts")
     for k in ("approved", "draft", "rejected"):
-        print(_fmt(f"{k}:", counts.get(k, 0), label_width=10))
+        print(_fmt(f"{k}:", data["posts"][k], label_width=10))
 
     _print_section("Review")
-    print(_fmt("pending drafts:",       pending))
-    print(_fmt("drafts with warnings:", warned))
-    print(_fmt("clean drafts:",         max(0, pending - warned)))
+    review = data["review"]
+    print(_fmt("pending drafts:",       review["pending_drafts"]))
+    print(_fmt("drafts with warnings:", review["drafts_with_warnings"]))
+    print(_fmt("clean drafts:",         review["clean_drafts"]))
 
     _print_section("Memory banks")
-    bank_specs = [
-        ("topics:",   memory_manager.TOPIC_BANK_PATH,   memory_manager.load_topic_bank,   "topics"),
-        ("CTAs:",     memory_manager.CTA_BANK_PATH,     memory_manager.load_cta_bank,     "ctas"),
-        ("offers:",   memory_manager.OFFER_BANK_PATH,   memory_manager.load_offer_bank,   "offers"),
-        ("hashtags:", memory_manager.HASHTAG_BANK_PATH, memory_manager.load_hashtag_bank, "hashtags"),
-    ]
-    for label, path, loader, key in bank_specs:
-        n = _bank_count(path, loader, key)
+    bank_labels = [("topics:", "topics"), ("CTAs:", "ctas"),
+                   ("offers:", "offers"), ("hashtags:", "hashtags")]
+    for label, key in bank_labels:
+        n = data["memory_banks"][key]
         print(_fmt(label, "missing" if n is None else n, label_width=10))
 
-    folder, today_exists, md_count = _today_folder_info()
+    today = data["today"]
     _print_section("Today")
-    rel = folder.relative_to(ROOT)
-    if today_exists:
-        print(_fmt("folder:",         rel, label_width=16))
-        print(_fmt("markdown files:", md_count, label_width=16))
+    if today["exists"]:
+        print(_fmt("folder:",         today["folder"],         label_width=16))
+        print(_fmt("markdown files:", today["markdown_files"], label_width=16))
     else:
-        print(_fmt("folder:", f"{rel} (not yet created)", label_width=16))
+        print(_fmt("folder:", f"{today['folder']} (not yet created)", label_width=16))
 
-    latest = _latest_log()
+    log = data["latest_log"]
     _print_section("Latest log")
-    if latest is None:
+    if log is None:
         print("  (no log files yet)")
     else:
-        log_path, mtime = latest
-        print(f"{log_path.relative_to(ROOT)}")
-        print(f"modified: {mtime}")
+        print(log["path"])
+        print(f"modified: {log['modified']}")
 
     _print_section("Next action")
-    print(_next_action(health_ok, pending, today_exists))
+    print(data["next_action"])
+
+
+def main(argv: list[str]) -> int:
+    as_json = "--json" in argv[1:]
+    data = _gather_status()
+    if as_json:
+        # JSON-only output: no preamble, no trailing text, valid JSON.
+        print(json.dumps(data, indent=2))
+    else:
+        _render_human(data)
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv))
