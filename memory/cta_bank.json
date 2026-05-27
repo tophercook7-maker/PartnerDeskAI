@@ -1,0 +1,44 @@
+{
+  "ctas": [
+    {
+      "cta": "DM us to learn more",
+      "category": "social",
+      "times_used": 0,
+      "last_used": null,
+      "score": 8,
+      "notes": "Low-friction social CTA \u2014 good on Instagram and Facebook."
+    },
+    {
+      "cta": "Book a free 15-minute consult",
+      "category": "direct",
+      "times_used": 0,
+      "last_used": null,
+      "score": 9,
+      "notes": "Strong intent signal. Best for LinkedIn and Google Business."
+    },
+    {
+      "cta": "Visit mixedmakershop.com to see what we do",
+      "category": "website",
+      "times_used": 0,
+      "last_used": null,
+      "score": 7,
+      "notes": "Drives traffic to the site. Use when the post has space."
+    },
+    {
+      "cta": "Reply to this post and we'll get back to you the same day",
+      "category": "engagement",
+      "times_used": 0,
+      "last_used": null,
+      "score": 7,
+      "notes": "Boosts platform algorithm signals via replies."
+    },
+    {
+      "cta": "Share this with a small business owner who could use the help",
+      "category": "viral",
+      "times_used": 0,
+      "last_used": null,
+      "score": 7,
+      "notes": "Good occasional change-up. Works best on educational posts."
+    }
+  ]
+}

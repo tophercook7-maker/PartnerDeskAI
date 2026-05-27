@@ -58,20 +58,32 @@ def build_user_prompt(
     today: str,
     chosen_topic: str,
     recent_topics: list[str],
+    chosen_cta: str,
+    recent_ctas: list[str],
+    chosen_offer: str,
+    recent_offers: list[str],
 ) -> str:
     """Compose the user-side message that primes Parker for today's run."""
-    recent_line = ", ".join(recent_topics) if recent_topics else "none yet"
+    def _join(items: list[str]) -> str:
+        return "; ".join(items) if items else "none yet"
+
     return (
         f"Today's date: {today}\n\n"
-        f"Recommended topic for today:\n{chosen_topic}\n\n"
-        f"Avoid recently used topics:\n{recent_line}\n\n"
+        f"Recommended topic for today:\n{chosen_topic}\n"
+        f"Avoid recently used topics: {_join(recent_topics)}\n\n"
+        f"Recommended CTA for today:\n{chosen_cta}\n"
+        f"Avoid recently used CTAs: {_join(recent_ctas)}\n\n"
+        f"Recommended offer angle for today:\n{chosen_offer}\n"
+        f"Avoid recently used offers: {_join(recent_offers)}\n\n"
         f"--- BUSINESS PROFILE ---\n{business_profile}\n\n"
         f"--- POSTING SCHEDULE ---\n{schedule_json}\n\n"
         f"--- RECENT POST HISTORY ---\n{history_text}\n\n"
         "Generate today's posts for all four platforms using the required "
-        "section-delimited output format. Use the recommended topic above "
-        "as the single topic for the day. Do not repeat any topic listed "
-        "under recently used topics or in recent history."
+        "section-delimited output format. Use the recommended topic as the "
+        "single topic for the day. Weave the recommended CTA (verbatim or "
+        "lightly rephrased) into each platform post where natural. Reference "
+        "the recommended offer angle in posts where it fits — don't force it "
+        "into every post. Do not repeat any recent topic, CTA, or offer."
     )
 
 
@@ -141,11 +153,16 @@ def main() -> None:
     history_text = memory_manager.format_history_for_prompt(history)
     log_lines.append(f"Loaded {len(history)} recent history rows")
 
-    # 3. Topic intelligence: pick a topic from the bank, gather recent topics
+    # 3. Rotation memory: pick topic + CTA + offer, gather recent for each.
     chosen_topic = memory_manager.choose_topic()
     recent_topics_list = memory_manager.get_recent_topics(limit=10)
-    log_lines.append(f"Chose topic from bank: {chosen_topic}")
-    log_lines.append(f"Recent topics to avoid: {recent_topics_list or 'none yet'}")
+    chosen_cta = memory_manager.choose_cta()
+    recent_ctas_list = memory_manager.get_recent_ctas(limit=5)
+    chosen_offer = memory_manager.choose_offer()
+    recent_offers_list = memory_manager.get_recent_offers(limit=5)
+    log_lines.append(f"Chose topic: {chosen_topic}")
+    log_lines.append(f"Chose CTA:   {chosen_cta}")
+    log_lines.append(f"Chose offer: {chosen_offer}")
 
     # 4. Build prompt
     today = datetime.now().strftime("%Y-%m-%d")
@@ -156,6 +173,10 @@ def main() -> None:
         today=today,
         chosen_topic=chosen_topic,
         recent_topics=recent_topics_list,
+        chosen_cta=chosen_cta,
+        recent_ctas=recent_ctas_list,
+        chosen_offer=chosen_offer,
+        recent_offers=recent_offers_list,
     )
 
     # 5. Call OpenAI
@@ -203,11 +224,15 @@ def main() -> None:
     pointer = approval_manager.queue_for_approval(folder)
     log_lines.append(f"Queued drafts for approval: {pointer}")
 
-    # 10. Topic intelligence: record that we used this topic so it rotates out.
+    # 10. Rotation memory: record usage so picks rotate out next run.
     if memory_manager.update_topic_usage(chosen_topic):
         log_lines.append(f"Topic bank updated: {chosen_topic}")
     else:
         log_lines.append(f"Topic '{chosen_topic}' not in bank; usage not updated")
+    if chosen_cta and memory_manager.update_cta_usage(chosen_cta):
+        log_lines.append(f"CTA bank updated:   {chosen_cta}")
+    if chosen_offer and memory_manager.update_offer_usage(chosen_offer):
+        log_lines.append(f"Offer bank updated: {chosen_offer}")
 
     file_manager.append_log(log_lines)
     print("Done.")

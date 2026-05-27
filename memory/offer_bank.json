@@ -1,0 +1,44 @@
+{
+  "offers": [
+    {
+      "offer": "Free initial consultation",
+      "category": "consult",
+      "times_used": 0,
+      "last_used": null,
+      "score": 9,
+      "notes": "Low-friction entry point. Works for almost any service."
+    },
+    {
+      "offer": "Complimentary website audit",
+      "category": "audit",
+      "times_used": 0,
+      "last_used": null,
+      "score": 8,
+      "notes": "Great when the post topic is websites or visibility."
+    },
+    {
+      "offer": "Bundle: website + digital business card",
+      "category": "bundle",
+      "times_used": 0,
+      "last_used": null,
+      "score": 8,
+      "notes": "Use when promoting either service individually feels too narrow."
+    },
+    {
+      "offer": "No subscription \u2014 pay once, own it",
+      "category": "positioning",
+      "times_used": 0,
+      "last_used": null,
+      "score": 7,
+      "notes": "Differentiator vs. SaaS-style competitors. Soft offer angle."
+    },
+    {
+      "offer": "Limited spots open this month",
+      "category": "scarcity",
+      "times_used": 0,
+      "last_used": null,
+      "score": 6,
+      "notes": "Use sparingly so it doesn't feel manipulative or repetitive."
+    }
+  ]
+}

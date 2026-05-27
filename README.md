@@ -218,6 +218,50 @@ Topic names are matched case-insensitively. Scores must be 1–10.
 
 ---
 
+## CTA and Offer Rotation
+
+Parker also rotates two other things alongside topics:
+
+- `memory/cta_bank.json` — calls-to-action ("DM us to learn more", "Book a free 15-minute consult", etc.)
+- `memory/offer_bank.json` — offer angles ("Free initial consultation", "Complimentary website audit", etc.)
+
+Both banks share the same shape as `topic_bank.json` and follow the same rules: high-score items are preferred, anything used in the last 7 days is skipped, and `times_used` / `last_used` are updated automatically after each run. On each generation Parker receives:
+
+1. One **recommended topic** for the day
+2. One **recommended CTA** (woven into the platform posts)
+3. One **recommended offer angle** (referenced where it fits naturally)
+
+Recently used CTAs and offers are also passed in so Parker actively avoids repeating them.
+
+### CTA bank CLI
+
+```bash
+python3 automation/cta_cli.py list                                       # show all CTAs
+python3 automation/cta_cli.py show "DM us to learn more"                 # full details
+python3 automation/cta_cli.py add "Schedule a free call" --score 8 \
+    --category direct --notes "Strong intent CTA."                       # add a new CTA
+python3 automation/cta_cli.py rescore "DM us to learn more" 9            # change score
+python3 automation/cta_cli.py renote  "DM us to learn more" "New notes"  # replace notes
+python3 automation/cta_cli.py remove  "Old CTA"                          # delete a CTA
+python3 automation/cta_cli.py reset                                      # zero usage counters
+```
+
+### Offer bank CLI
+
+```bash
+python3 automation/offer_cli.py list
+python3 automation/offer_cli.py show "Free initial consultation"
+python3 automation/offer_cli.py add "30-day money-back guarantee" --score 7 --category trust
+python3 automation/offer_cli.py rescore "Complimentary website audit" 10
+python3 automation/offer_cli.py renote  "Free initial consultation" "Now 30 minutes."
+python3 automation/offer_cli.py remove  "Limited spots open this month"
+python3 automation/offer_cli.py reset
+```
+
+Same rules as the topic CLI: names matched case-insensitively, scores 1–10.
+
+---
+
 ## Roadmap (Not Yet Built)
 
 These are intentionally **not** part of v0.1. Don't add them until they're actually needed:

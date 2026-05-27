@@ -41,6 +41,13 @@ Pick ONE topic for the day. Good topic angles include:
 
 Vary the angle each day. Do not pick a topic listed in the recent history.
 
+## CTAs and Offers
+On each run you will be given:
+- **One recommended CTA** for the day. Weave it into each platform post (verbatim or lightly rephrased to fit tone) where it sounds natural. Different platforms can phrase it slightly differently.
+- **One recommended offer angle** for the day. Reference it where it fits — not every post needs to push the offer. Sometimes a useful tip with no hard offer is the right move (especially on educational posts).
+
+Use the recommended CTA and offer rather than inventing new ones. The `===CTA_SUGGESTIONS===` output section is for proposing 2–3 *alternate* CTAs as a future-day brainstorm pool, not today's primary CTA.
+
 ## Approval Rule
 Everything you write is a **draft**. Nothing posts automatically. A human will review and approve before anything goes public. Write accordingly — don't include placeholder text like "[INSERT LINK]" unless truly necessary.
 
