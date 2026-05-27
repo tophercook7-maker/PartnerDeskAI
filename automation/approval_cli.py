@@ -8,6 +8,7 @@ Usage:
     python automation/approval_cli.py list            # multi-line summary of pending drafts
                                                       #   (id, platform, status, topic, file, tags)
     python automation/approval_cli.py status          # counts by status
+    python automation/approval_cli.py status --warnings   # also: warning summary for pending drafts
     python automation/approval_cli.py preview <id>    # print the full draft content for one post
 
 Approve -> sets posts.status = 'approved' AND inserts a post_history row,
@@ -305,15 +306,82 @@ def cmd_preview(post_id: int) -> int:
     return 0
 
 
-def cmd_status() -> int:
+def cmd_status(show_warnings: bool = False) -> int:
     counts = approval_manager.status_counts()
     if not counts:
         print("No posts in database yet.")
         return 0
+
+    if show_warnings:
+        print("Status counts:")
     width = max(len(k) for k in counts)
     for status, n in sorted(counts.items()):
         print(f"  {status.ljust(width)}  {n}")
+
+    if show_warnings:
+        _print_warning_summary()
     return 0
+
+
+def _print_warning_summary() -> None:
+    """Aggregate _audit_draft output across all pending drafts and print it."""
+    pending = approval_manager.list_pending()
+    total = len(pending)
+
+    # Ordered for stable presentation; only types with non-zero counts print.
+    by_type: dict[str, int] = {
+        "Missing CTA":         0,
+        "Off-bank hashtags":   0,
+        "Too many hashtags":   0,
+        "Very short drafts":   0,
+        "GBP hashtags":        0,
+    }
+    per_draft: list[tuple[int, str, int]] = []
+    with_warnings = 0
+
+    for d in pending:
+        warnings = _audit_draft(d)
+        if not warnings:
+            continue
+        with_warnings += 1
+        per_draft.append((d["id"], d["platform"], len(warnings)))
+        for w in warnings:
+            # Classification mirrors the spec; first match wins so each
+            # warning increments exactly one bucket.
+            if "No obvious CTA" in w:
+                by_type["Missing CTA"] += 1
+            elif "Hashtag not in bank" in w:
+                by_type["Off-bank hashtags"] += 1
+            elif "Too many hashtags" in w:
+                by_type["Too many hashtags"] += 1
+            elif "very short" in w.lower():
+                by_type["Very short drafts"] += 1
+            elif "Google Business Profile" in w:
+                by_type["GBP hashtags"] += 1
+
+    clean = total - with_warnings
+
+    print()
+    print("Warning summary for pending drafts:")
+    print(f"  {'Pending drafts:':<20}{total:>5}")
+    print(f"  {'With warnings:':<20}{with_warnings:>5}")
+    print(f"  {'Clean drafts:':<20}{clean:>5}")
+
+    if any(by_type.values()):
+        print()
+        print("Warning types:")
+        for label, n in by_type.items():
+            if n:
+                print(f"  {label + ':':<20}{n:>5}")
+
+    if per_draft:
+        # Worst first; stable secondary sort by id keeps output deterministic.
+        per_draft.sort(key=lambda x: (-x[2], x[0]))
+        print()
+        print("Drafts needing review:")
+        for pid, platform, count in per_draft:
+            label = "warning" if count == 1 else "warnings"
+            print(f"  #{pid} {platform} — {count} {label}")
 
 
 def main(argv: list[str]) -> int:
@@ -323,7 +391,8 @@ def main(argv: list[str]) -> int:
     if cmd == "list":
         return cmd_list()
     if cmd == "status":
-        return cmd_status()
+        show_warnings = "--warnings" in argv[2:]
+        return cmd_status(show_warnings=show_warnings)
     if cmd == "preview":
         if len(argv) < 3:
             print("Usage: python automation/approval_cli.py preview <post_id>")
@@ -335,7 +404,7 @@ def main(argv: list[str]) -> int:
             return 2
         return cmd_preview(post_id)
     print(f"Unknown command: {cmd}")
-    print("Usage: python automation/approval_cli.py [review|list|status|preview <id>]")
+    print("Usage: python automation/approval_cli.py [review|list|status [--warnings]|preview <id>]")
     return 2
 
 

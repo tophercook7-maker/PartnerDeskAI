@@ -69,6 +69,7 @@ PartnerDeskAI/
    python automation/approval_cli.py                  # interactive review of pending drafts
    python automation/approval_cli.py list             # multi-line summary of pending drafts
    python automation/approval_cli.py status           # counts by status
+   python automation/approval_cli.py status --warnings  # also: warning summary for pending drafts
    python automation/approval_cli.py preview <id>     # full content for one post (any status)
    ```
 
@@ -92,6 +93,14 @@ The approval CLI warns about possible issues before approval, including too many
 These warnings do not block approval. They are review helpers only.
 
 If a draft has warnings, interactive approval asks for one extra confirmation before approving. Pressing Enter defaults to No. This prevents accidental approval of drafts with obvious issues while still allowing Topher to approve intentionally.
+
+For a batch-level view without entering the review loop, run:
+
+```bash
+python3 automation/approval_cli.py status --warnings
+```
+
+This prints the normal status counts followed by a summary of how many pending drafts have warnings, a breakdown by warning type, and a list of the drafts with the most warnings. Read-only — no statuses or database rows are changed.
 
 Specifically, `_audit_draft` checks each draft for:
 
