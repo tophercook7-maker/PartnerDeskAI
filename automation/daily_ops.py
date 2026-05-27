@@ -12,7 +12,10 @@ orchestrator never touches their internals. If any step exits non-zero,
 we print `[FAIL] <step>` and stop — later steps do NOT run.
 
 Usage:
-    python3 automation/daily_ops.py
+    python3 automation/daily_ops.py                 # full sequence (1, 2, 3)
+    python3 automation/daily_ops.py --skip-generate # skip step 1: only refresh
+                                                    # snapshot + summary (no
+                                                    # OpenAI, no new drafts)
 
 Allowed writes (delegated to the underlying scripts):
     - daily_posts/YYYY-MM-DD/*.md + _raw_response.txt (daily_runner)
@@ -47,11 +50,29 @@ def _say(*args, **kwargs) -> None:
 
 
 def main() -> int:
+    # Tiny flag parser — only one optional flag is accepted. Any other
+    # argument is a usage error and exits 2.
+    skip_generate = False
+    for arg in sys.argv[1:]:
+        if arg == "--skip-generate":
+            skip_generate = True
+        else:
+            _say("Usage: python3 automation/daily_ops.py [--skip-generate]")
+            return 2
+
     _say("PartnerDeskAI Daily Ops")
     _say()
 
-    total = len(STEPS)
-    for idx, (label, script) in enumerate(STEPS, start=1):
+    if skip_generate:
+        # Show the skipped step explicitly so the output stays readable
+        # and the user knows nothing was generated this run.
+        _say("[skip] Generate daily drafts")
+        active_steps = STEPS[1:]
+    else:
+        active_steps = STEPS
+
+    total = len(active_steps)
+    for idx, (label, script) in enumerate(active_steps, start=1):
         _say(f"[{idx}/{total}] {label}")
         result = subprocess.run(
             [sys.executable, str(ROOT / script)],

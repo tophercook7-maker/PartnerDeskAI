@@ -20,6 +20,14 @@ python3 automation/daily_ops.py
 
 Runs the daily generation, writes a status snapshot, and writes the morning summary. This is the command launchd can eventually call instead of running individual scripts.
 
+For refreshing the snapshot and summary later in the day without generating new drafts (or burning another OpenAI call), use:
+
+```bash
+python3 automation/daily_ops.py --skip-generate
+```
+
+This skips `daily_runner.py` entirely and only re-runs `status_snapshot.py` and `morning_summary.py`. No new drafts are created, no bank usage counters change, and no OpenAI call is made.
+
 ---
 
 ## Status snapshot
