@@ -9,15 +9,19 @@ action. Reuses the pure `check_*` helpers from `health_check.py` so the
 PASS/FAIL signal stays consistent across both commands.
 
 Usage:
-    python3 automation/status.py            # human-readable
-    python3 automation/status.py --json     # machine-readable JSON (no other output)
+    python3 automation/status.py                # human-readable, one shot
+    python3 automation/status.py --json         # machine-readable JSON (no other output)
+    python3 automation/status.py --watch        # refresh every 30s until Ctrl+C
+    python3 automation/status.py --watch 10     # refresh every 10s
 
 Never writes files, never modifies the database, never calls OpenAI.
 """
 
 import json
+import os
 import re
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -233,8 +237,56 @@ def _render_human(data: dict) -> None:
     print(data["next_action"])
 
 
+def _parse_watch_interval(rest: list[str]) -> int | None:
+    """
+    If --watch is in `rest`, return the desired interval in seconds (default 30).
+    Returns None when --watch is absent. Raises ValueError on a bad interval
+    so main() can emit the usage hint and exit 2.
+    """
+    if "--watch" not in rest:
+        return None
+    idx = rest.index("--watch")
+    if idx + 1 >= len(rest):
+        return 30
+    candidate = rest[idx + 1]
+    try:
+        interval = int(candidate)
+    except ValueError:
+        raise ValueError(candidate)
+    if interval <= 0:
+        raise ValueError(candidate)
+    return interval
+
+
+def _run_watch(interval: int) -> int:
+    """Refresh the human dashboard every `interval` seconds until Ctrl+C."""
+    try:
+        while True:
+            os.system("clear")
+            _render_human(_gather_status())
+            print()
+            print(f"Watching every {interval}s. Press Ctrl+C to stop.")
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        print()
+        print("Stopped.")
+        return 0
+
+
 def main(argv: list[str]) -> int:
-    as_json = "--json" in argv[1:]
+    rest = argv[1:]
+
+    try:
+        watch_interval = _parse_watch_interval(rest)
+    except ValueError as e:
+        print(f"Invalid --watch interval: {e}")
+        print("Usage: python3 automation/status.py [--watch [seconds]] [--json]")
+        return 2
+
+    if watch_interval is not None:
+        return _run_watch(watch_interval)
+
+    as_json = "--json" in rest
     data = _gather_status()
     if as_json:
         # JSON-only output: no preamble, no trailing text, valid JSON.

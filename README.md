@@ -32,6 +32,15 @@ python3 automation/status.py
 
 Shows health, post counts, warning counts, memory bank counts, today's draft folder, latest log file, and the suggested next action. Read-only — never writes files, never calls OpenAI.
 
+To monitor live while a manually-triggered run is in flight (or after `launchctl start ...`), use watch mode — the human dashboard refreshes every N seconds (default 30) until Ctrl+C:
+
+```bash
+python3 automation/status.py --watch       # every 30s
+python3 automation/status.py --watch 10    # every 10s
+```
+
+Watch mode clears the terminal between refreshes and prints `Watching every Ns. Press Ctrl+C to stop.` at the bottom. Ctrl+C exits cleanly with `Stopped.`.
+
 For automation, scripts, or future dashboards, add `--json` to get the same data as machine-readable JSON (nothing else is printed):
 
 ```bash
