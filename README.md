@@ -85,6 +85,28 @@ PartnerDeskAI/
 
    Approved topics are written to `post_history`, which the daily generator reads on the next run so Parker won't repeat the same topic.
 
+### Approval warnings
+
+The approval CLI warns about possible issues before approval, including too many hashtags, tags outside the curated bank, missing CTA language, and very short drafts.
+
+These warnings do not block approval. They are review helpers only.
+
+Specifically, `_audit_draft` checks each draft for:
+
+- **Too many hashtags** — Instagram > 6, Facebook > 3, LinkedIn > 3, Google Business Profile > 0
+- **Hashtag not in bank** — any tag in the body that isn't in `memory/hashtag_bank.json` (case-insensitive comparison)
+- **No obvious CTA found** — none of a short list of CTA phrases (`message me`, `reply`, `contact`, `book`, `dm`, `learn more`, `let's talk`, etc.) appears in the body
+- **Very short content** — body under 120 characters
+
+Warnings appear in `list`, `preview <id>`, and the interactive review header, in this format:
+
+```
+Warnings:
+- Too many hashtags for LinkedIn: 5 found, max 3.
+- Hashtag not in bank: #RandomTag
+- No obvious CTA found.
+```
+
 That's it.
 
 ---

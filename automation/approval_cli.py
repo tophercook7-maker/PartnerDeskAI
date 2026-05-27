@@ -18,6 +18,7 @@ Skip    -> leaves status as 'draft' for next time.
 
 import re
 import sys
+from functools import lru_cache
 from pathlib import Path
 from datetime import datetime
 
@@ -26,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import approval_manager
 import file_manager
+import memory_manager
 
 
 HR = "─" * 64
@@ -48,6 +50,87 @@ def _extract_hashtags(text: str) -> list[str]:
     return out
 
 
+# --- Audit (v0.6) ---------------------------------------------------------
+#
+# _audit_draft inspects a stored post and returns a list of human-readable
+# warning strings. Warnings are informational only — they never block
+# approval. The CLI prints them above the body in review and inline in the
+# `list` / `preview` summaries.
+
+# Per-platform hashtag ceilings, mirroring Parker's prompt rules.
+_HASHTAG_MAX_BY_PLATFORM = {
+    "Instagram": 6,
+    "Facebook": 3,
+    "LinkedIn": 3,
+    "Google Business Profile": 0,
+}
+
+# Phrases that count as an "obvious" CTA. Lowercase substring match. We
+# intentionally keep this list short and conservative — false negatives
+# (missed warnings) are preferable to overwarning every draft.
+_CTA_PHRASES = (
+    "message me", "reply", "contact", "get started", "ask",
+    "book", "send me", "reach out", "dm", "comment",
+    "learn more", "let's talk",
+)
+
+
+@lru_cache(maxsize=1)
+def _bank_tags_lowercase() -> frozenset[str]:
+    """Cache the lowercase set of hashtags in memory/hashtag_bank.json."""
+    bank = memory_manager.load_hashtag_bank()
+    return frozenset(t.get("tag", "").lower() for t in bank.get("hashtags", []))
+
+
+def _audit_draft(post: dict) -> list[str]:
+    """Return a list of informational warnings about the given draft."""
+    warnings: list[str] = []
+    content = post.get("content") or ""
+    platform = post.get("platform") or ""
+    tags = _extract_hashtags(content)
+
+    # 1) Too many hashtags for the platform.
+    max_tags = _HASHTAG_MAX_BY_PLATFORM.get(platform)
+    if max_tags is not None and len(tags) > max_tags:
+        if max_tags == 0:
+            warnings.append(f"{platform} should usually have no hashtags.")
+        else:
+            warnings.append(
+                f"Too many hashtags for {platform}: {len(tags)} found, max {max_tags}."
+            )
+
+    # 2) Hashtag not in the curated bank (case-insensitive).
+    if tags:
+        bank = _bank_tags_lowercase()
+        for tag in tags:
+            if tag.lower() not in bank:
+                warnings.append(f"Hashtag not in bank: {tag}")
+
+    # 3) No obvious CTA phrase present. We use word boundaries so short
+    #    phrases like "dm" don't match inside brand names like "MixedMakerShop".
+    content_lower = content.lower()
+    if not any(
+        re.search(rf"\b{re.escape(phrase)}\b", content_lower)
+        for phrase in _CTA_PHRASES
+    ):
+        warnings.append("No obvious CTA found.")
+
+    # 4) Very short content (under 120 chars, body only — DB.content already
+    #    excludes the markdown metadata header).
+    body_len = len(content.strip())
+    if body_len < 120:
+        warnings.append(f"Draft is very short: {body_len} characters.")
+
+    return warnings
+
+
+def _format_warnings_block(warnings: list[str]) -> str:
+    """Render the warning list as a labeled block. Empty list -> empty string."""
+    if not warnings:
+        return ""
+    return "Warnings:\n" + "\n".join(f"- {w}" for w in warnings)
+
+
 def _md_path_for(draft: dict) -> Path | None:
     """Resolve the markdown file path for a draft, or None."""
     return file_manager.file_for_platform(draft["created_at"][:10], draft["platform"])
@@ -62,12 +145,17 @@ def _format_summary(draft: dict) -> str:
     if md_path:
         file_line = str(md_path) + ("" if md_path.exists() else "  (missing)")
 
-    return (
+    summary = (
         f"[#{draft['id']}] {draft['platform']}  ·  status: {draft['status']}  ·  {draft['created_at']}\n"
         f"     Topic: {draft.get('topic') or '(no topic)'}\n"
         f"     File:  {file_line}\n"
         f"     Tags:  {' '.join(tags) if tags else '(none)'}"
     )
+
+    warnings_block = _format_warnings_block(_audit_draft(draft))
+    if warnings_block:
+        summary += "\n" + warnings_block
+    return summary
 
 
 def _print_draft(idx: int, total: int, draft: dict) -> None:
@@ -85,6 +173,10 @@ def _print_draft(idx: int, total: int, draft: dict) -> None:
     tags = _extract_hashtags(draft.get("content", ""))
     if tags:
         print(f"Tags:   {' '.join(tags)}")
+
+    warnings_block = _format_warnings_block(_audit_draft(draft))
+    if warnings_block:
+        print(warnings_block)
 
     print(HR)
     print(draft["content"].strip())
