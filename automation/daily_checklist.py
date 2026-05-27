@@ -14,43 +14,15 @@ Usage:
 Never writes files, never modifies the database, never calls OpenAI.
 """
 
-import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import approval_manager
-import memory_manager
 import status as status_mod
-
-
-# Same simple pattern other CLIs use; markdown headers like "# Topic"
-# are safely ignored because the regex requires no space after '#'.
-_HASHTAG_RE = re.compile(r"#[A-Za-z0-9_]+")
-
-
-def _top_missing_hashtags(limit: int = 5) -> list[tuple[str, int]]:
-    """
-    Scan pending drafts, return up to `limit` hashtags that are not in
-    the curated bank, sorted by use count (desc) then alphabetical.
-    Same-tag-twice within one post counts once. Read-only.
-    """
-    bank_lower = {
-        t.get("tag", "").lower()
-        for t in memory_manager.load_hashtag_bank().get("hashtags", [])
-    }
-    counts: dict[str, int] = {}
-    for draft in approval_manager.list_pending():
-        content = draft.get("content") or ""
-        seen_in_post: set[str] = set()
-        for tag in _HASHTAG_RE.findall(content):
-            lower = tag.lower()
-            if lower in bank_lower or lower in seen_in_post:
-                continue
-            seen_in_post.add(lower)
-            counts[lower] = counts.get(lower, 0) + 1
-    items = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    return items[:limit]
+# Shared helper for "what missing hashtags are in pending drafts?" lives in
+# status.py so the boolean (status.checklist.clean_hashtags) and the top-5
+# display here always agree.
+from status import _top_missing_hashtags
 
 
 def _box(complete: bool) -> str:
@@ -71,16 +43,19 @@ def main() -> int:
         print("    Run python3 automation/health_check.py")
     print()
 
-    # Compute completion state for each item up front so the box markers
-    # and the descriptive lines below agree.
+    # Read the canonical completion state from status.py's gathered dict so
+    # the checklist boxes here and the `checklist` block in status --json
+    # always agree. The top-5 missing-tag list below is still computed
+    # locally because it's a display concern, not a state concern.
     today = data["today"]
     review = data["review"]
     missing = _top_missing_hashtags(limit=5)
 
-    generated_done = today["exists"] and today["markdown_files"] >= 4
-    review_done    = review["pending_drafts"] == 0
-    hashtags_done  = not missing
-    status_done    = health == "PASS"
+    checklist = data["checklist"]
+    generated_done = checklist["generate_drafts"]
+    review_done    = checklist["review_drafts"]
+    hashtags_done  = checklist["clean_hashtags"]
+    status_done    = checklist["status_pass"]
 
     # 1) Today's drafts
     print(f"{_box(generated_done)} Generate today's drafts")

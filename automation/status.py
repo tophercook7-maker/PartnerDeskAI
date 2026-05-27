@@ -16,6 +16,7 @@ Never writes files, never modifies the database, never calls OpenAI.
 """
 
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +29,35 @@ import memory_manager
 
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# Same simple pattern other CLIs use. Markdown headers like "# Topic" are
+# safely ignored because the regex requires no space after '#'.
+_HASHTAG_RE = re.compile(r"#[A-Za-z0-9_]+")
+
+
+def _top_missing_hashtags(limit: int = 5) -> list[tuple[str, int]]:
+    """
+    Read-only: scan pending drafts, return up to `limit` hashtags that are
+    not in the curated bank, sorted by use count (desc) then alphabetical.
+    Same-tag-twice within one post counts once. Shared by status.py
+    (boolean: "any missing?") and daily_checklist.py (top-5 display).
+    """
+    bank_lower = {
+        t.get("tag", "").lower()
+        for t in memory_manager.load_hashtag_bank().get("hashtags", [])
+    }
+    counts: dict[str, int] = {}
+    for draft in approval_manager.list_pending():
+        content = draft.get("content") or ""
+        seen_in_post: set[str] = set()
+        for tag in _HASHTAG_RE.findall(content):
+            lower = tag.lower()
+            if lower in bank_lower or lower in seen_in_post:
+                continue
+            seen_in_post.add(lower)
+            counts[lower] = counts.get(lower, 0) + 1
+    items = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return items[:limit]
 
 
 # --- Data gathering --------------------------------------------------------
@@ -108,6 +138,10 @@ def _gather_status() -> dict:
     counts = approval_manager.status_counts()
     folder, today_exists, md_count = _today_folder_info()
     latest = _latest_log()
+    # `clean_hashtags` only needs to know whether any missing tag exists,
+    # so limit=1 is enough — daily_checklist.py calls _top_missing_hashtags
+    # separately when it needs the top-5 list for display.
+    any_missing_hashtags = bool(_top_missing_hashtags(limit=1))
 
     return {
         "health": {
@@ -143,6 +177,12 @@ def _gather_status() -> dict:
             if latest else None
         ),
         "next_action": _next_action(health_ok, pending, today_exists),
+        "checklist": {
+            "generate_drafts": today_exists and md_count >= 4,
+            "review_drafts":   pending == 0,
+            "clean_hashtags":  not any_missing_hashtags,
+            "status_pass":     health_ok,
+        },
     }
 
 

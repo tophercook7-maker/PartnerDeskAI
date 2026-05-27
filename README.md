@@ -38,7 +38,9 @@ For automation, scripts, or future dashboards, add `--json` to get the same data
 python3 automation/status.py --json
 ```
 
-The JSON shape is stable: `health`, `posts`, `review`, `memory_banks`, `today`, `latest_log` (or `null`), and `next_action`.
+The JSON shape is stable: `health`, `posts`, `review`, `memory_banks`, `today`, `latest_log` (or `null`), `next_action`, and `checklist`.
+
+The JSON output also includes a `checklist` block with booleans for generate drafts, review drafts, clean hashtags, and status pass. These match the `[x] / [ ]` markers in `daily_checklist.py`.
 
 ---
 
