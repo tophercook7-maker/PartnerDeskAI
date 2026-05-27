@@ -1,0 +1,19 @@
+{
+  "google_business_profile": {
+    "enabled": true,
+    "posts_per_day": 1,
+    "preferred_time": "09:00"
+  },
+  "facebook": {
+    "enabled": true,
+    "posts_per_day": 1
+  },
+  "instagram": {
+    "enabled": true,
+    "posts_per_day": 1
+  },
+  "linkedin": {
+    "enabled": true,
+    "posts_per_day": 1
+  }
+}

@@ -1,0 +1,29 @@
+# Secrets
+.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.python-version
+
+# Database
+database/*.db
+database/*.db-journal
+
+# Generated output (drafts are local-only)
+daily_posts/
+approval_queue/
+logs/
+archive/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
