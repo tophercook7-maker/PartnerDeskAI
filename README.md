@@ -262,35 +262,35 @@ Same rules as the topic CLI: names matched case-insensitively, scores 1–10.
 
 ---
 
-## Hashtag Rotation
+## Hashtag Bank
 
-`memory/hashtag_bank.json` is a platform-aware bank of curated hashtags. Each entry has a `tag`, a `platforms` list (which platforms it's valid for), `category`, `score`, `times_used`, `last_used`, and `notes`.
+Parker uses `memory/hashtag_bank.json` to rotate curated hashtags by platform. Each entry has a `tag`, a `platforms` list, `category`, `score`, `times_used`, `last_used`, and `notes`.
 
-On each run, Parker receives a curated set per platform:
+On each run, Parker receives a curated set per platform (counts in `daily_runner.py` via `HASHTAG_COUNTS`):
 
-- **Instagram**: 8 hashtags (configurable in `daily_runner.py` via `HASHTAG_COUNTS`)
-- **LinkedIn**: 3 hashtags
-- **Facebook** and **Google Business Profile**: none — Parker's prompt skips hashtags on those platforms
+- **Instagram**: up to 6 hashtags
+- **Facebook**: up to 3 hashtags
+- **LinkedIn**: up to 3 hashtags
+- **Google Business Profile**: 0 — Parker's prompt skips hashtags here
 
-Hashtags are picked score-weighted and rotated by recency (anything used in the last 7 days is skipped first, then falls back if the bank is too small). After a successful run, `times_used` and `last_used` update for every chosen tag.
+Hashtags are picked score-weighted and rotated by recency (anything used in the last 7 days is skipped first, then falls back if the bank is too small). After a successful run, `times_used` and `last_used` are updated only for hashtags that were actually recommended.
 
-### Hashtag bank CLI
+Use `automation/hashtag_cli.py` to list, add, edit, remove, and reset hashtags.
 
 ```bash
-python3 automation/hashtag_cli.py list                                # all tags
-python3 automation/hashtag_cli.py list --platform instagram           # filter by platform
-python3 automation/hashtag_cli.py show "#LocalBusiness"
-python3 automation/hashtag_cli.py add  "#SaaSAlternative" \
-    --platforms instagram,linkedin --score 8 \
-    --category positioning --notes "Pairs with no-subscription offer."
-python3 automation/hashtag_cli.py rescore      "#LocalBusiness" 10
-python3 automation/hashtag_cli.py renote       "#Branding" "New angle"
-python3 automation/hashtag_cli.py setplatforms "#Branding" instagram,linkedin
-python3 automation/hashtag_cli.py remove       "#OldTag"
+python3 automation/hashtag_cli.py list
+python3 automation/hashtag_cli.py list --platform instagram
+python3 automation/hashtag_cli.py show "#SmallBusiness"
+python3 automation/hashtag_cli.py add "#LocalSEO" --score 8 --category seo \
+    --platforms instagram facebook linkedin --notes "Good for local search posts"
+python3 automation/hashtag_cli.py rescore "#LocalSEO" 9
+python3 automation/hashtag_cli.py renote "#LocalSEO" "Updated local search tag"
+python3 automation/hashtag_cli.py setplatforms "#LocalSEO" instagram linkedin
+python3 automation/hashtag_cli.py remove "#LocalSEO"
 python3 automation/hashtag_cli.py reset
 ```
 
-Tag names are case-insensitive. Scores must be 1–10. `--platforms` is comma-separated.
+Tags can be entered with or without a leading `#` (always stored with one). Tag matching is case-insensitive. Scores must be 1–10. `--platforms` accepts space-separated values from: `instagram`, `facebook`, `linkedin`, `google_business_profile`.
 
 ---
 

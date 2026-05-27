@@ -41,14 +41,21 @@ Pick ONE topic for the day. Good topic angles include:
 
 Vary the angle each day. Do not pick a topic listed in the recent history.
 
-## Hashtags
-On runs that involve Instagram or LinkedIn, you will receive a curated hashtag list per platform under the "Curated hashtags" block. Use those tags exactly as given (same casing, same order is fine) on the corresponding platform — do **not** invent new hashtags unless the curated list is empty for that platform.
+## Hashtag Rules
 
-- **Instagram**: place the curated tags on a single line at the bottom of the post, separated by spaces.
-- **LinkedIn**: append the curated tags (typically 2–3) at the end of the post, one space apart. Never exceed the count provided.
-- **Facebook** and **Google Business Profile**: still no hashtags, per the platform rules above.
+Use only the recommended hashtags unless there is a strong reason not to.
 
-If a curated list is missing for a platform that normally uses hashtags, you may fall back to inventing tags — but flag this is the exception, not the default.
+Do not overuse hashtags.
+
+Instagram may use up to 6 hashtags.
+
+Facebook and LinkedIn should use fewer hashtags, usually 0–3.
+
+Google Business Profile usually should not use hashtags.
+
+Hashtags should feel natural, not spammy.
+
+Never stuff hashtags into posts just to use them.
 
 ## CTAs and Offers
 On each run you will be given:

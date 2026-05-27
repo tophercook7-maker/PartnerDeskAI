@@ -423,22 +423,28 @@ def _hashtags_for_platform(bank: dict, platform: str) -> list[dict]:
     ]
 
 
-def choose_hashtags(platform: str, count: int) -> list[str]:
+def choose_hashtags(platform: str, limit: int = 6, category: str | None = None) -> list[str]:
     """
-    Pick up to `count` hashtags eligible for the given platform, score-weighted
-    and avoiding ones used in the last 7 days. If the platform has fewer than
-    `count` eligible tags total, returns whatever is available.
+    Pick up to `limit` hashtags eligible for the given platform, score-weighted
+    and avoiding ones used in the last 7 days. If `category` is given, only
+    hashtags with that category are considered. Returns whatever is available
+    if the bank has fewer eligible tags than the limit.
     """
     bank = load_hashtag_bank()
     eligible = _hashtags_for_platform(bank, platform)
-    return _choose_n_from_bank(eligible, "tag", count)
+    if category:
+        cat = category.lower()
+        eligible = [t for t in eligible if (t.get("category") or "").lower() == cat]
+    return _choose_n_from_bank(eligible, "tag", limit)
 
 
-def get_recent_hashtags(platform: str, limit: int = 10) -> list[str]:
-    """Hashtags most recently used on a given platform. Source: hashtag_bank.last_used."""
+def get_recent_hashtags(limit: int = 10) -> list[str]:
+    """
+    Hashtags most recently used across all platforms.
+    Source: hashtag_bank.last_used (ordered newest first).
+    """
     bank = load_hashtag_bank()
-    eligible = _hashtags_for_platform(bank, platform)
-    return _recent_from_bank(eligible, "tag", limit)
+    return _recent_from_bank(bank.get("hashtags", []), "tag", limit)
 
 
 def update_hashtag_usage(tags: list[str]) -> int:

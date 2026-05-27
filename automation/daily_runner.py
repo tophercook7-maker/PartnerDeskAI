@@ -49,10 +49,11 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
 TEMPERATURE = 0.6
 
 # How many curated hashtags to pull per platform. Platforms not listed (or
-# set to 0) won't receive a hashtag list. Matches Parker's prompt: Instagram
-# uses 5–10, LinkedIn caps at ~3, Facebook & GBP don't typically use them.
+# set to 0) won't receive a hashtag list. Matches Parker's prompt:
+#   Instagram up to 6, Facebook 0–3, LinkedIn 0–3, GBP usually 0.
 HASHTAG_COUNTS = {
-    "instagram": 8,
+    "instagram": 6,
+    "facebook": 3,
     "linkedin": 3,
 }
 
@@ -71,19 +72,14 @@ def build_user_prompt(
     chosen_offer: str,
     recent_offers: list[str],
     hashtags_by_platform: dict[str, list[str]],
+    recent_hashtags: list[str],
 ) -> str:
     """Compose the user-side message that primes Parker for today's run."""
     def _join(items: list[str]) -> str:
         return "; ".join(items) if items else "none yet"
 
-    hashtag_block_lines = []
-    for platform, tags in hashtags_by_platform.items():
-        if not tags:
-            continue
-        # Pretty platform label: instagram -> Instagram, linkedin -> LinkedIn.
-        label = "LinkedIn" if platform == "linkedin" else platform.capitalize()
-        hashtag_block_lines.append(f"Hashtags for {label}: {' '.join(tags)}")
-    hashtag_block = "\n".join(hashtag_block_lines) if hashtag_block_lines else "No curated hashtags for this run."
+    def _tags_line(tags: list[str]) -> str:
+        return " ".join(tags) if tags else "(none — skip hashtags on this platform)"
 
     return (
         f"Today's date: {today}\n\n"
@@ -93,8 +89,10 @@ def build_user_prompt(
         f"Avoid recently used CTAs: {_join(recent_ctas)}\n\n"
         f"Recommended offer angle for today:\n{chosen_offer}\n"
         f"Avoid recently used offers: {_join(recent_offers)}\n\n"
-        f"Curated hashtags (use these — do not invent new ones unless absolutely needed):\n"
-        f"{hashtag_block}\n\n"
+        f"Recommended Instagram hashtags:\n{_tags_line(hashtags_by_platform.get('instagram', []))}\n\n"
+        f"Recommended Facebook hashtags:\n{_tags_line(hashtags_by_platform.get('facebook', []))}\n\n"
+        f"Recommended LinkedIn hashtags:\n{_tags_line(hashtags_by_platform.get('linkedin', []))}\n\n"
+        f"Avoid recently used hashtags:\n{' '.join(recent_hashtags) if recent_hashtags else 'none yet'}\n\n"
         f"--- BUSINESS PROFILE ---\n{business_profile}\n\n"
         f"--- POSTING SCHEDULE ---\n{schedule_json}\n\n"
         f"--- RECENT POST HISTORY ---\n{history_text}\n\n"
@@ -103,9 +101,10 @@ def build_user_prompt(
         "single topic for the day. Weave the recommended CTA (verbatim or "
         "lightly rephrased) into each platform post where natural. Reference "
         "the recommended offer angle in posts where it fits — don't force it "
-        "into every post. For Instagram and LinkedIn use the curated hashtag "
-        "lists exactly as provided. Do not repeat any recent topic, CTA, or "
-        "offer."
+        "into every post. Use the recommended hashtags per platform; do not "
+        "invent unrelated hashtags. Google Business Profile should normally "
+        "use no hashtags. Do not repeat any recent topic, CTA, offer, or "
+        "hashtag."
     )
 
 
@@ -183,9 +182,10 @@ def main() -> None:
     chosen_offer = memory_manager.choose_offer()
     recent_offers_list = memory_manager.get_recent_offers(limit=5)
     hashtags_by_platform = {
-        platform: memory_manager.choose_hashtags(platform, count)
+        platform: memory_manager.choose_hashtags(platform, limit=count)
         for platform, count in HASHTAG_COUNTS.items()
     }
+    recent_hashtags_list = memory_manager.get_recent_hashtags(limit=10)
     log_lines.append(f"Chose topic: {chosen_topic}")
     log_lines.append(f"Chose CTA:   {chosen_cta}")
     log_lines.append(f"Chose offer: {chosen_offer}")
@@ -206,6 +206,7 @@ def main() -> None:
         chosen_offer=chosen_offer,
         recent_offers=recent_offers_list,
         hashtags_by_platform=hashtags_by_platform,
+        recent_hashtags=recent_hashtags_list,
     )
 
     # 5. Call OpenAI
