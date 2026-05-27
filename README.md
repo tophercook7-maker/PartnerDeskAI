@@ -330,6 +330,17 @@ python3 automation/hashtag_cli.py reset
 
 Tags can be entered with or without a leading `#` (always stored with one). Tag matching is case-insensitive. Scores must be 1–10. `--platforms` accepts space-separated values from: `instagram`, `facebook`, `linkedin`, `google_business_profile`.
 
+### Auditing missing hashtags
+
+A read-only audit scans all pending drafts and lists hashtags that Parker has used but that aren't currently in `memory/hashtag_bank.json` — useful for deciding which invented tags to absorb into the curated bank.
+
+```bash
+python3 automation/hashtag_cli.py audit-missing                # show everything
+python3 automation/hashtag_cli.py audit-missing --min-count 2  # hide one-off tags
+```
+
+The command never writes to the bank, the database, or any post statuses. It groups tags case-insensitively and shows both an at-a-glance summary and a per-tag detail block with the posts where each tag appeared.
+
 ---
 
 ## Roadmap (Not Yet Built)

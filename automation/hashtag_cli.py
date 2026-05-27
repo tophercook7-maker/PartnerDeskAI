@@ -13,6 +13,7 @@ Usage:
     python automation/hashtag_cli.py setplatforms "#Tag" instagram facebook linkedin
     python automation/hashtag_cli.py remove      "#Tag"
     python automation/hashtag_cli.py reset
+    python automation/hashtag_cli.py audit-missing [--min-count N]   # read-only scan
 
 Rules:
 - Tags can be entered with or without a leading '#'; they're always stored with one.
@@ -23,11 +24,18 @@ Rules:
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import approval_manager
 import memory_manager
+
+
+# Local copy of the simple hashtag regex (approval_cli.py uses an identical
+# one). Duplicated here to keep this CLI from importing another CLI.
+_HASHTAG_RE = re.compile(r"#[A-Za-z0-9_]+")
 
 
 # Platforms Parker actually writes for. Anything outside this set is rejected
@@ -203,6 +211,77 @@ def cmd_remove(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_audit_missing(args: argparse.Namespace) -> int:
+    """
+    Scan pending drafts for hashtags not currently in the bank.
+    Read-only: never writes to the bank, the DB, or post statuses.
+    """
+    bank_lower = {
+        t.get("tag", "").lower()
+        for t in memory_manager.load_hashtag_bank().get("hashtags", [])
+    }
+    pending = approval_manager.list_pending()
+
+    use_count: dict[str, int] = {}
+    post_refs: dict[str, list[tuple[int, str]]] = {}
+
+    for draft in pending:
+        content = draft.get("content") or ""
+        # Dedupe within a single post — Parker putting the same tag twice in
+        # one body counts as one use for the "should we add this?" question.
+        seen_in_post: set[str] = set()
+        for tag in _HASHTAG_RE.findall(content):
+            tag_lower = tag.lower()
+            if tag_lower in bank_lower or tag_lower in seen_in_post:
+                continue
+            seen_in_post.add(tag_lower)
+            use_count[tag_lower] = use_count.get(tag_lower, 0) + 1
+            post_refs.setdefault(tag_lower, []).append(
+                (draft["id"], draft["platform"])
+            )
+
+    # Sort by uses (desc), then alphabetical for deterministic output.
+    items = sorted(use_count.items(), key=lambda kv: (-kv[1], kv[0]))
+
+    min_count = max(1, args.min_count)
+    items = [(t, c) for t, c in items if c >= min_count]
+
+    print("Missing hashtag audit for pending drafts")
+    print()
+
+    if not pending:
+        print("No pending drafts to audit.")
+        return 0
+    if not items:
+        if min_count > 1:
+            print(f"No missing hashtags with at least {min_count} uses.")
+        else:
+            print("No missing hashtags found in pending drafts.")
+        return 0
+
+    total_uses = sum(c for _, c in items)
+    print(f"Total missing hashtag uses: {total_uses}")
+    print(f"Unique missing hashtags:    {len(items)}")
+    print()
+
+    # Top list — pad tag column to longest entry for clean alignment.
+    label_width = max(len(t) for t, _ in items) + 2
+    for tag, count in items:
+        unit = "use" if count == 1 else "uses"
+        print(f"  {tag.ljust(label_width)}{count} {unit}")
+
+    # Per-tag detail with the posts where each appeared.
+    print()
+    for tag, count in items:
+        unit = "use" if count == 1 else "uses"
+        refs = sorted(post_refs[tag], key=lambda r: r[0])
+        refs_str = ", ".join(f"#{pid} {plat}" for pid, plat in refs)
+        print(tag)
+        print(f"  uses:  {count}")
+        print(f"  posts: {refs_str}")
+    return 0
+
+
 def cmd_reset(args: argparse.Namespace) -> int:
     bank = memory_manager.load_hashtag_bank()
     n = 0
@@ -255,20 +334,30 @@ def _build_parser() -> argparse.ArgumentParser:
     sp.add_argument("tag")
 
     sub.add_parser("reset", help="zero times_used and last_used on all hashtags")
+
+    sp = sub.add_parser(
+        "audit-missing",
+        help="read-only: list hashtags in pending drafts that aren't in the bank",
+    )
+    sp.add_argument(
+        "--min-count", type=int, default=1,
+        help="hide tags used fewer than this many times (default 1)",
+    )
     return p
 
 
 def main(argv: list[str]) -> int:
     args = _build_parser().parse_args(argv[1:])
     handlers = {
-        "list":         cmd_list,
-        "show":         cmd_show,
-        "add":          cmd_add,
-        "rescore":      cmd_rescore,
-        "renote":       cmd_renote,
-        "setplatforms": cmd_setplatforms,
-        "remove":       cmd_remove,
-        "reset":        cmd_reset,
+        "list":          cmd_list,
+        "show":          cmd_show,
+        "add":           cmd_add,
+        "rescore":       cmd_rescore,
+        "renote":        cmd_renote,
+        "setplatforms":  cmd_setplatforms,
+        "remove":        cmd_remove,
+        "reset":         cmd_reset,
+        "audit-missing": cmd_audit_missing,
     }
     return handlers[args.command](args)
 
