@@ -112,7 +112,8 @@ Exits `0` if everything passes, `1` if anything fails. Read-only — never modif
 ```
 PartnerDeskAI/
 ├── automation/                   # Python pipeline modules
-│   ├── daily_runner.py           # entry point
+│   ├── daily_ops.py              # canonical daily entry point (scheduled by launchd)
+│   ├── daily_runner.py           # generates drafts (step 1 of daily_ops)
 │   ├── memory_manager.py
 │   ├── content_parser.py
 │   ├── file_manager.py
@@ -229,12 +230,24 @@ That's it.
 
 ## Scheduling (macOS)
 
-`daily_runner.py` is wired to run automatically at **9:00 AM daily** via `launchd`.
+The canonical scheduled entry point is `automation/daily_ops.py`, wired to run automatically at **9:00 AM daily** via `launchd`. Each scheduled run executes:
+
+1. **Generate daily drafts** (`automation/daily_runner.py`) — calls OpenAI, writes today's markdown drafts, inserts draft rows, updates bank usage counters.
+2. **Write status snapshot** (`automation/status_snapshot.py`) — `status_history/YYYY-MM-DD.json`.
+3. **Write morning summary** (`automation/morning_summary.py`) — `summaries/YYYY-MM-DD.md`.
+
+If any step fails, the orchestrator prints `[FAIL] <step>` and exits non-zero; later steps don't run.
 
 The agent definition lives at:
 ```
 ~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
 ```
+
+> **Migrating from an older install:** If you already installed the older launchd plist that points at `automation/daily_runner.py`, update the plist `ProgramArguments` to use `automation/daily_ops.py`, then unload and reload the agent:
+> ```bash
+> launchctl unload ~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
+> launchctl load   ~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
+> ```
 
 ### Inspect / verify
 ```bash
@@ -273,7 +286,7 @@ rm ~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
     <key>ProgramArguments</key>
     <array>
         <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
-        <string>/Users/christophercook/Documents/PartnerDeskAI/automation/daily_runner.py</string>
+        <string>/Users/christophercook/Documents/PartnerDeskAI/automation/daily_ops.py</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/Users/christophercook/Documents/PartnerDeskAI</string>
