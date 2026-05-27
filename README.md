@@ -12,6 +12,16 @@ Nothing is auto-posted.
 
 ---
 
+## Status snapshot
+
+```bash
+python3 automation/status_snapshot.py
+```
+
+Writes a local JSON snapshot to `status_history/YYYY-MM-DD.json` using the same data as `status.py --json`. It does not call OpenAI or change the database.
+
+---
+
 ## Morning summary
 
 ```bash

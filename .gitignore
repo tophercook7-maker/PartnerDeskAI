@@ -20,6 +20,7 @@ approval_queue/
 logs/
 archive/
 summaries/*.md
+status_history/*.json
 
 # OS
 .DS_Store
