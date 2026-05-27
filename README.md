@@ -62,43 +62,53 @@ PartnerDeskAI/
 
 ## Setup
 
-1. **Install dependencies**
+1. Clone the repo.
+2. Copy `.env.example` to `.env`.
+3. Add your real OpenAI API key to `.env`.
+4. Install dependencies:
+
    ```bash
    pip install -r requirements.txt
    ```
 
-2. **Set your OpenAI key** in `.env`:
-   ```env
-   OPENAI_API_KEY=sk-...
-   OPENAI_MODEL=gpt-4.1-mini
-   ```
+5. Run the health check:
 
-3. **Run the daily generator**
    ```bash
-   python automation/daily_runner.py
+   python3 automation/health_check.py
    ```
 
-4. **Review drafts and approve**
+6. Generate drafts:
+
    ```bash
-   python automation/approval_cli.py                  # interactive review of pending drafts
-   python automation/approval_cli.py list             # multi-line summary of pending drafts
-   python automation/approval_cli.py status           # counts by status
-   python automation/approval_cli.py status --warnings  # also: warning summary for pending drafts
-   python automation/approval_cli.py preview <id>     # full content for one post (any status)
+   python3 automation/daily_runner.py
    ```
 
-   Each `list` entry shows the post id, platform, status, topic, resolved markdown file path, and hashtags detected in the body. The interactive review surfaces the same fields in each draft's header.
+> **Never commit `.env` or API keys.** The repo's `.gitignore` already excludes `.env`, but verify with `git check-ignore .env` if you're not sure.
 
-   Hashtag detection uses a simple `#[A-Za-z0-9_]+` regex on the stored draft body, so what you see is what Parker actually wrote — useful for spotting an off-brand or duplicated tag before approving.
+---
 
-   In the interactive review you can press:
-   - `a` — approve (sets `status='approved'` + adds row to `post_history`)
-   - `r` — reject (sets `status='rejected'`)
-   - `s` — skip (leaves as `draft`)
-   - `v` — view the full markdown file
-   - `q` — quit early
+## Reviewing drafts
 
-   Approved topics are written to `post_history`, which the daily generator reads on the next run so Parker won't repeat the same topic.
+```bash
+python automation/approval_cli.py                  # interactive review of pending drafts
+python automation/approval_cli.py list             # multi-line summary of pending drafts
+python automation/approval_cli.py status           # counts by status
+python automation/approval_cli.py status --warnings  # also: warning summary for pending drafts
+python automation/approval_cli.py preview <id>     # full content for one post (any status)
+```
+
+Each `list` entry shows the post id, platform, status, topic, resolved markdown file path, and hashtags detected in the body. The interactive review surfaces the same fields in each draft's header.
+
+Hashtag detection uses a simple `#[A-Za-z0-9_]+` regex on the stored draft body, so what you see is what Parker actually wrote — useful for spotting an off-brand or duplicated tag before approving.
+
+In the interactive review you can press:
+- `a` — approve (sets `status='approved'` + adds row to `post_history`)
+- `r` — reject (sets `status='rejected'`)
+- `s` — skip (leaves as `draft`)
+- `v` — view the full markdown file
+- `q` — quit early
+
+Approved topics are written to `post_history`, which the daily generator reads on the next run so Parker won't repeat the same topic.
 
 ### Approval warnings
 

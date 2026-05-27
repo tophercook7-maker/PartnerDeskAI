@@ -92,7 +92,9 @@ def _read_dotenv(path: Path) -> dict[str, str]:
 def check_env() -> list[str]:
     env_path = ROOT / ".env"
     if not env_path.is_file():
-        return [".env file missing"]
+        if (ROOT / ".env.example").is_file():
+            return ["Missing .env. Copy .env.example to .env and add your API key."]
+        return ["Missing .env file"]
     values = _read_dotenv(env_path)
     errors: list[str] = []
     for key in REQUIRED_ENV_VARS:
