@@ -12,6 +12,16 @@ Nothing is auto-posted.
 
 ---
 
+## Morning summary
+
+```bash
+python3 automation/morning_summary.py
+```
+
+Writes a local markdown summary to `summaries/YYYY-MM-DD.md` using status data. It does not call OpenAI or change the database.
+
+---
+
 ## Daily checklist
 
 ```bash

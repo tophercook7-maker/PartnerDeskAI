@@ -19,6 +19,7 @@ daily_posts/
 approval_queue/
 logs/
 archive/
+summaries/*.md
 
 # OS
 .DS_Store
