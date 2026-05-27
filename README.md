@@ -186,6 +186,21 @@ SQLite at `database/partnerdesk.db`.
 
 ---
 
+## Topic Intelligence
+
+Parker uses `memory/topic_bank.json` to rotate content topics, avoid repeating recent ideas, and improve consistency over time.
+
+Each entry has a `topic`, `category`, `score` (higher = preferred), plus `times_used` and `last_used` that the runner updates automatically. On each run the system:
+
+1. Reads the bank and the recent `post_history`.
+2. Picks a topic that hasn't been used in the last 7 days, weighted by score.
+3. Passes the chosen topic to Parker as the day's recommended focus.
+4. Increments `times_used` and sets `last_used` after a successful run.
+
+Edit `memory/topic_bank.json` any time to add, remove, or re-score topics. The file is plain JSON — no migration needed.
+
+---
+
 ## Roadmap (Not Yet Built)
 
 These are intentionally **not** part of v0.1. Don't add them until they're actually needed:

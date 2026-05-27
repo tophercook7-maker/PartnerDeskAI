@@ -56,16 +56,22 @@ def build_user_prompt(
     schedule_json: str,
     history_text: str,
     today: str,
+    chosen_topic: str,
+    recent_topics: list[str],
 ) -> str:
     """Compose the user-side message that primes Parker for today's run."""
+    recent_line = ", ".join(recent_topics) if recent_topics else "none yet"
     return (
         f"Today's date: {today}\n\n"
+        f"Recommended topic for today:\n{chosen_topic}\n\n"
+        f"Avoid recently used topics:\n{recent_line}\n\n"
         f"--- BUSINESS PROFILE ---\n{business_profile}\n\n"
         f"--- POSTING SCHEDULE ---\n{schedule_json}\n\n"
         f"--- RECENT POST HISTORY ---\n{history_text}\n\n"
         "Generate today's posts for all four platforms using the required "
-        "section-delimited output format. Pick ONE topic for the day. "
-        "Do not repeat any topic from recent history."
+        "section-delimited output format. Use the recommended topic above "
+        "as the single topic for the day. Do not repeat any topic listed "
+        "under recently used topics or in recent history."
     )
 
 
@@ -135,26 +141,34 @@ def main() -> None:
     history_text = memory_manager.format_history_for_prompt(history)
     log_lines.append(f"Loaded {len(history)} recent history rows")
 
-    # 3. Build prompt
+    # 3. Topic intelligence: pick a topic from the bank, gather recent topics
+    chosen_topic = memory_manager.choose_topic()
+    recent_topics_list = memory_manager.get_recent_topics(limit=10)
+    log_lines.append(f"Chose topic from bank: {chosen_topic}")
+    log_lines.append(f"Recent topics to avoid: {recent_topics_list or 'none yet'}")
+
+    # 4. Build prompt
     today = datetime.now().strftime("%Y-%m-%d")
     user_prompt = build_user_prompt(
         business_profile=business_profile,
         schedule_json=schedule_json,
         history_text=history_text,
         today=today,
+        chosen_topic=chosen_topic,
+        recent_topics=recent_topics_list,
     )
 
-    # 4. Call OpenAI
+    # 5. Call OpenAI
     print(f"Calling OpenAI ({OPENAI_MODEL})...")
     raw = call_openai(system_prompt=parker_prompt, user_prompt=user_prompt)
     log_lines.append("Generated content")
 
-    # 5. Parse
+    # 6. Parse
     sections = content_parser.parse_sections(raw)
     topic = resolve_topic(sections)
-    log_lines.append(f"Topic for today: {topic}")
+    log_lines.append(f"Topic emitted by Parker: {topic}")
 
-    # 6. Write markdown files (TOPIC is metadata, not a file)
+    # 7. Write markdown files (TOPIC is metadata, not a file)
     folder = file_manager.get_daily_folder()
     written: list[Path] = []
     for key, content in sections.items():
@@ -167,7 +181,7 @@ def main() -> None:
     # Also save the raw model output for debugging / reuse.
     (folder / "_raw_response.txt").write_text(raw, encoding="utf-8")
 
-    # 7. SQLite draft records (one per platform section, not for CTA/IMAGE bundles).
+    # 8. SQLite draft records (one per platform section, not for CTA/IMAGE bundles).
     platform_keys = ("GOOGLE_BUSINESS_PROFILE", "FACEBOOK", "INSTAGRAM", "LINKEDIN")
     image_idea_first = (sections.get("IMAGE_IDEAS", "").splitlines() or [""])[0]
     inserted_ids: list[int] = []
@@ -185,9 +199,15 @@ def main() -> None:
         inserted_ids.append(row_id)
     log_lines.append(f"Inserted {len(inserted_ids)} draft rows into posts table")
 
-    # 8. Queue for approval + log
+    # 9. Queue for approval
     pointer = approval_manager.queue_for_approval(folder)
     log_lines.append(f"Queued drafts for approval: {pointer}")
+
+    # 10. Topic intelligence: record that we used this topic so it rotates out.
+    if memory_manager.update_topic_usage(chosen_topic):
+        log_lines.append(f"Topic bank updated: {chosen_topic}")
+    else:
+        log_lines.append(f"Topic '{chosen_topic}' not in bank; usage not updated")
 
     file_manager.append_log(log_lines)
     print("Done.")

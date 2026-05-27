@@ -1,0 +1,44 @@
+{
+  "topics": [
+    {
+      "topic": "Local Business Visibility",
+      "category": "educational",
+      "times_used": 1,
+      "last_used": "2026-05-27",
+      "score": 8,
+      "notes": "Useful for helping small businesses understand why online presence matters."
+    },
+    {
+      "topic": "Digital Business Cards",
+      "category": "service",
+      "times_used": 0,
+      "last_used": null,
+      "score": 9,
+      "notes": "Good for promoting NFC/tap hub services."
+    },
+    {
+      "topic": "Website Cleanup",
+      "category": "problem-solving",
+      "times_used": 1,
+      "last_used": "2026-05-27",
+      "score": 8,
+      "notes": "Good angle for businesses with outdated or confusing websites."
+    },
+    {
+      "topic": "Social Media Consistency",
+      "category": "educational",
+      "times_used": 0,
+      "last_used": null,
+      "score": 7,
+      "notes": "Useful for businesses that rarely post."
+    },
+    {
+      "topic": "AI Business Systems",
+      "category": "authority",
+      "times_used": 0,
+      "last_used": null,
+      "score": 9,
+      "notes": "Positions MixedMakerShop as modern and practical."
+    }
+  ]
+}
