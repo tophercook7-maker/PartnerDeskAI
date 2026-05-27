@@ -42,6 +42,8 @@ The JSON shape is stable: `health`, `posts`, `review`, `memory_banks`, `today`, 
 
 The JSON output also includes a `checklist` block with booleans for generate drafts, review drafts, clean hashtags, and status pass. These match the `[x] / [ ]` markers in `daily_checklist.py`.
 
+`review.top_missing_hashtags` contains up to five missing hashtags from pending drafts with use counts (`[{"tag": "#example", "uses": 3}, ...]`). Empty list when the curated bank covers every tag Parker is using.
+
 ---
 
 ## Health Check

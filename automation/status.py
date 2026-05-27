@@ -138,10 +138,11 @@ def _gather_status() -> dict:
     counts = approval_manager.status_counts()
     folder, today_exists, md_count = _today_folder_info()
     latest = _latest_log()
-    # `clean_hashtags` only needs to know whether any missing tag exists,
-    # so limit=1 is enough — daily_checklist.py calls _top_missing_hashtags
-    # separately when it needs the top-5 list for display.
-    any_missing_hashtags = bool(_top_missing_hashtags(limit=1))
+    # Compute the top-5 list once and derive both `review.top_missing_hashtags`
+    # and the `checklist.clean_hashtags` boolean from it. Scanning is the same
+    # cost as limit=1, so we don't pay extra by asking for the list.
+    top_missing = _top_missing_hashtags(limit=5)
+    any_missing_hashtags = bool(top_missing)
 
     return {
         "health": {
@@ -157,6 +158,9 @@ def _gather_status() -> dict:
             "pending_drafts":       pending,
             "drafts_with_warnings": warned,
             "clean_drafts":         max(0, pending - warned),
+            "top_missing_hashtags": [
+                {"tag": tag, "uses": uses} for tag, uses in top_missing
+            ],
         },
         "memory_banks": {
             "topics":   _bank_count(memory_manager.TOPIC_BANK_PATH,   memory_manager.load_topic_bank,   "topics"),
