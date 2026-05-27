@@ -12,6 +12,16 @@ Nothing is auto-posted.
 
 ---
 
+## Daily checklist
+
+```bash
+python3 automation/daily_checklist.py
+```
+
+Shows the daily action list: generate drafts, review pending posts, clean hashtags, and run status. Read-only.
+
+---
+
 ## Daily status
 
 ```bash
