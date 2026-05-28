@@ -127,6 +127,9 @@ def cmd_status() -> int:
         if s["last_verified_at"]:
             line += f"   (last checked {s['last_verified_at']})"
         print(line)
+        warning = connection_state.expiry_warning(s["state"], s["last_verified_at"])
+        if warning:
+            print(f"      {warning}")
         if s["state"] == "not_configured":
             missing = [k for k in p["env_keys"] if not _key_present(k)]
             if missing:

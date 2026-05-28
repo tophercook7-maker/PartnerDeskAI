@@ -112,6 +112,8 @@ Connection states:
 
 The publish endpoint (`POST /api/posts/{id}/publish`) also enforces the same gate server-side, so a manually-stripped disabled attribute on a button can't bypass safety. State is persisted to `data/connection_status.json` (gitignored — only the empty `data/.gitkeep` placeholder is tracked). The cache stores the state, the last verify timestamp, and the human-readable message — never tokens.
 
+Verified connections show a warning when their last verification is older than 7 days (`⚠ Verified N days ago — recheck soon.`) or 30 days (`⚠ Verification is stale (N days old) — verify again before publishing.`). Warnings appear in the Hub Connections card and in the wizard's `status` output. Warnings do not block publishing yet — re-running `python3 automation/connect_wizard.py verify <platform>` or clicking the Hub's per-row **Verify** button refreshes the timestamp and clears the warning.
+
 ---
 
 ## LinkedIn publishing

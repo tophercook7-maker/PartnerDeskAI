@@ -634,6 +634,9 @@ function renderConnections(items) {
         const checkedLine = c.last_verified_at
             ? `<div class="connection-meta">Last checked: ${_escape(c.last_verified_at)}</div>`
             : '';
+        const warningLine = c.warning
+            ? `<div class="connection-warning">${_escape(c.warning)}</div>`
+            : '';
         // The Setup Help button opens the platform's setup URL in a
         // new tab. Disabled if /api/connections didn't return a URL.
         const url = c.setup_url || '';
@@ -653,6 +656,7 @@ function renderConnections(items) {
                 `<span class="status-badge ${statusClass}">${statusText}</span>` +
                 missingLine +
                 checkedLine +
+                warningLine +
               `</span>` +
               `<span class="row-actions">` +
                 verifyBtn + setupBtn +

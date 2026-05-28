@@ -653,13 +653,17 @@ def api_connections() -> dict:
         # "google_business_profile", …) from the display name.
         platform_key = platform.lower().replace(" ", "_")
         state = connection_state.compute_state(platform_key, cache)
+        age = connection_state.verification_age_days(state["last_verified_at"])
+        warning = connection_state.expiry_warning(state["state"], state["last_verified_at"])
         connections.append({
-            "platform":         platform,
-            "status":           state["state"],   # verified | configured | not_configured
-            "missing":          missing,
-            "setup_url":        _PLATFORM_SETUP_URLS.get(platform, ""),
-            "last_verified_at": state["last_verified_at"],
-            "last_message":     state["last_message"],
+            "platform":              platform,
+            "status":                state["state"],   # verified | configured | not_configured
+            "missing":               missing,
+            "setup_url":             _PLATFORM_SETUP_URLS.get(platform, ""),
+            "last_verified_at":      state["last_verified_at"],
+            "last_message":          state["last_message"],
+            "verification_age_days": age,
+            "warning":               warning,
         })
     return {"connections": connections}
 

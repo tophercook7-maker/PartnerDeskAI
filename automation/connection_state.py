@@ -89,6 +89,53 @@ def compute_state(platform_key: str, cache: dict | None = None) -> dict:
     }
 
 
+def _parse_timestamp(ts: str | None) -> datetime | None:
+    """Parse a 'YYYY-MM-DD HH:MM' cache timestamp; None on failure."""
+    if not ts:
+        return None
+    try:
+        return datetime.strptime(ts, "%Y-%m-%d %H:%M")
+    except (ValueError, TypeError):
+        return None
+
+
+def verification_age_days(last_verified_at: str | None) -> int | None:
+    """
+    Whole days since the last verify probe, or None if never verified
+    or timestamp is malformed. Clamped to ≥0 so a clock-skew anomaly
+    can't return a negative age.
+    """
+    parsed = _parse_timestamp(last_verified_at)
+    if parsed is None:
+        return None
+    return max(0, (datetime.now() - parsed).days)
+
+
+def expiry_warning(state: str, last_verified_at: str | None) -> str | None:
+    """
+    Return a human-readable expiry warning for a platform, or None.
+
+    Warning thresholds:
+      >  7 days → "Verified <N> days ago — recheck soon."
+      > 30 days → "Verification is stale (<N> days old) — verify again
+                   before publishing."
+
+    Only applies to platforms in the "verified" state — configured /
+    not_configured don't generate stale-token warnings (they're already
+    flagged by the trust badge itself).
+    """
+    if state != "verified":
+        return None
+    age = verification_age_days(last_verified_at)
+    if age is None:
+        return None
+    if age > 30:
+        return f"⚠ Verification is stale ({age} days old) — verify again before publishing."
+    if age > 7:
+        return f"⚠ Verified {age} days ago — recheck soon."
+    return None
+
+
 def record_verification(platform_key: str, ok: bool, message: str) -> dict:
     """
     Persist the outcome of a verify probe and return the new state dict.
