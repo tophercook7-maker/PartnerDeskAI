@@ -581,6 +581,39 @@ _PLATFORM_SETUP_URLS = {
 }
 
 
+class VerifyRequest(BaseModel):
+    platform: str
+
+
+# Maps the platform query key to the verify_* function in social_posters.
+# Uses lowercase-with-underscores keys so the wizard CLI and the Hub API
+# accept identical strings ("facebook", "google_business_profile", etc.).
+_VERIFY_HANDLERS = {
+    "linkedin":                social_posters.verify_linkedin_connection,
+    "facebook":                social_posters.verify_facebook_connection,
+    "instagram":               social_posters.verify_instagram_connection,
+    "google_business_profile": social_posters.verify_google_business_profile_connection,
+}
+
+
+@app.post("/api/connections/verify")
+def api_verify_connection(body: VerifyRequest) -> dict:
+    """
+    Run a read-only connection probe for the given platform. Returns the
+    structured {ok, platform, message} dict from social_posters. Never
+    publishes, never returns tokens, never modifies the database.
+    Unsupported platform -> 400.
+    """
+    key = body.platform.strip().lower()
+    if key not in _VERIFY_HANDLERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported platform {body.platform!r}; "
+                   f"allowed: {sorted(_VERIFY_HANDLERS)}",
+        )
+    return _VERIFY_HANDLERS[key]()
+
+
 @app.get("/api/connections")
 def api_connections() -> dict:
     """

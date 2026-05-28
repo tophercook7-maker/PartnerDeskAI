@@ -92,6 +92,15 @@ python3 automation/connect_wizard.py status     # one-shot status report
 
 The wizard helps Topher connect publishing platforms by showing missing `.env` keys and opening the correct setup pages (via stdlib `webbrowser`). It never prints secret values, never auto-logs in, never bypasses OAuth, and never posts publicly. Each Connections card row in the Hub also exposes an **Open Setup Help** button that opens the same setup URL directly in a new tab.
 
+The Connection Wizard can also verify configured publishing connections with read-only API calls:
+
+```bash
+python3 automation/connect_wizard.py verify
+python3 automation/connect_wizard.py verify facebook
+```
+
+Verification never publishes content and never prints secret values. Facebook and Instagram run a real Graph API probe (`GET /{id}?fields=id,name|username`) using the `Authorization: Bearer` header so the token never appears in a URL. LinkedIn and Google Business Profile currently report `configured (live verification not implemented yet)` — their read endpoints depend on OAuth scopes / API surfaces that vary per setup, and a conservative placeholder avoids false-negative auth errors on a perfectly good posting token. The Hub Connections card exposes the same probe via per-row **Verify** buttons that call `POST /api/connections/verify`.
+
 ---
 
 ## LinkedIn publishing

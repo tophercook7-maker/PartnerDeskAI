@@ -26,6 +26,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+import social_posters  # sibling in automation/
+
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
@@ -192,9 +194,52 @@ def _menu() -> int:
         print("  Connections card refreshes on the next page load.")
 
 
+# --- Verify (read-only API probe) ----------------------------------------
+
+# Use the same lowercase-with-underscores keys the Hub's
+# /api/connections/verify endpoint accepts, so the two surfaces are
+# always in sync.
+_VERIFIERS = {
+    "linkedin":                ("LinkedIn",                social_posters.verify_linkedin_connection),
+    "facebook":                ("Facebook",                social_posters.verify_facebook_connection),
+    "instagram":               ("Instagram",               social_posters.verify_instagram_connection),
+    "google_business_profile": ("Google Business Profile", social_posters.verify_google_business_profile_connection),
+}
+
+
+def cmd_verify(platforms: list[str]) -> int:
+    """
+    Run read-only verification probes. With no platform names, verifies
+    all four. With names ("facebook", "google_business_profile", …),
+    verifies just those. Never publishes, never prints tokens.
+    """
+    if not platforms:
+        targets = list(_VERIFIERS.keys())
+    else:
+        targets = []
+        for p in platforms:
+            key = p.strip().lower().replace(" ", "_").replace("-", "_")
+            if key not in _VERIFIERS:
+                print(f"Unknown platform: {p}")
+                print(f"Allowed: {sorted(_VERIFIERS)}")
+                return 2
+            targets.append(key)
+
+    print("PartnerDesk Connection Verification")
+    print()
+    for key in targets:
+        label, verifier = _VERIFIERS[key]
+        result = verifier()
+        marker = "[OK]" if result.get("ok") else "[--]"
+        print(f"  {marker} {label}: {result.get('message','')}")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if len(argv) > 1 and argv[1] == "status":
         return cmd_status()
+    if len(argv) > 1 and argv[1] == "verify":
+        return cmd_verify(argv[2:])
     return _menu()
 
 

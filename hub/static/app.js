@@ -621,13 +621,18 @@ function renderConnections(items) {
         const missingLine = c.missing && c.missing.length
             ? `<div class="connection-missing">Missing: ${c.missing.map(_escape).join(', ')}</div>`
             : '';
-        // The Setup Help button opens the platform's setup URL in a new
-        // tab. Disabled if /api/connections didn't return a URL.
+        // The Setup Help button opens the platform's setup URL in a
+        // new tab. Disabled if /api/connections didn't return a URL.
         const url = c.setup_url || '';
         const setupBtn = url
             ? `<button class="row-action" data-action="open-setup" ` +
               `data-url="${_escape(url)}">Open Setup Help</button>`
             : '';
+        // Verify uses the platform key the backend expects ("linkedin",
+        // "google_business_profile", …) — convert the display name.
+        const platformKey = c.platform.toLowerCase().replace(/ /g, '_');
+        const verifyBtn = `<button class="row-action" data-action="verify-connection" ` +
+                          `data-platform-key="${_escape(platformKey)}">Verify</button>`;
         return (
             `<li class="connection-row">` +
               `<span class="connection-text">` +
@@ -635,20 +640,64 @@ function renderConnections(items) {
                 `<span class="status-badge ${statusClass}">${statusText}</span>` +
                 missingLine +
               `</span>` +
-              setupBtn +
+              `<span class="row-actions">` +
+                verifyBtn + setupBtn +
+              `</span>` +
             `</li>`
         );
     }).join('');
 }
 
-// Open Setup Help: launch the platform's setup URL in a new tab.
-// noopener prevents the opened page from manipulating window.opener.
-document.getElementById('connections-list').addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-action="open-setup"]');
+// Per-row buttons inside the Connections card. Routes by data-action:
+//   open-setup        -> window.open(setup URL) in a new tab (noopener)
+//   verify-connection -> POST /api/connections/verify, show result in
+//                        the Command Output panel. Never prints tokens.
+document.getElementById('connections-list').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-action]');
     if (!btn) return;
-    const url = btn.dataset.url;
-    if (!url) return;
-    window.open(url, '_blank', 'noopener');
+    const action = btn.dataset.action;
+
+    if (action === 'open-setup') {
+        const url = btn.dataset.url;
+        if (url) window.open(url, '_blank', 'noopener');
+        return;
+    }
+
+    if (action === 'verify-connection') {
+        const platform = btn.dataset.platformKey;
+        if (!platform) return;
+        document.getElementById('cmd-status').textContent =
+            `Verifying ${platform}…`;
+        document.getElementById('cmd-output').textContent = '';
+        try {
+            const r = await fetch('/api/connections/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ platform }),
+            });
+            const d = await r.json();
+            if (r.ok) {
+                showCmd(`Verify (${platform})`, {
+                    exit_code: d.ok ? 0 : 1,
+                    stdout: d.message || '',
+                    stderr: '',
+                });
+                // Refresh so the Connected/Missing badges reflect any
+                // platform whose live state just changed.
+                await loadConnections();
+            } else {
+                showCmd(`Verify (${platform})`, {
+                    exit_code: r.status,
+                    stdout: '',
+                    stderr: d.detail || `HTTP ${r.status}`,
+                });
+            }
+        } catch (err) {
+            document.getElementById('cmd-status').textContent =
+                'Verify failed: ' + err;
+        }
+        return;
+    }
 });
 
 async function loadConnections() {
