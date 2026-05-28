@@ -36,6 +36,8 @@ The Hub also shows Parker Promo's recent draft activity from the local SQLite da
 
 Recent Parker Work rows can be clicked to preview draft content directly in the Hub.
 
+Drafts can be approved or rejected from the Hub preview modal. Approval updates the local database and post history only; it does not post publicly.
+
 ---
 
 ## Daily ops runner

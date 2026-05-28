@@ -24,6 +24,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -108,6 +109,56 @@ def api_post(post_id: int) -> dict:
         "status":     post["status"],
         "created_at": post["created_at"],
         "content":    post["content"],
+    }
+
+
+_ALLOWED_STATUS = {"approved", "rejected", "draft"}
+
+
+class StatusUpdate(BaseModel):
+    status: str
+
+
+@app.post("/api/posts/{post_id}/status")
+def api_set_post_status(post_id: int, body: StatusUpdate) -> dict:
+    """
+    Set a single post's status. Reuses the same approval_manager helpers
+    that approval_cli.py uses, so behavior matches the CLI exactly:
+
+    - approved: sets posts.status='approved' AND inserts a post_history row
+      so daily_runner.py's topic-dedup avoids the topic on future runs
+    - rejected: sets posts.status='rejected'; post_history untouched
+    - draft:    sets posts.status='draft' (lets a reviewer un-resolve a post)
+
+    On approve/reject, the queue pointer for that draft's date is cleared
+    if no other drafts remain pending for that date — same behavior as
+    approval_cli.py's interactive review loop.
+
+    This endpoint NEVER posts to any social network.
+    """
+    if body.status not in _ALLOWED_STATUS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status {body.status!r}; allowed: {sorted(_ALLOWED_STATUS)}",
+        )
+
+    post = approval_manager.get_post(post_id)
+    if post is None:
+        raise HTTPException(status_code=404, detail=f"Post {post_id} not found")
+
+    approval_manager.mark_status(post_id, body.status)
+    if body.status == "approved":
+        approval_manager.record_history(post["topic"], post["platform"])
+    if body.status in ("approved", "rejected"):
+        approval_manager.clear_queue_pointer_if_done(post["created_at"][:10])
+
+    updated = approval_manager.get_post(post_id)
+    return {
+        "id":         updated["id"],
+        "platform":   updated["platform"],
+        "topic":      updated["topic"],
+        "status":     updated["status"],
+        "created_at": updated["created_at"],
     }
 
 

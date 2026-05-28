@@ -24,7 +24,10 @@ function renderRecentPosts(posts) {
 
 // --- Draft preview modal -------------------------------------------------
 
+let _currentPreviewId = null;
+
 function openPreview(postId) {
+    _currentPreviewId = postId;
     const overlay = document.getElementById('preview-overlay');
     document.getElementById('preview-platform').textContent = '…';
     document.getElementById('preview-topic').textContent = '…';
@@ -53,10 +56,58 @@ function openPreview(postId) {
 }
 
 function closePreview() {
+    _currentPreviewId = null;
     const overlay = document.getElementById('preview-overlay');
     overlay.classList.remove('open');
     overlay.setAttribute('aria-hidden', 'true');
 }
+
+async function setPostStatus(newStatus) {
+    if (_currentPreviewId == null) return;
+    const id = _currentPreviewId;
+    setBusy(true);
+    document.getElementById('cmd-status').textContent =
+        `Setting post #${id} to ${newStatus}…`;
+    document.getElementById('cmd-output').textContent = '';
+    try {
+        const r = await fetch(`/api/posts/${encodeURIComponent(id)}/status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus }),
+        });
+        if (!r.ok) {
+            const errText = await r.text();
+            showCmd(`Set status (${newStatus})`,
+                    { exit_code: r.status, stdout: '', stderr: errText });
+            return;
+        }
+        const d = await r.json();
+        showCmd(`Set status (${newStatus})`, {
+            exit_code: 0,
+            stdout: `Post #${d.id} ${d.platform} → ${d.status}\nTopic: ${d.topic}\n` +
+                    `Approval updates the local database and post history only; ` +
+                    `it does not post publicly.`,
+            stderr: '',
+        });
+        closePreview();
+        await refreshAll();
+    } catch (err) {
+        document.getElementById('cmd-status').textContent =
+            'Status update failed: ' + err;
+    } finally {
+        setBusy(false);
+    }
+}
+
+document.getElementById('preview-approve').addEventListener('click', () => {
+    if (!confirm('Approve this draft? This does not post it publicly.')) return;
+    setPostStatus('approved');
+});
+
+document.getElementById('preview-reject').addEventListener('click', () => {
+    if (!confirm('Reject this draft?')) return;
+    setPostStatus('rejected');
+});
 
 document.getElementById('preview-close').addEventListener('click', closePreview);
 document.getElementById('preview-overlay').addEventListener('click', (e) => {

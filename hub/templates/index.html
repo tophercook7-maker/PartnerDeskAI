@@ -86,6 +86,8 @@
             align-items: center; margin-bottom: 1rem;
         }
         .preview-header h2 { margin: 0; }
+        .preview-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .preview-actions button { font-size: 0.9rem; padding: 0.4rem 0.8rem; }
         .preview-meta {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -168,7 +170,11 @@
         <div class="preview-panel">
             <div class="preview-header">
                 <h2>Draft Preview</h2>
-                <button id="preview-close" aria-label="Close preview">Close</button>
+                <div class="preview-actions">
+                    <button id="preview-approve" class="primary">Approve</button>
+                    <button id="preview-reject" class="danger">Reject</button>
+                    <button id="preview-close" aria-label="Close preview">Close</button>
+                </div>
             </div>
             <div class="preview-meta">
                 <div><strong>Platform:</strong> <span id="preview-platform"></span></div>
