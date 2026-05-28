@@ -66,8 +66,25 @@
         .status-draft    { background: #fff3cd; color: #856404; }
         .status-approved { background: #d4edda; color: #155724; }
         .status-rejected { background: #f8d7da; color: #721c24; }
-        .recent-list li[data-id] { cursor: pointer; }
+        .recent-list li[data-id] {
+            cursor: pointer;
+            display: flex; align-items: center;
+            gap: 0.5rem;
+        }
         .recent-list li[data-id]:hover { background: #f5f7ff; }
+        .row-main { flex: 1; min-width: 0; }
+        .row-actions { display: flex; gap: 0.25rem; flex-shrink: 0; }
+        .row-action {
+            padding: 0.1rem 0.5rem; font-size: 0.95rem;
+            line-height: 1.2; border-radius: 3px; cursor: pointer;
+            background: #f5f5f5; border: 1px solid #bbb; color: #333;
+        }
+        .row-action.row-approve:hover {
+            background: #d4edda; border-color: #7fb78f; color: #155724;
+        }
+        .row-action.row-reject:hover {
+            background: #f8d7da; border-color: #c08585; color: #721c24;
+        }
         .preview-overlay {
             display: none; position: fixed; inset: 0;
             background: rgba(0, 0, 0, 0.5); z-index: 1000;

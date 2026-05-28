@@ -59,8 +59,22 @@ function renderRecentPosts(posts) {
     el.innerHTML = posts.map(p => {
         const cls = knownStatus.has(p.status) ? p.status : 'draft';
         const topic = p.topic ? _escape(p.topic) : '(no topic)';
-        return `<li data-id="${p.id}">#${p.id} ${_escape(p.platform)} — ${topic}` +
-               ` <span class="status-badge status-${cls}">${_escape(p.status)}</span></li>`;
+        return (
+            `<li data-id="${p.id}">` +
+              `<span class="row-main">` +
+                `#${p.id} ${_escape(p.platform)} — ${topic} ` +
+                `<span class="status-badge status-${cls}">${_escape(p.status)}</span>` +
+              `</span>` +
+              `<span class="row-actions">` +
+                `<button class="row-action row-approve" data-action="approve" ` +
+                  `data-id="${p.id}" aria-label="Approve draft ${p.id}" ` +
+                  `title="Approve">✓</button>` +
+                `<button class="row-action row-reject" data-action="reject" ` +
+                  `data-id="${p.id}" aria-label="Reject draft ${p.id}" ` +
+                  `title="Reject">✗</button>` +
+              `</span>` +
+            `</li>`
+        );
     }).join('');
 }
 
@@ -105,40 +119,52 @@ function closePreview() {
     overlay.setAttribute('aria-hidden', 'true');
 }
 
-async function setPostStatus(newStatus) {
-    if (_currentPreviewId == null) return;
-    const id = _currentPreviewId;
+// Shared single-post status setter — used by the modal Approve/Reject buttons
+// AND the per-row ✓ / ✗ buttons. Returns true on success so the caller can
+// decide what to do next (the modal closes itself; the row handler doesn't).
+async function _postSinglePostStatus(postId, newStatus, label) {
     setBusy(true);
     document.getElementById('cmd-status').textContent =
-        `Setting post #${id} to ${newStatus}…`;
+        `Setting post #${postId} to ${newStatus}…`;
     document.getElementById('cmd-output').textContent = '';
     try {
-        const r = await fetch(`/api/posts/${encodeURIComponent(id)}/status`, {
+        const r = await fetch(`/api/posts/${encodeURIComponent(postId)}/status`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: newStatus }),
         });
         if (!r.ok) {
             const errText = await r.text();
-            showCmd(`Set status (${newStatus})`,
-                    { exit_code: r.status, stdout: '', stderr: errText });
-            return;
+            showCmd(label, { exit_code: r.status, stdout: '', stderr: errText });
+            return false;
         }
         const d = await r.json();
-        showCmd(`Set status (${newStatus})`, {
-            exit_code: 0,
-            stdout: `Post #${d.id} ${d.platform} → ${d.status}\nTopic: ${d.topic}\n` +
-                    `Approval updates the local database and post history only; ` +
-                    `it does not post publicly.`,
-            stderr: '',
-        });
-        closePreview();
-        await refreshAll();
+        const footer =
+            newStatus === 'approved'
+              ? 'Approval updates the local database and post history only; it does not post publicly.'
+              : (newStatus === 'rejected'
+                    ? 'Rejected drafts stay in the database; they will not be approved.'
+                    : '');
+        const stdout = `Post #${d.id} ${d.platform} → ${d.status}\nTopic: ${d.topic}` +
+                       (footer ? '\n' + footer : '');
+        showCmd(label, { exit_code: 0, stdout, stderr: '' });
+        return true;
     } catch (err) {
         document.getElementById('cmd-status').textContent =
             'Status update failed: ' + err;
+        return false;
     } finally {
         setBusy(false);
+    }
+}
+
+async function setPostStatus(newStatus) {
+    if (_currentPreviewId == null) return;
+    const id = _currentPreviewId;
+    const ok = await _postSinglePostStatus(id, newStatus, `Set status (${newStatus})`);
+    if (ok) {
+        closePreview();
+        await refreshAll();
     }
 }
 
@@ -161,8 +187,26 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closePreview();
 });
 
-// Event delegation: any <li data-id="…"> inside #recent-posts opens preview.
-document.getElementById('recent-posts').addEventListener('click', (e) => {
+// Event delegation on #recent-posts.
+// Row action buttons (✓/✗) take precedence over the row's preview click —
+// clicking the button must not also open the modal.
+document.getElementById('recent-posts').addEventListener('click', async (e) => {
+    const action = e.target.closest('button[data-action]');
+    if (action) {
+        e.stopPropagation();
+        const id = action.dataset.id;
+        const isApprove = action.dataset.action === 'approve';
+        const newStatus = isApprove ? 'approved' : 'rejected';
+        const confirmMsg = isApprove
+            ? `Approve draft #${id}? This does not post publicly.`
+            : `Reject draft #${id}?`;
+        if (!confirm(confirmMsg)) return;
+        const ok = await _postSinglePostStatus(
+            id, newStatus, `Row ${isApprove ? 'approve' : 'reject'} #${id}`
+        );
+        if (ok) await refreshAll();
+        return;
+    }
     const li = e.target.closest('li[data-id]');
     if (!li) return;
     openPreview(li.dataset.id);

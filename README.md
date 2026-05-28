@@ -50,6 +50,8 @@ The Hub can approve all currently visible Recent Parker Work rows after filterin
 
 The Hub can also reject all currently visible Recent Parker Work rows after filtering. Rejected drafts stay in the database.
 
+Each Recent Parker Work row also has small ✓ / ✗ buttons for one-click approve or reject without opening the preview modal. Each click still requires a browser confirm.
+
 ---
 
 ## Daily ops runner
