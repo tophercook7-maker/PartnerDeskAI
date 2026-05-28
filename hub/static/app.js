@@ -4,6 +4,40 @@ function _escape(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Cache of the latest /api/status recent_posts so the filters can re-render
+// without re-fetching when the user types.
+let _recentPosts = [];
+
+function _matchesFilters(post, search, platform, status) {
+    if (platform && post.platform !== platform) return false;
+    if (status   && post.status   !== status)   return false;
+    if (search) {
+        const haystack = `${post.id} ${post.platform || ''} ${post.topic || ''} ${post.status || ''}`.toLowerCase();
+        if (!haystack.includes(search.toLowerCase())) return false;
+    }
+    return true;
+}
+
+function applyRecentFilters() {
+    const search   = document.getElementById('filter-search').value.trim();
+    const platform = document.getElementById('filter-platform').value;
+    const status   = document.getElementById('filter-status').value;
+
+    // No data yet — let renderRecentPosts show its empty state.
+    if (_recentPosts.length === 0) {
+        renderRecentPosts(_recentPosts);
+        return;
+    }
+
+    const filtered = _recentPosts.filter(p => _matchesFilters(p, search, platform, status));
+    if (filtered.length === 0) {
+        document.getElementById('recent-posts').innerHTML =
+            '<li class="muted">No matching Parker work.</li>';
+        return;
+    }
+    renderRecentPosts(filtered);
+}
+
 function renderRecentPosts(posts) {
     const el = document.getElementById('recent-posts');
     if (!posts || posts.length === 0) {
@@ -125,13 +159,21 @@ document.getElementById('recent-posts').addEventListener('click', (e) => {
     openPreview(li.dataset.id);
 });
 
+// Filter inputs re-render the list using the cached data — no fetch.
+document.getElementById('filter-search').addEventListener('input',  applyRecentFilters);
+document.getElementById('filter-platform').addEventListener('change', applyRecentFilters);
+document.getElementById('filter-status').addEventListener('change',   applyRecentFilters);
+
 async function loadStatus() {
     const r = await fetch('/api/status');
     const d = await r.json();
     document.getElementById('parker-pending').textContent = d.review.pending_drafts;
     document.getElementById('parker-warnings').textContent = d.review.drafts_with_warnings;
     document.getElementById('parker-next').textContent = d.next_action;
-    renderRecentPosts(d.recent_posts || []);
+    _recentPosts = d.recent_posts || [];
+    // Re-applies whatever filters the user has set; their input values
+    // are preserved across refresh because the DOM is not torn down.
+    applyRecentFilters();
 }
 
 async function loadSummary() {

@@ -42,6 +42,8 @@ The Hub also shows an Approved History timeline from the local `post_history` ta
 
 The Hub includes basic approval analytics from `post_history`, including top topics and platforms.
 
+Recent Parker Work can be searched and filtered by platform or status.
+
 ---
 
 ## Daily ops runner
