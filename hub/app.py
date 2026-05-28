@@ -129,26 +129,40 @@ class PublishRequest(BaseModel):
     platform: str
 
 
-_SUPPORTED_PUBLISH_PLATFORMS = {"linkedin"}
+_SUPPORTED_PUBLISH_PLATFORMS = {"linkedin", "facebook"}
+
+# Maps the lowercase platform key from the request body to the canonical
+# post.platform value in SQLite. Used to reject mismatches like trying to
+# push a Facebook draft via the linkedin connector.
+_PLATFORM_KEY_TO_POST_PLATFORM = {
+    "linkedin": "LinkedIn",
+    "facebook": "Facebook",
+}
+
+_PLATFORM_KEY_TO_PUBLISHER = {
+    "linkedin": social_posters.publish_linkedin_post,
+    "facebook": social_posters.publish_facebook_post,
+}
 
 
 @app.post("/api/posts/{post_id}/publish")
 def api_publish_post(post_id: int, body: PublishRequest) -> dict:
     """
-    Manually publish an approved draft to a real platform. v4.1 supports
-    LinkedIn only. Returns the structured {ok, message, platform, ...}
-    dict from social_posters so the Hub can render success or failure
-    inline without try/except.
+    Manually publish an approved draft to a real platform. v4.2 supports
+    LinkedIn and Facebook. Returns the structured {ok, message, platform,
+    ...} dict from social_posters so the Hub can render success or
+    failure inline without try/except.
 
     Validation:
-      - unsupported platform   -> 400
-      - missing post           -> 404
-      - non-approved post      -> 400
-      - missing body field     -> Pydantic 422
+      - unsupported platform                  -> 400
+      - missing post                          -> 404
+      - non-approved post                     -> 400
+      - platform/post.platform mismatch        -> 400
+      - missing body field                    -> Pydantic 422
 
     On success the local post.status is flipped to 'posted' so it drops
     out of the Ready to Post queue. On any failure (including the
-    "LinkedIn posting is not configured" path) the status is left
+    "<platform> posting is not configured" path) the status is left
     untouched.
     """
     platform_key = body.platform.strip().lower()
@@ -170,7 +184,16 @@ def api_publish_post(post_id: int, body: PublishRequest) -> dict:
                    f"post #{post_id} is {post['status']!r}",
         )
 
-    result = social_posters.publish_linkedin_post(post["content"] or "")
+    expected_platform = _PLATFORM_KEY_TO_POST_PLATFORM[platform_key]
+    if post["platform"] != expected_platform:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Post #{post_id} is for {post['platform']!r}, "
+                   f"cannot publish via the {platform_key!r} connector.",
+        )
+
+    publisher = _PLATFORM_KEY_TO_PUBLISHER[platform_key]
+    result = publisher(post["content"] or "")
 
     # Only flip status when the connector confirms a successful publish.
     if result.get("ok"):

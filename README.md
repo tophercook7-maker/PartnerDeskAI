@@ -77,6 +77,8 @@ inside `.env`. Optional `LINKEDIN_VERSION` (defaults to `202605`).
 
 If either of the required vars is unset, the Hub returns `LinkedIn posting is not configured.` and never makes an outbound call. On a successful publish, the local `posts.status` flips to `posted` so the item drops out of the Ready to Post queue. On any failure (network, auth, API error) the status is left at `approved` and the error is shown in the Hub's Command Output panel.
 
+Facebook Page publishing is also supported for approved Facebook drafts when `FACEBOOK_PAGE_ID` and `FACEBOOK_PAGE_ACCESS_TOKEN` are configured. Posting is never automatic and only happens after clicking "Post to Facebook" and confirming. Same safety contract as LinkedIn — missing config returns `Facebook posting is not configured.` and never makes an outbound call; only a successful publish flips local status to `posted`. The Hub also rejects platform/post mismatches (e.g. trying to publish a Facebook draft via the LinkedIn connector) with HTTP 400.
+
 ---
 
 ## Daily ops runner

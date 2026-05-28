@@ -486,11 +486,15 @@ function renderReady(posts) {
         const editedBadge = p.edited_at
             ? ` <span class="edited-badge" title="Last edited ${_escape(_fmtEdited(p.edited_at))}">edited</span>`
             : '';
-        // Real-publish buttons are conditional: LinkedIn only in v4.1.
-        const publishBtn = p.platform === 'LinkedIn'
-            ? `<button class="row-action danger" data-action="post-linkedin" ` +
-              `data-id="${p.id}">Post to LinkedIn</button>`
-            : '';
+        // Real-publish buttons are conditional per platform.
+        let publishBtn = '';
+        if (p.platform === 'LinkedIn') {
+            publishBtn = `<button class="row-action danger" data-action="post-linkedin" ` +
+                         `data-id="${p.id}">Post to LinkedIn</button>`;
+        } else if (p.platform === 'Facebook') {
+            publishBtn = `<button class="row-action danger" data-action="post-facebook" ` +
+                         `data-id="${p.id}">Post to Facebook</button>`;
+        }
         return (
             `<li data-id="${p.id}">` +
               `<span class="row-main">` +
@@ -565,42 +569,54 @@ document.getElementById('ready-list').addEventListener('click', async (e) => {
     }
 
     if (btn.dataset.action === 'post-linkedin') {
-        if (!confirm('Post this to LinkedIn now? This will publish publicly.')) {
-            return;
-        }
-        setBusy(true);
-        document.getElementById('cmd-status').textContent =
-            `Posting #${id} to LinkedIn…`;
-        document.getElementById('cmd-output').textContent = '';
-        try {
-            const r = await fetch(`/api/posts/${encodeURIComponent(id)}/publish`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ platform: 'linkedin' }),
-            });
-            // Validation errors return HTTPException -> {"detail": "..."}.
-            // The social_posters helper returns {ok, message, ...} as 200.
-            const d = await r.json();
-            if (r.ok && d.ok) {
-                const lines = [d.message];
-                if (d.post_urn) lines.push(`LinkedIn URN: ${d.post_urn}`);
-                showCmd(`Publish #${id} (LinkedIn)`,
-                        { exit_code: 0, stdout: lines.join('\n'), stderr: '' });
-                await refreshAll();
-            } else {
-                const errMsg = d.message || d.detail || `HTTP ${r.status}`;
-                showCmd(`Publish #${id} (LinkedIn)`,
-                        { exit_code: r.ok ? 1 : r.status, stdout: '', stderr: errMsg });
-            }
-        } catch (err) {
-            document.getElementById('cmd-status').textContent =
-                'Publish failed: ' + err;
-        } finally {
-            setBusy(false);
-        }
+        await _publishPost(id, 'linkedin', 'LinkedIn');
+        return;
+    }
+    if (btn.dataset.action === 'post-facebook') {
+        await _publishPost(id, 'facebook', 'Facebook');
         return;
     }
 });
+
+// Shared publish driver — used by Post-to-LinkedIn and Post-to-Facebook
+// buttons. Identical confirm/fetch/render plumbing keeps both flows in
+// one place so error handling stays consistent.
+async function _publishPost(postId, platformKey, platformLabel) {
+    if (!confirm(`Post this to ${platformLabel} now? This will publish publicly.`)) {
+        return;
+    }
+    setBusy(true);
+    document.getElementById('cmd-status').textContent =
+        `Posting #${postId} to ${platformLabel}…`;
+    document.getElementById('cmd-output').textContent = '';
+    try {
+        const r = await fetch(`/api/posts/${encodeURIComponent(postId)}/publish`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ platform: platformKey }),
+        });
+        // Validation errors return HTTPException -> {"detail": "..."}.
+        // The social_posters helper returns {ok, message, ...} as 200.
+        const d = await r.json();
+        if (r.ok && d.ok) {
+            const lines = [d.message];
+            if (d.post_urn) lines.push(`LinkedIn URN: ${d.post_urn}`);
+            if (d.id)       lines.push(`Post id: ${d.id}`);
+            showCmd(`Publish #${postId} (${platformLabel})`,
+                    { exit_code: 0, stdout: lines.join('\n'), stderr: '' });
+            await refreshAll();
+        } else {
+            const errMsg = d.message || d.detail || `HTTP ${r.status}`;
+            showCmd(`Publish #${postId} (${platformLabel})`,
+                    { exit_code: r.ok ? 1 : r.status, stdout: '', stderr: errMsg });
+        }
+    } catch (err) {
+        document.getElementById('cmd-status').textContent =
+            'Publish failed: ' + err;
+    } finally {
+        setBusy(false);
+    }
+}
 
 
 async function loadLogs() {
