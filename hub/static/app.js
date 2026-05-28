@@ -382,6 +382,74 @@ async function loadAnalytics() {
     }
 }
 
+// --- Ready to Post queue -------------------------------------------------
+
+// Approved posts come down with content so the Copy button can hand the
+// body to the clipboard without an extra fetch per row.
+let _readyPosts = [];
+
+function renderReady(posts) {
+    const el = document.getElementById('ready-list');
+    if (!posts || posts.length === 0) {
+        el.innerHTML = '<li class="muted">No approved drafts yet.</li>';
+        return;
+    }
+    el.innerHTML = posts.map(p => {
+        const topic = p.topic ? _escape(p.topic) : '(no topic)';
+        return (
+            `<li data-id="${p.id}">` +
+              `<span class="row-main">` +
+                `#${p.id} ${_escape(p.platform)} — ${topic} ` +
+                `<span class="status-badge status-approved">approved</span>` +
+              `</span>` +
+              `<span class="row-actions">` +
+                `<button class="row-action ready-copy" data-id="${p.id}">` +
+                  `Copy Post Text</button>` +
+              `</span>` +
+            `</li>`
+        );
+    }).join('');
+}
+
+async function loadReady() {
+    try {
+        const r = await fetch('/api/posts/ready');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _readyPosts = d.items || [];
+        renderReady(_readyPosts);
+    } catch (err) {
+        document.getElementById('ready-list').innerHTML =
+            '<li class="muted">Could not load ready queue.</li>';
+    }
+}
+
+document.getElementById('ready-list').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button.ready-copy');
+    if (!btn) return;
+    e.stopPropagation();
+    const id = btn.dataset.id;
+    const post = _readyPosts.find(p => String(p.id) === String(id));
+    if (!post) {
+        document.getElementById('cmd-status').textContent =
+            'Post not found in ready cache — try Refresh Hub.';
+        return;
+    }
+    const text = post.content || '';
+    try {
+        await navigator.clipboard.writeText(text);
+        document.getElementById('cmd-status').textContent = 'Copied post text.';
+        document.getElementById('cmd-output').textContent =
+            `Copied #${post.id} ${post.platform} (${text.length} chars)\n` +
+            'Copying does not post publicly. Paste it into the target ' +
+            'platform when you are ready.';
+    } catch (err) {
+        document.getElementById('cmd-status').textContent =
+            'Clipboard write failed: ' + err;
+    }
+});
+
+
 async function loadLogs() {
     const r = await fetch('/api/logs/latest');
     const d = await r.json();
@@ -400,7 +468,7 @@ async function refreshAll() {
     try {
         await Promise.all([
             loadStatus(), loadSummary(), loadLogs(),
-            loadHistory(), loadAnalytics(),
+            loadHistory(), loadAnalytics(), loadReady(),
         ]);
         document.getElementById('cmd-status').textContent = 'Hub refreshed.';
     } catch (err) {

@@ -52,6 +52,8 @@ The Hub can also reject all currently visible Recent Parker Work rows after filt
 
 Each Recent Parker Work row also has small ✓ / ✗ buttons for one-click approve or reject without opening the preview modal. Each click still requires a browser confirm.
 
+Approved drafts appear in the Hub's Ready to Post queue. From there, Topher can copy the post text and manually publish it. Approval does not auto-post publicly.
+
 ---
 
 ## Daily ops runner

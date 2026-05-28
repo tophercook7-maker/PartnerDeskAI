@@ -89,6 +89,33 @@ def api_status() -> JSONResponse:
     return JSONResponse(data)
 
 
+# NOTE: this fixed-path GET must be declared before the parameterized
+# /api/posts/{post_id} route below — otherwise "ready" would be parsed as
+# a non-int post_id and return 422.
+@app.get("/api/posts/ready")
+def api_posts_ready() -> dict:
+    """
+    Approved posts queued for manual posting, newest first.
+
+    Returns content (unlike /api/status's recent_posts) because the UI
+    needs the body to copy to the clipboard. Capped at 20 entries so the
+    payload stays small.
+    """
+    if not DB_PATH.is_file():
+        return {"items": []}
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT id, platform, topic, status, created_at, content "
+            "FROM posts WHERE status = 'approved' "
+            "ORDER BY created_at DESC, id DESC LIMIT 20"
+        ).fetchall()
+    finally:
+        conn.close()
+    return {"items": [dict(r) for r in rows]}
+
+
 @app.get("/api/posts/{post_id}")
 def api_post(post_id: int) -> dict:
     """
