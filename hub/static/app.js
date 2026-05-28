@@ -31,13 +31,56 @@ function _computeMood(status, readyCount) {
     return { label: 'Ready', cls: 'mood-green' };
 }
 
-function _statCard(label, value) {
+function _statCard(label, value, opts = {}) {
+    // opts: { target: 'recent-posts' | 'ready-list' | 'connections-list',
+    //         filter: 'status=draft' (or undefined) }
+    // Cards with a target render as interactive buttons that scroll
+    // (and optionally apply a filter). Cards without one render as
+    // plain stats.
+    const interactive = !!opts.target;
+    const attrs = interactive
+        ? ` class="stat-card stat-card-clickable" role="button" tabindex="0"` +
+          ` data-mc-target="${_escape(opts.target)}"` +
+          (opts.filter ? ` data-mc-filter="${_escape(opts.filter)}"` : '') +
+          ` title="Jump to this section"`
+        : ` class="stat-card"`;
     return (
-        `<div class="stat-card">` +
+        `<div${attrs}>` +
           `<div class="stat-value">${_escape(String(value))}</div>` +
           `<div class="stat-label">${_escape(label)}</div>` +
         `</div>`
     );
+}
+
+function _scrollToSection(innerElementId) {
+    // Find the inner anchor (a list / ul we already know exists) and
+    // scroll its enclosing <section> into view so the section title is
+    // visible too. Falls back to the inner element if no section.
+    const inner = document.getElementById(innerElementId);
+    if (!inner) return;
+    const target = inner.closest('section') || inner;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function _applyMissionControlFilter(filterSpec) {
+    // Currently supports a single "key=value" pair targeting the Recent
+    // Parker Work filter row. Cleanly extensible if more filter targets
+    // get added later.
+    if (!filterSpec) return;
+    const [key, value] = filterSpec.split('=');
+    if (key === 'status') {
+        const el = document.getElementById('filter-status');
+        if (el) {
+            el.value = value || '';
+            applyRecentFilters();
+        }
+    } else if (key === 'platform') {
+        const el = document.getElementById('filter-platform');
+        if (el) {
+            el.value = value || '';
+            applyRecentFilters();
+        }
+    }
 }
 
 function _partnerBadgeClass(status) {
@@ -64,10 +107,21 @@ function renderMissionControl() {
 
     const statsHtml = (
         `<div class="mission-stats">` +
-          _statCard("Today's Drafts", todaysDrafts) +
-          _statCard('Pending Review', pending) +
-          _statCard('Ready to Post',  readyCount) +
-          _statCard('Connections Verified', `${verified} / ${totalConns}`) +
+          // Today's Drafts -> all recent Parker work, no filter (newest
+          // rows are today's anyway since the list is sorted DESC).
+          _statCard("Today's Drafts", todaysDrafts,
+                    { target: 'recent-posts' }) +
+          // Pending Review -> Recent Parker Work + auto-set the status
+          // dropdown to "draft" so the visible list matches the count.
+          _statCard('Pending Review', pending,
+                    { target: 'recent-posts', filter: 'status=draft' }) +
+          // Ready to Post -> the dedicated approved queue card.
+          _statCard('Ready to Post', readyCount,
+                    { target: 'ready-list' }) +
+          // Connections Verified -> the connections card so the user
+          // can hit Verify on whichever platform isn't green.
+          _statCard('Connections Verified', `${verified} / ${totalConns}`,
+                    { target: 'connections-list' }) +
         `</div>`
     );
 
@@ -95,6 +149,28 @@ function renderMissionControl() {
 
     el.innerHTML = statsHtml + stripHtml + moodHtml;
 }
+
+// Delegated click + keyboard handler for the Mission Control stat cards.
+// Bound once at module load (#mission-control exists in the static
+// template even before the first render, so this is safe).
+function _missionControlActivate(target, filter) {
+    if (filter) _applyMissionControlFilter(filter);
+    _scrollToSection(target);
+}
+document.getElementById('mission-control').addEventListener('click', (e) => {
+    const card = e.target.closest('[data-mc-target]');
+    if (!card) return;
+    _missionControlActivate(card.dataset.mcTarget, card.dataset.mcFilter);
+});
+document.getElementById('mission-control').addEventListener('keydown', (e) => {
+    // Enter / Space on a focused stat card activates it, matching
+    // native button behavior for accessibility.
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest('[data-mc-target]');
+    if (!card) return;
+    e.preventDefault();
+    _missionControlActivate(card.dataset.mcTarget, card.dataset.mcFilter);
+});
 
 // Cache of the latest /api/status recent_posts so the filters can re-render
 // without re-fetching when the user types.

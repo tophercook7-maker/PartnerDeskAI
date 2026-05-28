@@ -44,6 +44,18 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px; padding: 0.85rem 1rem;
         }
+        .stat-card-clickable {
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s, transform 0.15s;
+        }
+        .stat-card-clickable:hover {
+            background: rgba(255, 255, 255, 0.09);
+            border-color: rgba(255, 255, 255, 0.25);
+            transform: translateY(-1px);
+        }
+        .stat-card-clickable:focus {
+            outline: 2px solid #5b9eff; outline-offset: 2px;
+        }
         .stat-value {
             font-size: 1.8rem; font-weight: 600;
             color: #fff; line-height: 1; margin-bottom: 0.3rem;
