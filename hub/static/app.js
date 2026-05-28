@@ -147,29 +147,87 @@ function renderMissionControl() {
         `</div>`
     );
 
-    el.innerHTML = statsHtml + stripHtml + moodHtml;
+    // Quick Actions bar — six in-page command buttons. Run Daily Ops
+    // and Refresh Summary delegate to the existing top-row buttons so
+    // there's only one code path per action.
+    const actionsHtml = (
+        `<div class="mission-actions">` +
+          `<button class="mission-action-btn danger" data-mc-action="run-daily-ops">Run Daily Ops</button>` +
+          `<button class="mission-action-btn primary" data-mc-action="refresh-hub">Refresh Hub</button>` +
+          `<button class="mission-action-btn" data-mc-action="refresh-summary">Refresh Summary</button>` +
+          `<button class="mission-action-btn" data-mc-action="verify-connections">Verify Connections</button>` +
+          `<button class="mission-action-btn" data-mc-action="review-drafts">Review Drafts</button>` +
+          `<button class="mission-action-btn" data-mc-action="ready-to-post">Ready to Post</button>` +
+        `</div>`
+    );
+
+    el.innerHTML = statsHtml + stripHtml + moodHtml + actionsHtml;
 }
 
-// Delegated click + keyboard handler for the Mission Control stat cards.
-// Bound once at module load (#mission-control exists in the static
-// template even before the first render, so this is safe).
+// Delegated click + keyboard handlers for Mission Control. Bound once
+// at module load (#mission-control exists in the static template).
+// Two interaction types live here:
+//   data-mc-target  -> stat cards (navigate / filter, v5.1)
+//   data-mc-action  -> quick-action buttons (v5.2)
+
 function _missionControlActivate(target, filter) {
     if (filter) _applyMissionControlFilter(filter);
     _scrollToSection(target);
 }
+
+function _missionControlAction(action) {
+    // For Run Daily Ops / Refresh Hub / Refresh Summary, just trigger
+    // the existing top-row buttons so there's one canonical handler
+    // per action (browser confirm, busy-state, refresh-on-success all
+    // already live there).
+    if (action === 'run-daily-ops') {
+        document.getElementById('btn-run').click();
+        return;
+    }
+    if (action === 'refresh-hub') {
+        document.getElementById('btn-refresh').click();
+        return;
+    }
+    if (action === 'refresh-summary') {
+        document.getElementById('btn-skip').click();
+        return;
+    }
+    if (action === 'verify-connections') {
+        _scrollToSection('connections-list');
+        return;
+    }
+    if (action === 'review-drafts') {
+        _applyMissionControlFilter('status=draft');
+        _scrollToSection('recent-posts');
+        return;
+    }
+    if (action === 'ready-to-post') {
+        _scrollToSection('ready-list');
+        return;
+    }
+}
+
 document.getElementById('mission-control').addEventListener('click', (e) => {
     const card = e.target.closest('[data-mc-target]');
-    if (!card) return;
-    _missionControlActivate(card.dataset.mcTarget, card.dataset.mcFilter);
+    if (card) {
+        _missionControlActivate(card.dataset.mcTarget, card.dataset.mcFilter);
+        return;
+    }
+    const btn = e.target.closest('[data-mc-action]');
+    if (btn) {
+        _missionControlAction(btn.dataset.mcAction);
+    }
 });
 document.getElementById('mission-control').addEventListener('keydown', (e) => {
-    // Enter / Space on a focused stat card activates it, matching
-    // native button behavior for accessibility.
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const card = e.target.closest('[data-mc-target]');
-    if (!card) return;
-    e.preventDefault();
-    _missionControlActivate(card.dataset.mcTarget, card.dataset.mcFilter);
+    if (card) {
+        e.preventDefault();
+        _missionControlActivate(card.dataset.mcTarget, card.dataset.mcFilter);
+        return;
+    }
+    // <button> elements activate on Enter/Space natively, so we don't
+    // need to handle data-mc-action here — the click event fires for us.
 });
 
 // Cache of the latest /api/status recent_posts so the filters can re-render

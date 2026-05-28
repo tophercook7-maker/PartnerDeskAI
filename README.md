@@ -39,6 +39,8 @@ http://127.0.0.1:8787
 
 The Hub includes a Mission Control section at the top that summarizes drafts, pending review, ready-to-post items, verified connections, partner status, and system mood at a glance.
 
+Mission Control also includes a Quick Actions bar for running daily ops, refreshing the Hub, refreshing summaries, jumping to draft review, and jumping to Ready to Post.
+
 The Hub shows PartnerDesk status, Parker Promo activity, today's summary, latest logs, and quick actions:
 
 - **Refresh Hub** — re-reads status, summary, and logs (no scripts run).
