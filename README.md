@@ -44,6 +44,8 @@ The Hub includes basic approval analytics from `post_history`, including top top
 
 Recent Parker Work can be searched and filtered by platform or status.
 
+The Recent Parker Work filters include a live "Showing X of Y" counter.
+
 ---
 
 ## Daily ops runner

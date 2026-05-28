@@ -22,14 +22,19 @@ function applyRecentFilters() {
     const search   = document.getElementById('filter-search').value.trim();
     const platform = document.getElementById('filter-platform').value;
     const status   = document.getElementById('filter-status').value;
+    const counter  = document.getElementById('filter-count');
+    const total    = _recentPosts.length;
 
     // No data yet — let renderRecentPosts show its empty state.
-    if (_recentPosts.length === 0) {
+    if (total === 0) {
+        counter.textContent = 'Showing 0 of 0';
         renderRecentPosts(_recentPosts);
         return;
     }
 
     const filtered = _recentPosts.filter(p => _matchesFilters(p, search, platform, status));
+    counter.textContent = `Showing ${filtered.length} of ${total}`;
+
     if (filtered.length === 0) {
         document.getElementById('recent-posts').innerHTML =
             '<li class="muted">No matching Parker work.</li>';
