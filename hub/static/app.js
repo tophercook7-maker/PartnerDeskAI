@@ -579,6 +579,35 @@ async function loadAnalytics() {
 
 // --- Connections center -------------------------------------------------
 
+// Cache of /api/connections keyed by lowercase platform name so other
+// renderers (renderReady) can ask "is this platform connected?" without
+// re-fetching. Populated inside loadConnections().
+let _connectionsByPlatform = {};
+
+function isPlatformConnected(platform) {
+    const key = (platform || '').toLowerCase();
+    const c = _connectionsByPlatform[key];
+    return !!(c && c.status === 'connected');
+}
+
+function _publishButtonHTML(postId, platform, actionKey, label) {
+    // UX-only safety: dim the button when the platform's env keys are
+    // missing. The publish endpoints still validate server-side, so this
+    // is defense-in-depth, not the only check.
+    const connected     = isPlatformConnected(platform);
+    const disabledAttr  = connected ? '' : ' disabled';
+    const disabledClass = connected ? '' : ' disabled';
+    const titleAttr     = connected
+        ? ''
+        : ` title="Configure ${_escape(platform)} in .env first."`;
+    return (
+        `<button class="row-action danger${disabledClass}" ` +
+          `data-action="${actionKey}" data-id="${postId}"${disabledAttr}${titleAttr}>` +
+          `${_escape(label)}` +
+        `</button>`
+    );
+}
+
 function renderConnections(items) {
     const el = document.getElementById('connections-list');
     if (!items || items.length === 0) {
@@ -606,7 +635,15 @@ async function loadConnections() {
         const r = await fetch('/api/connections');
         if (!r.ok) throw new Error('http ' + r.status);
         const d = await r.json();
-        renderConnections(d.connections || []);
+        const conns = d.connections || [];
+        // Rebuild the lookup with normalized lowercase keys
+        // (e.g. "linkedin", "google business profile") so callers don't
+        // need to know about display-name casing.
+        _connectionsByPlatform = {};
+        for (const c of conns) {
+            _connectionsByPlatform[c.platform.toLowerCase()] = c;
+        }
+        renderConnections(conns);
     } catch (err) {
         document.getElementById('connections-list').innerHTML =
             '<li class="muted">Could not load connections.</li>';
@@ -636,14 +673,14 @@ function renderReady(posts) {
         const editedLine = p.edited_at
             ? ` · Edited: ${_escape(_fmtEdited(p.edited_at))}`
             : '';
-        // Real-publish buttons are conditional per platform.
+        // Real-publish buttons are conditional per platform AND grayed
+        // out via _publishButtonHTML when the platform isn't in the
+        // connections cache as "connected".
         let publishBtn = '';
         if (p.platform === 'LinkedIn') {
-            publishBtn = `<button class="row-action danger" data-action="post-linkedin" ` +
-                         `data-id="${p.id}">Post to LinkedIn</button>`;
+            publishBtn = _publishButtonHTML(p.id, 'LinkedIn', 'post-linkedin', 'Post to LinkedIn');
         } else if (p.platform === 'Facebook') {
-            publishBtn = `<button class="row-action danger" data-action="post-facebook" ` +
-                         `data-id="${p.id}">Post to Facebook</button>`;
+            publishBtn = _publishButtonHTML(p.id, 'Facebook', 'post-facebook', 'Post to Facebook');
         }
         return (
             `<div class="ready-card" data-id="${p.id}">` +
@@ -824,14 +861,16 @@ async function loadLogs() {
 async function refreshAll() {
     document.getElementById('cmd-status').textContent = 'Reloading…';
     try {
-        // Render partner rooms first so loadStatus() can populate
-        // Parker's pending/next-action spans (they only exist after
-        // renderPartners runs).
-        await loadPartners();
+        // Prerequisites that must complete BEFORE loadReady / loadStatus
+        // run, because they populate DOM nodes / module caches those
+        // later renderers depend on:
+        //   - loadPartners: creates Parker's #parker-pending / #parker-next
+        //   - loadConnections: fills _connectionsByPlatform so renderReady
+        //                       knows which publish buttons to gray out.
+        await Promise.all([loadPartners(), loadConnections()]);
         await Promise.all([
             loadStatus(), loadSummary(), loadLogs(),
             loadHistory(), loadAnalytics(), loadReady(),
-            loadConnections(),
         ]);
         document.getElementById('cmd-status').textContent = 'Hub refreshed.';
     } catch (err) {
