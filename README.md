@@ -243,7 +243,19 @@ The agent definition lives at:
 ~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
 ```
 
-> **Migrating from an older install:** If you already installed the older launchd plist that points at `automation/daily_runner.py`, update the plist `ProgramArguments` to use `automation/daily_ops.py`, then unload and reload the agent:
+### Install or update with one command
+
+```bash
+bash automation/install_launchd.sh
+```
+
+This installs (or updates) the launchd agent so it runs `automation/daily_ops.py` every day at 09:00 local time. It is idempotent — safe to re-run any time. It writes the plist, then unloads and reloads the agent automatically. It does **not** run `daily_ops.py` itself; it only installs the schedule.
+
+The installer captures stdout/stderr to `logs/launchd.out.log` and `logs/launchd.err.log` and resolves the absolute path to your current `python3` so launchd (which doesn't search `PATH`) can run it.
+
+If you'd rather edit the plist by hand, the manual commands below still work.
+
+> **Migrating from an older install:** If you already installed the older launchd plist that points at `automation/daily_runner.py`, run `bash automation/install_launchd.sh` to overwrite it with the new `daily_ops.py`-based version (the installer handles unload + reload). Or, if you want to do it manually, update the plist `ProgramArguments` to use `automation/daily_ops.py`, then:
 > ```bash
 > launchctl unload ~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
 > launchctl load   ~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
