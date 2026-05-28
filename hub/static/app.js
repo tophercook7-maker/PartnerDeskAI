@@ -586,13 +586,18 @@ let _readyPosts = [];
 function renderReady(posts) {
     const el = document.getElementById('ready-list');
     if (!posts || posts.length === 0) {
-        el.innerHTML = '<li class="muted">No approved drafts yet.</li>';
+        el.innerHTML = '<div class="muted">No approved posts ready yet.</div>';
         return;
     }
     el.innerHTML = posts.map(p => {
         const topic = p.topic ? _escape(p.topic) : '(no topic)';
+        const content = p.content ? _escape(p.content) : '(empty)';
         const editedBadge = p.edited_at
             ? ` <span class="edited-badge" title="Last edited ${_escape(_fmtEdited(p.edited_at))}">edited</span>`
+            : '';
+        const createdShort = _escape((p.created_at || '').slice(0, 16));
+        const editedLine = p.edited_at
+            ? ` · Edited: ${_escape(_fmtEdited(p.edited_at))}`
             : '';
         // Real-publish buttons are conditional per platform.
         let publishBtn = '';
@@ -604,20 +609,26 @@ function renderReady(posts) {
                          `data-id="${p.id}">Post to Facebook</button>`;
         }
         return (
-            `<li data-id="${p.id}">` +
-              `<span class="row-main">` +
+            `<div class="ready-card" data-id="${p.id}">` +
+              `<div class="ready-card-meta">` +
                 `#${p.id} ${_escape(p.platform)} — ${topic} ` +
                 `<span class="status-badge status-approved">approved</span>` +
                 editedBadge +
-              `</span>` +
-              `<span class="row-actions">` +
+                `<div class="ready-card-meta-secondary">` +
+                  `Created: ${createdShort}${editedLine}` +
+                `</div>` +
+              `</div>` +
+              `<div class="ready-card-content">${content}</div>` +
+              `<div class="ready-card-actions">` +
                 `<button class="row-action" data-action="copy" ` +
                   `data-id="${p.id}">Copy Post Text</button>` +
+                `<button class="row-action" data-action="preview" ` +
+                  `data-id="${p.id}">Preview Full Post</button>` +
                 publishBtn +
                 `<button class="row-action" data-action="mark-posted" ` +
                   `data-id="${p.id}">Mark Posted</button>` +
-              `</span>` +
-            `</li>`
+              `</div>` +
+            `</div>`
         );
     }).join('');
 }
@@ -663,6 +674,11 @@ document.getElementById('ready-list').addEventListener('click', async (e) => {
         return;
     }
 
+    if (btn.dataset.action === 'preview') {
+        openPreview(id);
+        return;
+    }
+
     if (btn.dataset.action === 'mark-posted') {
         if (!confirm('Mark this post as posted? This only updates local tracking.')) {
             return;
@@ -690,9 +706,37 @@ document.getElementById('ready-list').addEventListener('click', async (e) => {
 // buttons. Identical confirm/fetch/render plumbing keeps both flows in
 // one place so error handling stays consistent.
 async function _publishPost(postId, platformKey, platformLabel) {
-    if (!confirm(`Post this to ${platformLabel} now? This will publish publicly.`)) {
+    // Pull the exact text we're about to publish from the ready cache and
+    // refuse to even ask for confirmation if the body is empty.
+    const post = _readyPosts.find(p => String(p.id) === String(postId));
+    const content = (post && post.content) ? post.content : '';
+    if (!content.trim()) {
+        document.getElementById('cmd-status').textContent =
+            `Cannot publish #${postId}: content is empty. Refresh and try again.`;
+        document.getElementById('cmd-output').textContent = '';
         return;
     }
+
+    // Surface the EXACT text in the Command Output panel BEFORE the
+    // confirm fires, so Topher can read the whole thing without
+    // squinting at a tiny modal. The confirm itself shows a truncated
+    // preview as a final guardrail.
+    document.getElementById('cmd-status').textContent =
+        `Preview before posting #${postId} to ${platformLabel}:`;
+    document.getElementById('cmd-output').textContent =
+        `You are about to publicly post this:\n\n${content}`;
+
+    const truncated = content.length > 280 ? content.slice(0, 280) + '…' : content;
+    const proceed = confirm(
+        `Post this to ${platformLabel} now? This will publish publicly.\n\n` +
+        `Preview:\n${truncated}`
+    );
+    if (!proceed) {
+        document.getElementById('cmd-status').textContent =
+            `Cancelled. Nothing was posted to ${platformLabel}.`;
+        return;
+    }
+
     setBusy(true);
     document.getElementById('cmd-status').textContent =
         `Posting #${postId} to ${platformLabel}…`;

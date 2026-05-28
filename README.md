@@ -67,6 +67,8 @@ Each Recent Parker Work row also has small ✓ / ✗ buttons for one-click appro
 
 Approved drafts appear in the Hub's Ready to Post queue. From there, Topher can copy the post text and manually publish it. Approval does not auto-post publicly.
 
+The Ready to Post queue shows each approved post as a readable card with full content, copy controls, and platform-specific publish buttons. Before publishing, the Hub shows the exact text that will be posted and requires confirmation.
+
 Ready to Post items can be marked as posted after manual publishing. This only updates local tracking and does not publish automatically.
 
 Draft content can be edited directly in the Hub preview modal before approval, copying, or manual posting. Editing only updates the local SQLite content field.
