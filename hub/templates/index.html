@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PartnerDesk Hub</title>
+    <style>
+        :root { color-scheme: light; }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+            max-width: 1100px;
+            margin: 2rem auto;
+            padding: 0 1rem 4rem;
+            color: #222;
+            line-height: 1.5;
+            background: #fbfbfb;
+        }
+        h1 { margin-bottom: 0; }
+        .subtitle { color: #666; margin-top: 0.25rem; }
+        .row {
+            display: flex; gap: 0.5rem; flex-wrap: wrap;
+            margin: 1.5rem 0;
+        }
+        button {
+            padding: 0.6rem 1rem; border: 1px solid #888; border-radius: 6px;
+            background: #f5f5f5; cursor: pointer; font-size: 1rem;
+        }
+        button:hover { background: #ececec; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        button.primary {
+            background: #2a6ec1; color: white; border-color: #2a6ec1;
+        }
+        button.primary:hover { background: #1a5aa8; }
+        button.danger { border-color: #b34a4a; color: #b34a4a; }
+        section {
+            margin: 1.5rem 0; padding: 1rem;
+            border: 1px solid #eee; border-radius: 6px; background: #fff;
+        }
+        section h2 { margin-top: 0; font-size: 1.1rem; color: #555; }
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+        .card {
+            border: 1px solid #ddd; border-radius: 8px; padding: 1rem;
+            background: #fff;
+        }
+        .card.coming { opacity: 0.55; }
+        .card h3 { margin-top: 0; }
+        .card hr { border: 0; border-top: 1px solid #eee; margin: 0.6rem 0; }
+        .muted { color: #888; font-size: 0.92rem; }
+        pre {
+            white-space: pre-wrap; word-wrap: break-word;
+            font-family: ui-monospace, Menlo, Consolas, monospace;
+            font-size: 0.9rem; margin: 0.25rem 0;
+            background: #fafafa; padding: 0.6rem; border-radius: 4px;
+            max-height: 32em; overflow: auto;
+        }
+        kbd {
+            background: #eee; padding: 0.1rem 0.4rem; border-radius: 3px;
+            font-family: monospace; font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>PartnerDesk Hub</h1>
+    <div class="subtitle">Local AI Business Partner Station</div>
+
+    <div class="row">
+        <button id="btn-refresh" class="primary">Refresh Hub</button>
+        <button id="btn-run" class="danger">Run Daily Ops</button>
+        <button id="btn-skip">Refresh Summary Only</button>
+    </div>
+
+    <section>
+        <h2>Partners</h2>
+        <div class="cards" id="partners">
+            <div class="card">
+                <h3>Parker Promo</h3>
+                <div class="muted">Status: Active</div>
+                <div class="muted">Role: Social media drafts, CTAs, offers, hashtag memory</div>
+                <hr>
+                <div>Pending drafts: <span id="parker-pending">…</span></div>
+                <div>Warnings: <span id="parker-warnings">…</span></div>
+                <div>Next action:</div>
+                <pre id="parker-next">…</pre>
+            </div>
+            <div class="card coming">
+                <h3>Logan Leads</h3>
+                <div class="muted">Coming soon</div>
+            </div>
+            <div class="card coming">
+                <h3>Olivia Office</h3>
+                <div class="muted">Coming soon</div>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2>Today's Summary</h2>
+        <div class="muted" id="summary-meta">…</div>
+        <pre id="summary">…</pre>
+    </section>
+
+    <section>
+        <h2>Latest Log</h2>
+        <div class="muted" id="log-path">…</div>
+        <pre id="log-tail">…</pre>
+    </section>
+
+    <section>
+        <h2>Command Output</h2>
+        <div class="muted" id="cmd-status">No command run yet.</div>
+        <pre id="cmd-output"></pre>
+    </section>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

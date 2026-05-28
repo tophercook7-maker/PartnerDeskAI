@@ -12,6 +12,28 @@ Nothing is auto-posted.
 
 ---
 
+## PartnerDesk Hub
+
+```bash
+uvicorn hub.app:app --reload --port 8787
+```
+
+Open:
+
+```
+http://127.0.0.1:8787
+```
+
+The Hub shows PartnerDesk status, Parker Promo activity, today's summary, latest logs, and quick actions:
+
+- **Refresh Hub** — re-reads status, summary, and logs (no scripts run).
+- **Run Daily Ops** — runs `automation/daily_ops.py` (generate + snapshot + summary). Asks for confirmation because it calls OpenAI.
+- **Refresh Summary Only** — runs `daily_ops.py --skip-generate` (no OpenAI).
+
+Future partners (Logan Leads, Olivia Office) appear as "Coming soon" cards.
+
+---
+
 ## Daily ops runner
 
 ```bash
