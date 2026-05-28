@@ -185,6 +185,76 @@ def api_history(limit: int = 20) -> dict:
     return {"items": [dict(r) for r in rows]}
 
 
+@app.get("/api/history/analytics")
+def api_history_analytics(days: int = 30) -> dict:
+    """
+    Read-only: counts from post_history within the trailing N days.
+    `days` is clamped to [1, 365] so out-of-range query params still
+    produce valid JSON instead of a 422.
+
+    Three aggregations:
+      - by_topic:           {topic, count}
+      - by_platform:        {platform, count}
+      - by_topic_platform:  {topic, platform, count}
+
+    All sorted count DESC, then name ASC.
+    """
+    days = max(1, min(365, days))
+    response = {
+        "days": days,
+        "total": 0,
+        "by_topic": [],
+        "by_platform": [],
+        "by_topic_platform": [],
+    }
+    if not DB_PATH.is_file():
+        return response
+
+    cutoff_modifier = f"-{days} days"
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        response["total"] = conn.execute(
+            "SELECT COUNT(*) FROM post_history "
+            "WHERE date(posted_date) >= date('now', ?)",
+            (cutoff_modifier,),
+        ).fetchone()[0]
+
+        response["by_topic"] = [
+            {"topic": r["topic"], "count": r["count"]}
+            for r in conn.execute(
+                "SELECT topic, COUNT(*) AS count FROM post_history "
+                "WHERE date(posted_date) >= date('now', ?) "
+                "GROUP BY topic ORDER BY count DESC, topic ASC",
+                (cutoff_modifier,),
+            )
+        ]
+
+        response["by_platform"] = [
+            {"platform": r["platform"], "count": r["count"]}
+            for r in conn.execute(
+                "SELECT platform, COUNT(*) AS count FROM post_history "
+                "WHERE date(posted_date) >= date('now', ?) "
+                "GROUP BY platform ORDER BY count DESC, platform ASC",
+                (cutoff_modifier,),
+            )
+        ]
+
+        response["by_topic_platform"] = [
+            {"topic": r["topic"], "platform": r["platform"], "count": r["count"]}
+            for r in conn.execute(
+                "SELECT topic, platform, COUNT(*) AS count FROM post_history "
+                "WHERE date(posted_date) >= date('now', ?) "
+                "GROUP BY topic, platform "
+                "ORDER BY count DESC, topic ASC, platform ASC",
+                (cutoff_modifier,),
+            )
+        ]
+    finally:
+        conn.close()
+    return response
+
+
 @app.get("/api/summary")
 def api_summary() -> dict:
     """Read today's morning summary markdown, or report it's missing."""

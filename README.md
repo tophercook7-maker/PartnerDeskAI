@@ -40,6 +40,8 @@ Drafts can be approved or rejected from the Hub preview modal. Approval updates 
 
 The Hub also shows an Approved History timeline from the local `post_history` table.
 
+The Hub includes basic approval analytics from `post_history`, including top topics and platforms.
+
 ---
 
 ## Daily ops runner

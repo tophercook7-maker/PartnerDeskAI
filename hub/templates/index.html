@@ -94,6 +94,14 @@
             gap: 0.25rem 1rem; margin-bottom: 1rem; font-size: 0.92rem;
         }
         .preview-meta strong { color: #555; }
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem; margin-bottom: 0.5rem;
+        }
+        #analytics-body h3 {
+            font-size: 0.95rem; margin: 0.5rem 0 0.25rem; color: #555;
+        }
         pre {
             white-space: pre-wrap; word-wrap: break-word;
             font-family: ui-monospace, Menlo, Consolas, monospace;
@@ -153,6 +161,28 @@
         <ul id="approved-history" class="recent-list">
             <li class="muted">Loading…</li>
         </ul>
+    </section>
+
+    <section>
+        <h2>History Analytics</h2>
+        <div id="analytics-empty" class="muted" style="display:none">
+            No history analytics yet.
+        </div>
+        <div id="analytics-body">
+            <div class="muted" id="analytics-meta">Loading…</div>
+            <div class="analytics-grid">
+                <div>
+                    <h3>Top topics</h3>
+                    <ul id="analytics-topics" class="recent-list"></ul>
+                </div>
+                <div>
+                    <h3>Top platforms</h3>
+                    <ul id="analytics-platforms" class="recent-list"></ul>
+                </div>
+            </div>
+            <h3>Top topic / platform combos</h3>
+            <ul id="analytics-combos" class="recent-list"></ul>
+        </div>
     </section>
 
     <section>
