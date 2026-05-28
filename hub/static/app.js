@@ -1,11 +1,33 @@
 // PartnerDesk Hub — minimal vanilla JS front end.
 
+function _escape(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderRecentPosts(posts) {
+    const el = document.getElementById('recent-posts');
+    if (!posts || posts.length === 0) {
+        el.innerHTML = '<li class="muted">No posts yet.</li>';
+        return;
+    }
+    // Only known statuses get colored badges; anything else falls back
+    // to the draft style so a stray value never breaks rendering.
+    const knownStatus = new Set(['draft', 'approved', 'rejected']);
+    el.innerHTML = posts.map(p => {
+        const cls = knownStatus.has(p.status) ? p.status : 'draft';
+        const topic = p.topic ? _escape(p.topic) : '(no topic)';
+        return `<li>#${p.id} ${_escape(p.platform)} — ${topic}` +
+               ` <span class="status-badge status-${cls}">${_escape(p.status)}</span></li>`;
+    }).join('');
+}
+
 async function loadStatus() {
     const r = await fetch('/api/status');
     const d = await r.json();
     document.getElementById('parker-pending').textContent = d.review.pending_drafts;
     document.getElementById('parker-warnings').textContent = d.review.drafts_with_warnings;
     document.getElementById('parker-next').textContent = d.next_action;
+    renderRecentPosts(d.recent_posts || []);
 }
 
 async function loadSummary() {

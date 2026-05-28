@@ -32,6 +32,8 @@ The Hub shows PartnerDesk status, Parker Promo activity, today's summary, latest
 
 Future partners (Logan Leads, Olivia Office) appear as "Coming soon" cards.
 
+The Hub also shows Parker Promo's recent draft activity from the local SQLite database.
+
 ---
 
 ## Daily ops runner

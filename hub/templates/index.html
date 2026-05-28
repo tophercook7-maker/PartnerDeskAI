@@ -51,6 +51,21 @@
         .card h3 { margin-top: 0; }
         .card hr { border: 0; border-top: 1px solid #eee; margin: 0.6rem 0; }
         .muted { color: #888; font-size: 0.92rem; }
+        .recent-list { list-style: none; padding: 0; margin: 0; }
+        .recent-list li {
+            padding: 0.4rem 0; border-bottom: 1px solid #f0f0f0;
+            font-family: ui-monospace, Menlo, Consolas, monospace;
+            font-size: 0.92rem;
+        }
+        .recent-list li:last-child { border-bottom: 0; }
+        .status-badge {
+            display: inline-block; padding: 0.05rem 0.5rem;
+            border-radius: 3px; font-size: 0.78rem; font-weight: 500;
+            margin-left: 0.25rem;
+        }
+        .status-draft    { background: #fff3cd; color: #856404; }
+        .status-approved { background: #d4edda; color: #155724; }
+        .status-rejected { background: #f8d7da; color: #721c24; }
         pre {
             white-space: pre-wrap; word-wrap: break-word;
             font-family: ui-monospace, Menlo, Consolas, monospace;
@@ -96,6 +111,13 @@
                 <div class="muted">Coming soon</div>
             </div>
         </div>
+    </section>
+
+    <section>
+        <h2>Recent Parker Work</h2>
+        <ul id="recent-posts" class="recent-list">
+            <li class="muted">Loading…</li>
+        </ul>
     </section>
 
     <section>

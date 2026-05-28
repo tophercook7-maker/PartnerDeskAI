@@ -16,6 +16,7 @@ the underlying scripts (daily_runner, status_snapshot, morning_summary).
 The Hub only reads files and POSTs to those scripts.
 """
 
+import sqlite3
 import subprocess
 import sys
 from datetime import datetime
@@ -49,10 +50,40 @@ def index(request: Request) -> HTMLResponse:
 
 # --- Read-only data endpoints ---------------------------------------------
 
+DB_PATH = ROOT / "database" / "partnerdesk.db"
+
+
+def _recent_posts(limit: int = 8) -> list[dict]:
+    """
+    Read-only: latest `limit` rows from posts ordered newest first.
+    Returns id/platform/topic/status/created_at only — content is never
+    included so the Hub API doesn't leak full draft bodies.
+    """
+    if not DB_PATH.is_file():
+        return []
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT id, platform, topic, status, created_at "
+            "FROM posts ORDER BY created_at DESC, id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [dict(r) for r in rows]
+
+
 @app.get("/api/status")
 def api_status() -> JSONResponse:
-    """Same dict as `python3 automation/status.py --json`."""
-    return JSONResponse(status_mod._gather_status())
+    """
+    Same dict as `python3 automation/status.py --json`, plus a Hub-only
+    `recent_posts` field for the dashboard's Recent Parker Work section.
+    status._gather_status() itself is unchanged.
+    """
+    data = status_mod._gather_status()
+    data["recent_posts"] = _recent_posts(limit=8)
+    return JSONResponse(data)
 
 
 @app.get("/api/summary")
