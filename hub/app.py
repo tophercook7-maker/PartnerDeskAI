@@ -119,6 +119,71 @@ class StatusUpdate(BaseModel):
     status: str
 
 
+class BatchStatusUpdate(BaseModel):
+    ids: list[int]
+    status: str
+
+
+# NOTE: the batch route MUST be declared before the parameterized
+# /api/posts/{post_id}/status route — FastAPI matches routes in declaration
+# order, and "batch" would otherwise be parsed as a (non-int) post_id and
+# return 422 instead of reaching this handler.
+@app.post("/api/posts/batch/status")
+def api_batch_set_post_status(body: BatchStatusUpdate) -> dict:
+    """
+    Set the same status on a batch of posts. Mirrors the single-post
+    endpoint exactly per id: mark_status, record_history on 'approved',
+    and clear_queue_pointer_if_done on approved/rejected dates.
+
+    Validation:
+      - Empty `ids` list -> 400
+      - Unknown `status`  -> 400
+      - Non-int ids or missing fields -> Pydantic 422 (handled before
+        the handler runs)
+
+    Missing ids do NOT 404 — they're collected into `missing_ids` so a
+    partial batch still completes. The response includes both updated
+    and missing id lists plus their counts so the UI can show a clean
+    summary.
+
+    Never posts publicly.
+    """
+    if body.status not in _ALLOWED_STATUS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status {body.status!r}; allowed: {sorted(_ALLOWED_STATUS)}",
+        )
+    if not body.ids:
+        raise HTTPException(status_code=400, detail="ids must be a non-empty list")
+
+    updated_ids: list[int] = []
+    missing_ids: list[int] = []
+    touched_dates: set[str] = set()
+
+    for post_id in body.ids:
+        post = approval_manager.get_post(post_id)
+        if post is None:
+            missing_ids.append(post_id)
+            continue
+        approval_manager.mark_status(post_id, body.status)
+        if body.status == "approved":
+            approval_manager.record_history(post["topic"], post["platform"])
+        if body.status in ("approved", "rejected"):
+            touched_dates.add(post["created_at"][:10])
+        updated_ids.append(post_id)
+
+    for d in touched_dates:
+        approval_manager.clear_queue_pointer_if_done(d)
+
+    return {
+        "status":        body.status,
+        "updated_ids":   updated_ids,
+        "missing_ids":   missing_ids,
+        "updated_count": len(updated_ids),
+        "missing_count": len(missing_ids),
+    }
+
+
 @app.post("/api/posts/{post_id}/status")
 def api_set_post_status(post_id: int, body: StatusUpdate) -> dict:
     """

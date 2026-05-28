@@ -46,6 +46,8 @@ Recent Parker Work can be searched and filtered by platform or status.
 
 The Recent Parker Work filters include a live "Showing X of Y" counter.
 
+The Hub can approve all currently visible Recent Parker Work rows after filtering. Approval updates the local database and post history only; it does not post publicly.
+
 ---
 
 ## Daily ops runner

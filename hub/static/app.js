@@ -18,12 +18,16 @@ function _matchesFilters(post, search, platform, status) {
     return true;
 }
 
-function applyRecentFilters() {
+function _getFilteredRecentPosts() {
     const search   = document.getElementById('filter-search').value.trim();
     const platform = document.getElementById('filter-platform').value;
     const status   = document.getElementById('filter-status').value;
-    const counter  = document.getElementById('filter-count');
-    const total    = _recentPosts.length;
+    return _recentPosts.filter(p => _matchesFilters(p, search, platform, status));
+}
+
+function applyRecentFilters() {
+    const counter = document.getElementById('filter-count');
+    const total   = _recentPosts.length;
 
     // No data yet — let renderRecentPosts show its empty state.
     if (total === 0) {
@@ -32,7 +36,7 @@ function applyRecentFilters() {
         return;
     }
 
-    const filtered = _recentPosts.filter(p => _matchesFilters(p, search, platform, status));
+    const filtered = _getFilteredRecentPosts();
     counter.textContent = `Showing ${filtered.length} of ${total}`;
 
     if (filtered.length === 0) {
@@ -168,6 +172,57 @@ document.getElementById('recent-posts').addEventListener('click', (e) => {
 document.getElementById('filter-search').addEventListener('input',  applyRecentFilters);
 document.getElementById('filter-platform').addEventListener('change', applyRecentFilters);
 document.getElementById('filter-status').addEventListener('change',   applyRecentFilters);
+
+// Approve all currently visible (filtered) drafts in one batched POST.
+document.getElementById('approve-visible').addEventListener('click', async () => {
+    const visible = _getFilteredRecentPosts();
+    if (visible.length === 0) {
+        document.getElementById('cmd-status').textContent =
+            'No visible drafts to approve.';
+        document.getElementById('cmd-output').textContent = '';
+        return;
+    }
+    if (!confirm(`Approve ${visible.length} visible draft(s)? This does not post publicly.`)) {
+        return;
+    }
+    setBusy(true);
+    document.getElementById('cmd-status').textContent =
+        `Approving ${visible.length} draft(s)…`;
+    document.getElementById('cmd-output').textContent = '';
+    try {
+        const r = await fetch('/api/posts/batch/status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ids: visible.map(p => p.id),
+                status: 'approved',
+            }),
+        });
+        if (!r.ok) {
+            const errText = await r.text();
+            showCmd('Approve visible',
+                    { exit_code: r.status, stdout: '', stderr: errText });
+            return;
+        }
+        const d = await r.json();
+        const lines = [
+            `Updated ${d.updated_count} draft(s): [${d.updated_ids.join(', ')}]`,
+        ];
+        if (d.missing_count > 0) {
+            lines.push(`Missing ${d.missing_count} id(s): [${d.missing_ids.join(', ')}]`);
+        }
+        lines.push('Approval updates the local database and post history only; ' +
+                   'it does not post publicly.');
+        showCmd('Approve visible',
+                { exit_code: 0, stdout: lines.join('\n'), stderr: '' });
+        await refreshAll();
+    } catch (err) {
+        document.getElementById('cmd-status').textContent =
+            'Batch approve failed: ' + err;
+    } finally {
+        setBusy(false);
+    }
+});
 
 async function loadStatus() {
     const r = await fetch('/api/status');
