@@ -16,10 +16,63 @@ function renderRecentPosts(posts) {
     el.innerHTML = posts.map(p => {
         const cls = knownStatus.has(p.status) ? p.status : 'draft';
         const topic = p.topic ? _escape(p.topic) : '(no topic)';
-        return `<li>#${p.id} ${_escape(p.platform)} — ${topic}` +
+        return `<li data-id="${p.id}">#${p.id} ${_escape(p.platform)} — ${topic}` +
                ` <span class="status-badge status-${cls}">${_escape(p.status)}</span></li>`;
     }).join('');
 }
+
+
+// --- Draft preview modal -------------------------------------------------
+
+function openPreview(postId) {
+    const overlay = document.getElementById('preview-overlay');
+    document.getElementById('preview-platform').textContent = '…';
+    document.getElementById('preview-topic').textContent = '…';
+    document.getElementById('preview-status').textContent = '…';
+    document.getElementById('preview-created').textContent = '…';
+    document.getElementById('preview-content').textContent = 'Loading…';
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+
+    fetch(`/api/posts/${encodeURIComponent(postId)}`)
+        .then(r => {
+            if (!r.ok) throw new Error('http ' + r.status);
+            return r.json();
+        })
+        .then(d => {
+            document.getElementById('preview-platform').textContent = d.platform;
+            document.getElementById('preview-topic').textContent = d.topic || '(no topic)';
+            document.getElementById('preview-status').textContent = d.status;
+            document.getElementById('preview-created').textContent = d.created_at;
+            document.getElementById('preview-content').textContent = d.content || '(empty)';
+        })
+        .catch(() => {
+            document.getElementById('preview-content').textContent =
+                'Could not load draft preview.';
+        });
+}
+
+function closePreview() {
+    const overlay = document.getElementById('preview-overlay');
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
+}
+
+document.getElementById('preview-close').addEventListener('click', closePreview);
+document.getElementById('preview-overlay').addEventListener('click', (e) => {
+    // Close when the backdrop itself is clicked, not the panel inside it.
+    if (e.target.id === 'preview-overlay') closePreview();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closePreview();
+});
+
+// Event delegation: any <li data-id="…"> inside #recent-posts opens preview.
+document.getElementById('recent-posts').addEventListener('click', (e) => {
+    const li = e.target.closest('li[data-id]');
+    if (!li) return;
+    openPreview(li.dataset.id);
+});
 
 async function loadStatus() {
     const r = await fetch('/api/status');

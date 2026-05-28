@@ -34,6 +34,8 @@ Future partners (Logan Leads, Olivia Office) appear as "Coming soon" cards.
 
 The Hub also shows Parker Promo's recent draft activity from the local SQLite database.
 
+Recent Parker Work rows can be clicked to preview draft content directly in the Hub.
+
 ---
 
 ## Daily ops runner

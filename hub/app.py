@@ -22,7 +22,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -31,8 +31,10 @@ from fastapi.templating import Jinja2Templates
 ROOT = Path(__file__).resolve().parent.parent
 HUB_DIR = Path(__file__).resolve().parent
 
-# Make automation/ importable so we can reuse status._gather_status().
+# Make automation/ importable so we can reuse status._gather_status()
+# and approval_manager.get_post() (read-only single-row helper).
 sys.path.insert(0, str(ROOT / "automation"))
+import approval_manager  # noqa: E402
 import status as status_mod  # noqa: E402
 
 
@@ -84,6 +86,29 @@ def api_status() -> JSONResponse:
     data = status_mod._gather_status()
     data["recent_posts"] = _recent_posts(limit=8)
     return JSONResponse(data)
+
+
+@app.get("/api/posts/{post_id}")
+def api_post(post_id: int) -> dict:
+    """
+    Return a single post (including content) for the Hub's draft preview.
+    Content is shipped here on purpose because the caller asked for a
+    specific id; the list endpoint at /api/status still hides it.
+    404 when no row matches.
+    """
+    post = approval_manager.get_post(post_id)
+    if post is None:
+        raise HTTPException(status_code=404, detail=f"Post {post_id} not found")
+    # Match the documented shape exactly — drop hashtags/image_idea so the
+    # Hub's API surface stays small and the preview UI stays simple.
+    return {
+        "id":         post["id"],
+        "platform":   post["platform"],
+        "topic":      post["topic"],
+        "status":     post["status"],
+        "created_at": post["created_at"],
+        "content":    post["content"],
+    }
 
 
 @app.get("/api/summary")
