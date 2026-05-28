@@ -83,6 +83,15 @@ The Hub shows which publishing platforms are configured by checking required `.e
 
 The Connections card lists every supported publishing platform (LinkedIn, Facebook, Google Business Profile, Instagram) along with its status (`Connected` or `Missing setup`). Missing platforms show the *names* of the env keys that still need to be set — values are never returned by the API or rendered in the page.
 
+### Connection Wizard
+
+```bash
+python3 automation/connect_wizard.py            # interactive menu
+python3 automation/connect_wizard.py status     # one-shot status report
+```
+
+The wizard helps Topher connect publishing platforms by showing missing `.env` keys and opening the correct setup pages (via stdlib `webbrowser`). It never prints secret values, never auto-logs in, never bypasses OAuth, and never posts publicly. Each Connections card row in the Hub also exposes an **Open Setup Help** button that opens the same setup URL directly in a new tab.
+
 ---
 
 ## LinkedIn publishing

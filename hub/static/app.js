@@ -621,14 +621,35 @@ function renderConnections(items) {
         const missingLine = c.missing && c.missing.length
             ? `<div class="connection-missing">Missing: ${c.missing.map(_escape).join(', ')}</div>`
             : '';
+        // The Setup Help button opens the platform's setup URL in a new
+        // tab. Disabled if /api/connections didn't return a URL.
+        const url = c.setup_url || '';
+        const setupBtn = url
+            ? `<button class="row-action" data-action="open-setup" ` +
+              `data-url="${_escape(url)}">Open Setup Help</button>`
+            : '';
         return (
-            `<li>${_escape(c.platform)} — ` +
-              `<span class="status-badge ${statusClass}">${statusText}</span>` +
-              missingLine +
+            `<li class="connection-row">` +
+              `<span class="connection-text">` +
+                `${_escape(c.platform)} — ` +
+                `<span class="status-badge ${statusClass}">${statusText}</span>` +
+                missingLine +
+              `</span>` +
+              setupBtn +
             `</li>`
         );
     }).join('');
 }
+
+// Open Setup Help: launch the platform's setup URL in a new tab.
+// noopener prevents the opened page from manipulating window.opener.
+document.getElementById('connections-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-action="open-setup"]');
+    if (!btn) return;
+    const url = btn.dataset.url;
+    if (!url) return;
+    window.open(url, '_blank', 'noopener');
+});
 
 async function loadConnections() {
     try {

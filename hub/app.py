@@ -570,6 +570,16 @@ _PLATFORM_ENV_REQUIREMENTS = {
     ],
 }
 
+# Setup-help URLs surfaced to the Hub so the "Open Setup Help" button
+# knows where to open. Mirrors automation/connect_wizard.py's
+# PLATFORM_CONFIGS — see that file for the longer setup notes.
+_PLATFORM_SETUP_URLS = {
+    "LinkedIn":                "https://www.linkedin.com/developers/",
+    "Facebook":                "https://developers.facebook.com/",
+    "Google Business Profile": "https://business.google.com/",
+    "Instagram":               "https://developers.facebook.com/",
+}
+
 
 @app.get("/api/connections")
 def api_connections() -> dict:
@@ -585,9 +595,10 @@ def api_connections() -> dict:
     for platform, keys in _PLATFORM_ENV_REQUIREMENTS.items():
         missing = [k for k in keys if not (os.getenv(k) or "").strip()]
         connections.append({
-            "platform": platform,
-            "status": "not_configured" if missing else "connected",
-            "missing": missing,
+            "platform":  platform,
+            "status":    "not_configured" if missing else "connected",
+            "missing":   missing,
+            "setup_url": _PLATFORM_SETUP_URLS.get(platform, ""),
         })
     return {"connections": connections}
 
