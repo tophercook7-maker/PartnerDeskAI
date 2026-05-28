@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS posts (
     hashtags TEXT,
     image_idea TEXT,
     status TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    edited_at TIMESTAMP NULL
 );
 
 CREATE TABLE IF NOT EXISTS post_history (
@@ -38,12 +39,25 @@ CREATE TABLE IF NOT EXISTS post_history (
 """
 
 
+def _migrate_posts_columns(conn: sqlite3.Connection) -> None:
+    """
+    Bring an existing posts table up to the current schema. Only adds
+    columns that are missing; never drops, never renames, never rebuilds.
+    Safe to run repeatedly — older installs get the column once, newer
+    installs get a no-op PRAGMA check.
+    """
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(posts)").fetchall()}
+    if "edited_at" not in existing:
+        conn.execute("ALTER TABLE posts ADD COLUMN edited_at TIMESTAMP NULL")
+
+
 def init_db() -> None:
-    """Ensure the database file and required tables exist."""
+    """Ensure the database file, required tables, and column migrations exist."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     try:
         conn.executescript(SCHEMA)
+        _migrate_posts_columns(conn)
         conn.commit()
     finally:
         conn.close()
@@ -98,7 +112,8 @@ def get_post(post_id: int) -> dict | None:
     conn = _connect()
     try:
         row = conn.execute(
-            "SELECT id, platform, topic, content, hashtags, image_idea, status, created_at "
+            "SELECT id, platform, topic, content, hashtags, image_idea, status, "
+            "created_at, edited_at "
             "FROM posts WHERE id = ?",
             (post_id,),
         ).fetchone()

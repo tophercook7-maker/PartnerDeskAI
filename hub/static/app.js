@@ -4,6 +4,11 @@ function _escape(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function _fmtEdited(v) {
+    // posted_date / edited_at look like "YYYY-MM-DD HH:MM:SS" — trim to minutes.
+    return v ? String(v).slice(0, 16) : 'never';
+}
+
 // Cache of the latest /api/status recent_posts so the filters can re-render
 // without re-fetching when the user types.
 let _recentPosts = [];
@@ -104,6 +109,7 @@ function openPreview(postId) {
     document.getElementById('preview-topic').textContent = '…';
     document.getElementById('preview-status').textContent = '…';
     document.getElementById('preview-created').textContent = '…';
+    document.getElementById('preview-edited').textContent = '…';
     document.getElementById('preview-content').textContent = 'Loading…';
     overlay.classList.add('open');
     overlay.setAttribute('aria-hidden', 'false');
@@ -118,6 +124,7 @@ function openPreview(postId) {
             document.getElementById('preview-topic').textContent = d.topic || '(no topic)';
             document.getElementById('preview-status').textContent = d.status;
             document.getElementById('preview-created').textContent = d.created_at;
+            document.getElementById('preview-edited').textContent = _fmtEdited(d.edited_at);
             document.getElementById('preview-content').textContent = d.content || '(empty)';
         })
         .catch(() => {
@@ -237,9 +244,10 @@ document.getElementById('preview-save').addEventListener('click', async () => {
             return;
         }
         const d = await r.json();
-        // Update the displayed content with the server's response (so we
-        // reflect whatever the database actually stored).
+        // Update the displayed content and edited-at with the server's
+        // response (so we reflect whatever the database actually stored).
         document.getElementById('preview-content').textContent = d.content;
+        document.getElementById('preview-edited').textContent  = _fmtEdited(d.edited_at);
         showCmd(`Edit #${id}`, {
             exit_code: 0,
             stdout: `Saved edits to post #${d.id}.\n` +
@@ -475,11 +483,15 @@ function renderReady(posts) {
     }
     el.innerHTML = posts.map(p => {
         const topic = p.topic ? _escape(p.topic) : '(no topic)';
+        const editedBadge = p.edited_at
+            ? ` <span class="edited-badge" title="Last edited ${_escape(_fmtEdited(p.edited_at))}">edited</span>`
+            : '';
         return (
             `<li data-id="${p.id}">` +
               `<span class="row-main">` +
                 `#${p.id} ${_escape(p.platform)} — ${topic} ` +
                 `<span class="status-badge status-approved">approved</span>` +
+                editedBadge +
               `</span>` +
               `<span class="row-actions">` +
                 `<button class="row-action" data-action="copy" ` +

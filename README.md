@@ -58,6 +58,8 @@ Ready to Post items can be marked as posted after manual publishing. This only u
 
 Draft content can be edited directly in the Hub preview modal before approval, copying, or manual posting. Editing only updates the local SQLite content field.
 
+Edited drafts track a local `edited_at` timestamp for review history. Editing remains local-only and does not publish publicly.
+
 ---
 
 ## Daily ops runner

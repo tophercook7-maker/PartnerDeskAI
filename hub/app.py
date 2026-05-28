@@ -38,6 +38,10 @@ sys.path.insert(0, str(ROOT / "automation"))
 import approval_manager  # noqa: E402
 import status as status_mod  # noqa: E402
 
+# Run any pending column migrations (e.g. v4.0's edited_at) on startup so
+# the Hub doesn't return KeyError before the first approval_manager call.
+approval_manager.init_db()
+
 
 app = FastAPI(title="PartnerDesk Hub")
 app.mount("/static", StaticFiles(directory=str(HUB_DIR / "static")), name="static")
@@ -59,8 +63,8 @@ DB_PATH = ROOT / "database" / "partnerdesk.db"
 def _recent_posts(limit: int = 8) -> list[dict]:
     """
     Read-only: latest `limit` rows from posts ordered newest first.
-    Returns id/platform/topic/status/created_at only — content is never
-    included so the Hub API doesn't leak full draft bodies.
+    Returns id/platform/topic/status/created_at/edited_at — content is
+    never included so the Hub API doesn't leak full draft bodies.
     """
     if not DB_PATH.is_file():
         return []
@@ -68,7 +72,7 @@ def _recent_posts(limit: int = 8) -> list[dict]:
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
-            "SELECT id, platform, topic, status, created_at "
+            "SELECT id, platform, topic, status, created_at, edited_at "
             "FROM posts ORDER BY created_at DESC, id DESC LIMIT ?",
             (limit,),
         ).fetchall()
@@ -107,7 +111,7 @@ def api_posts_ready() -> dict:
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
-            "SELECT id, platform, topic, status, created_at, content "
+            "SELECT id, platform, topic, status, created_at, edited_at, content "
             "FROM posts WHERE status = 'approved' "
             "ORDER BY created_at DESC, id DESC LIMIT 20"
         ).fetchall()
@@ -143,8 +147,11 @@ def api_update_post_content(post_id: int, body: ContentUpdate) -> dict:
 
     conn = sqlite3.connect(DB_PATH)
     try:
+        # Set edited_at in the same UPDATE so the timestamp reflects the
+        # exact moment the content actually changed.
         conn.execute(
-            "UPDATE posts SET content = ? WHERE id = ?",
+            "UPDATE posts SET content = ?, edited_at = CURRENT_TIMESTAMP "
+            "WHERE id = ?",
             (body.content, post_id),
         )
         conn.commit()
@@ -158,6 +165,7 @@ def api_update_post_content(post_id: int, body: ContentUpdate) -> dict:
         "topic":      updated["topic"],
         "status":     updated["status"],
         "created_at": updated["created_at"],
+        "edited_at":  updated["edited_at"],
         "content":    updated["content"],
     }
 
@@ -181,6 +189,7 @@ def api_post(post_id: int) -> dict:
         "topic":      post["topic"],
         "status":     post["status"],
         "created_at": post["created_at"],
+        "edited_at":  post["edited_at"],
         "content":    post["content"],
     }
 
@@ -302,6 +311,7 @@ def api_set_post_status(post_id: int, body: StatusUpdate) -> dict:
         "topic":      updated["topic"],
         "status":     updated["status"],
         "created_at": updated["created_at"],
+        "edited_at":  updated["edited_at"],
     }
 
 
