@@ -36,6 +36,7 @@ HUB_DIR = Path(__file__).resolve().parent
 # and approval_manager.get_post() (read-only single-row helper).
 sys.path.insert(0, str(ROOT / "automation"))
 import approval_manager  # noqa: E402
+import social_posters  # noqa: E402
 import status as status_mod  # noqa: E402
 
 # Run any pending column migrations (e.g. v4.0's edited_at) on startup so
@@ -122,6 +123,60 @@ def api_posts_ready() -> dict:
 
 class ContentUpdate(BaseModel):
     content: str
+
+
+class PublishRequest(BaseModel):
+    platform: str
+
+
+_SUPPORTED_PUBLISH_PLATFORMS = {"linkedin"}
+
+
+@app.post("/api/posts/{post_id}/publish")
+def api_publish_post(post_id: int, body: PublishRequest) -> dict:
+    """
+    Manually publish an approved draft to a real platform. v4.1 supports
+    LinkedIn only. Returns the structured {ok, message, platform, ...}
+    dict from social_posters so the Hub can render success or failure
+    inline without try/except.
+
+    Validation:
+      - unsupported platform   -> 400
+      - missing post           -> 404
+      - non-approved post      -> 400
+      - missing body field     -> Pydantic 422
+
+    On success the local post.status is flipped to 'posted' so it drops
+    out of the Ready to Post queue. On any failure (including the
+    "LinkedIn posting is not configured" path) the status is left
+    untouched.
+    """
+    platform_key = body.platform.strip().lower()
+    if platform_key not in _SUPPORTED_PUBLISH_PLATFORMS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported platform {body.platform!r}; "
+                   f"allowed: {sorted(_SUPPORTED_PUBLISH_PLATFORMS)}",
+        )
+
+    post = approval_manager.get_post(post_id)
+    if post is None:
+        raise HTTPException(status_code=404, detail=f"Post {post_id} not found")
+
+    if post["status"] != "approved":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only approved posts may be published; "
+                   f"post #{post_id} is {post['status']!r}",
+        )
+
+    result = social_posters.publish_linkedin_post(post["content"] or "")
+
+    # Only flip status when the connector confirms a successful publish.
+    if result.get("ok"):
+        approval_manager.mark_status(post_id, "posted")
+
+    return result
 
 
 @app.put("/api/posts/{post_id}")

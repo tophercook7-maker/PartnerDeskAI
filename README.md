@@ -62,6 +62,23 @@ Edited drafts track a local `edited_at` timestamp for review history. Editing re
 
 ---
 
+## LinkedIn publishing
+
+Approved LinkedIn drafts can be published manually from the Hub using the official LinkedIn Posts API.
+
+Publishing is never automatic. A post is only published after Topher clicks "Post to LinkedIn" in the Ready to Post queue and confirms the action in the browser prompt.
+
+Configure:
+
+- `LINKEDIN_ACCESS_TOKEN`
+- `LINKEDIN_AUTHOR_URN`
+
+inside `.env`. Optional `LINKEDIN_VERSION` (defaults to `202605`).
+
+If either of the required vars is unset, the Hub returns `LinkedIn posting is not configured.` and never makes an outbound call. On a successful publish, the local `posts.status` flips to `posted` so the item drops out of the Ready to Post queue. On any failure (network, auth, API error) the status is left at `approved` and the error is shown in the Hub's Command Output panel.
+
+---
+
 ## Daily ops runner
 
 ```bash
