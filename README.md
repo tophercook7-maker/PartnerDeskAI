@@ -101,6 +101,17 @@ python3 automation/connect_wizard.py verify facebook
 
 Verification never publishes content and never prints secret values. Facebook and Instagram run a real Graph API probe (`GET /{id}?fields=id,name|username`) using the `Authorization: Bearer` header so the token never appears in a URL. LinkedIn and Google Business Profile currently report `configured (live verification not implemented yet)` — their read endpoints depend on OAuth scopes / API surfaces that vary per setup, and a conservative placeholder avoids false-negative auth errors on a perfectly good posting token. The Hub Connections card exposes the same probe via per-row **Verify** buttons that call `POST /api/connections/verify`.
 
+### Verified publishing connections
+
+Verified connections are required before publishing is enabled.
+
+Connection states:
+- **verified** — env keys present AND the latest verify probe succeeded. Publish buttons are enabled.
+- **configured** — env keys present, but verify has never run or the last verify failed. Publish buttons are disabled with the tooltip *"Verify this connection before publishing."*
+- **not_configured** — env keys missing. Publish buttons are disabled, and the Connections card lists which env keys to set.
+
+The publish endpoint (`POST /api/posts/{id}/publish`) also enforces the same gate server-side, so a manually-stripped disabled attribute on a button can't bypass safety. State is persisted to `data/connection_status.json` (gitignored — only the empty `data/.gitkeep` placeholder is tracked). The cache stores the state, the last verify timestamp, and the human-readable message — never tokens.
+
 ---
 
 ## LinkedIn publishing

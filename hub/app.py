@@ -39,6 +39,7 @@ HUB_DIR = Path(__file__).resolve().parent
 # and approval_manager.get_post() (read-only single-row helper).
 sys.path.insert(0, str(ROOT / "automation"))
 import approval_manager  # noqa: E402
+import connection_state  # noqa: E402
 import social_posters  # noqa: E402
 import status as status_mod  # noqa: E402
 
@@ -198,6 +199,19 @@ def api_publish_post(post_id: int, body: PublishRequest) -> dict:
             status_code=400,
             detail=f"Post #{post_id} is for {post['platform']!r}, "
                    f"cannot publish via the {platform_key!r} connector.",
+        )
+
+    # v4.9 hard gate: only platforms whose latest verify probe
+    # succeeded may be published to. "configured" (env set but never
+    # verified, or last verify failed) is NOT enough.
+    trust = connection_state.compute_state(platform_key)
+    if trust["state"] != "verified":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{expected_platform} connection is {trust['state']!r} — "
+                f"verify the connection before publishing."
+            ),
         )
 
     publisher = _PLATFORM_KEY_TO_PUBLISHER[platform_key]
@@ -611,7 +625,14 @@ def api_verify_connection(body: VerifyRequest) -> dict:
             detail=f"Unsupported platform {body.platform!r}; "
                    f"allowed: {sorted(_VERIFY_HANDLERS)}",
         )
-    return _VERIFY_HANDLERS[key]()
+    result = _VERIFY_HANDLERS[key]()
+    # Persist the outcome so /api/connections (and the publish gate)
+    # reflect the new trust state. record_verification handles the
+    # env-missing case correctly — see connection_state.py.
+    connection_state.record_verification(
+        key, ok=bool(result.get("ok")), message=result.get("message", "")
+    )
+    return result
 
 
 @app.get("/api/connections")
@@ -624,14 +645,21 @@ def api_connections() -> dict:
     no outbound calls, no DB writes. Treats whitespace-only values as missing
     so a stray space in .env doesn't count as "configured."
     """
+    cache = connection_state.load_states()
     connections = []
     for platform, keys in _PLATFORM_ENV_REQUIREMENTS.items():
         missing = [k for k in keys if not (os.getenv(k) or "").strip()]
+        # Resolve the canonical key the cache uses ("linkedin",
+        # "google_business_profile", …) from the display name.
+        platform_key = platform.lower().replace(" ", "_")
+        state = connection_state.compute_state(platform_key, cache)
         connections.append({
-            "platform":  platform,
-            "status":    "not_configured" if missing else "connected",
-            "missing":   missing,
-            "setup_url": _PLATFORM_SETUP_URLS.get(platform, ""),
+            "platform":         platform,
+            "status":           state["state"],   # verified | configured | not_configured
+            "missing":          missing,
+            "setup_url":        _PLATFORM_SETUP_URLS.get(platform, ""),
+            "last_verified_at": state["last_verified_at"],
+            "last_message":     state["last_message"],
         })
     return {"connections": connections}
 

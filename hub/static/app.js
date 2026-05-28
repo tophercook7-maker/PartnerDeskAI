@@ -585,21 +585,25 @@ async function loadAnalytics() {
 let _connectionsByPlatform = {};
 
 function isPlatformConnected(platform) {
+    // v4.9: "connected" now means "verified" — env presence alone is
+    // no longer enough to enable a publish button. The server's
+    // /api/posts/{id}/publish endpoint enforces the same gate.
     const key = (platform || '').toLowerCase();
     const c = _connectionsByPlatform[key];
-    return !!(c && c.status === 'connected');
+    return !!(c && c.status === 'verified');
 }
 
 function _publishButtonHTML(postId, platform, actionKey, label) {
-    // UX-only safety: dim the button when the platform's env keys are
-    // missing. The publish endpoints still validate server-side, so this
-    // is defense-in-depth, not the only check.
-    const connected     = isPlatformConnected(platform);
-    const disabledAttr  = connected ? '' : ' disabled';
-    const disabledClass = connected ? '' : ' disabled';
-    const titleAttr     = connected
+    // Defense-in-depth: dim the button when the platform isn't
+    // verified. The publish endpoint also refuses with HTTP 400 in
+    // that state, so devtools-stripping the attribute doesn't bypass
+    // safety.
+    const verified      = isPlatformConnected(platform);
+    const disabledAttr  = verified ? '' : ' disabled';
+    const disabledClass = verified ? '' : ' disabled';
+    const titleAttr     = verified
         ? ''
-        : ` title="Configure ${_escape(platform)} in .env first."`;
+        : ' title="Verify this connection before publishing."';
     return (
         `<button class="row-action danger${disabledClass}" ` +
           `data-action="${actionKey}" data-id="${postId}"${disabledAttr}${titleAttr}>` +
@@ -614,12 +618,21 @@ function renderConnections(items) {
         el.innerHTML = '<li class="muted">No platforms configured.</li>';
         return;
     }
+    // v4.9: 3-state badge per platform.
+    const STATUS_MAP = {
+        verified:       { cls: 'status-approved', text: '🟢 Verified' },
+        configured:     { cls: 'status-draft',    text: '🟡 Configured' },
+        not_configured: { cls: 'status-rejected', text: '🔴 Missing setup' },
+    };
     el.innerHTML = items.map(c => {
-        const isConnected = c.status === 'connected';
-        const statusClass = isConnected ? 'status-approved' : 'status-rejected';
-        const statusText  = isConnected ? 'Connected' : 'Missing setup';
+        const s = STATUS_MAP[c.status] || STATUS_MAP.not_configured;
+        const statusClass = s.cls;
+        const statusText  = s.text;
         const missingLine = c.missing && c.missing.length
             ? `<div class="connection-missing">Missing: ${c.missing.map(_escape).join(', ')}</div>`
+            : '';
+        const checkedLine = c.last_verified_at
+            ? `<div class="connection-meta">Last checked: ${_escape(c.last_verified_at)}</div>`
             : '';
         // The Setup Help button opens the platform's setup URL in a
         // new tab. Disabled if /api/connections didn't return a URL.
@@ -639,6 +652,7 @@ function renderConnections(items) {
                 `${_escape(c.platform)} — ` +
                 `<span class="status-badge ${statusClass}">${statusText}</span>` +
                 missingLine +
+                checkedLine +
               `</span>` +
               `<span class="row-actions">` +
                 verifyBtn + setupBtn +
@@ -682,9 +696,11 @@ document.getElementById('connections-list').addEventListener('click', async (e) 
                     stdout: d.message || '',
                     stderr: '',
                 });
-                // Refresh so the Connected/Missing badges reflect any
-                // platform whose live state just changed.
+                // Refresh connections (badges flip) AND ready posts
+                // (publish buttons enable/disable based on the new
+                // verified state).
                 await loadConnections();
+                await loadReady();
             } else {
                 showCmd(`Verify (${platform})`, {
                     exit_code: r.status,

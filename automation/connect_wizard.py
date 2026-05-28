@@ -26,7 +26,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-import social_posters  # sibling in automation/
+import connection_state  # sibling in automation/
+import social_posters    # sibling in automation/
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -60,7 +61,7 @@ PLATFORM_CONFIGS = [
         ),
     },
     {
-        "key": "gbp",
+        "key": "google_business_profile",
         "name": "Google Business Profile",
         "env_keys": ["GBP_ACCESS_TOKEN", "GBP_ACCOUNT_ID", "GBP_LOCATION_ID"],
         "setup_urls": [
@@ -104,16 +105,32 @@ def _platform_status(platform: dict) -> dict:
     }
 
 
+_STATE_LABEL = {
+    "verified":       "VERIFIED",
+    "configured":     "CONFIGURED",
+    "not_configured": "NOT CONFIGURED",
+}
+
+
 def cmd_status() -> int:
-    """One-shot status report. Same shape as the Hub's /api/connections."""
+    """
+    One-shot 3-state report. Reads the connection_state cache so the
+    output matches the Hub's /api/connections exactly.
+    """
+    cache = connection_state.load_states()
     print("PartnerDesk Connections")
     print()
     for p in PLATFORM_CONFIGS:
-        s = _platform_status(p)
-        label = "Connected" if s["status"] == "connected" else "Missing setup"
-        print(f"  {p['name']:<26} {label}")
-        if s["missing"]:
-            print(f"      missing: {', '.join(s['missing'])}")
+        s = connection_state.compute_state(p["key"], cache)
+        label = _STATE_LABEL.get(s["state"], s["state"].upper())
+        line = f"  {p['name']:<26} {label}"
+        if s["last_verified_at"]:
+            line += f"   (last checked {s['last_verified_at']})"
+        print(line)
+        if s["state"] == "not_configured":
+            missing = [k for k in p["env_keys"] if not _key_present(k)]
+            if missing:
+                print(f"      missing: {', '.join(missing)}")
     return 0
 
 
@@ -230,6 +247,11 @@ def cmd_verify(platforms: list[str]) -> int:
     for key in targets:
         label, verifier = _VERIFIERS[key]
         result = verifier()
+        # Persist the outcome so /api/connections and the publish gate
+        # reflect the new trust state on the next read.
+        connection_state.record_verification(
+            key, ok=bool(result.get("ok")), message=result.get("message", "")
+        )
         marker = "[OK]" if result.get("ok") else "[--]"
         print(f"  {marker} {label}: {result.get('message','')}")
     return 0
