@@ -142,6 +142,31 @@ async function loadSummary() {
     document.getElementById('summary').textContent = d.content;
 }
 
+function renderApprovedHistory(items) {
+    const el = document.getElementById('approved-history');
+    if (!items || items.length === 0) {
+        el.innerHTML = '<li class="muted">No approved history yet.</li>';
+        return;
+    }
+    el.innerHTML = items.map(h => {
+        // posted_date is "YYYY-MM-DD HH:MM:SS" — show just the date portion.
+        const date = (h.posted_date || '').slice(0, 10);
+        return `<li>${_escape(h.platform)} — ${_escape(h.topic)} — ${_escape(date)}</li>`;
+    }).join('');
+}
+
+async function loadHistory() {
+    try {
+        const r = await fetch('/api/history?limit=20');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        renderApprovedHistory(d.items || []);
+    } catch (err) {
+        document.getElementById('approved-history').innerHTML =
+            '<li class="muted">Could not load history.</li>';
+    }
+}
+
 async function loadLogs() {
     const r = await fetch('/api/logs/latest');
     const d = await r.json();
@@ -158,7 +183,7 @@ async function loadLogs() {
 async function refreshAll() {
     document.getElementById('cmd-status').textContent = 'Reloading…';
     try {
-        await Promise.all([loadStatus(), loadSummary(), loadLogs()]);
+        await Promise.all([loadStatus(), loadSummary(), loadLogs(), loadHistory()]);
         document.getElementById('cmd-status').textContent = 'Hub refreshed.';
     } catch (err) {
         document.getElementById('cmd-status').textContent = 'Refresh failed: ' + err;

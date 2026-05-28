@@ -162,6 +162,29 @@ def api_set_post_status(post_id: int, body: StatusUpdate) -> dict:
     }
 
 
+@app.get("/api/history")
+def api_history(limit: int = 20) -> dict:
+    """
+    Read-only: latest post_history rows newest first. `limit` is clamped
+    to [1, 100] so a too-large or non-positive query param still produces
+    valid JSON instead of a 422.
+    """
+    limit = max(1, min(100, limit))
+    if not DB_PATH.is_file():
+        return {"items": []}
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT id, topic, platform, posted_date FROM post_history "
+            "ORDER BY posted_date DESC, id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return {"items": [dict(r) for r in rows]}
+
+
 @app.get("/api/summary")
 def api_summary() -> dict:
     """Read today's morning summary markdown, or report it's missing."""

@@ -38,6 +38,8 @@ Recent Parker Work rows can be clicked to preview draft content directly in the 
 
 Drafts can be approved or rejected from the Hub preview modal. Approval updates the local database and post history only; it does not post publicly.
 
+The Hub also shows an Approved History timeline from the local `post_history` table.
+
 ---
 
 ## Daily ops runner
