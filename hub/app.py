@@ -139,7 +139,12 @@ def api_post(post_id: int) -> dict:
     }
 
 
-_ALLOWED_STATUS = {"approved", "rejected", "draft"}
+# `posted` is set by the Hub's "Mark Posted" button after Topher manually
+# publishes an already-approved draft on the real platform. The status
+# update is local-only — no social media call is ever made. Posts in this
+# state drop out of the Ready to Post queue (which filters status='approved')
+# but stay in the posts table for historical visibility.
+_ALLOWED_STATUS = {"approved", "rejected", "draft", "posted"}
 
 
 class StatusUpdate(BaseModel):

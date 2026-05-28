@@ -144,7 +144,9 @@ async function _postSinglePostStatus(postId, newStatus, label) {
               ? 'Approval updates the local database and post history only; it does not post publicly.'
               : (newStatus === 'rejected'
                     ? 'Rejected drafts stay in the database; they will not be approved.'
-                    : '');
+                    : (newStatus === 'posted'
+                          ? 'Marked as posted locally. This does not publish anything; it only updates the local SQLite status.'
+                          : ''));
         const stdout = `Post #${d.id} ${d.platform} → ${d.status}\nTopic: ${d.topic}` +
                        (footer ? '\n' + footer : '');
         showCmd(label, { exit_code: 0, stdout, stderr: '' });
@@ -403,8 +405,10 @@ function renderReady(posts) {
                 `<span class="status-badge status-approved">approved</span>` +
               `</span>` +
               `<span class="row-actions">` +
-                `<button class="row-action ready-copy" data-id="${p.id}">` +
-                  `Copy Post Text</button>` +
+                `<button class="row-action" data-action="copy" ` +
+                  `data-id="${p.id}">Copy Post Text</button>` +
+                `<button class="row-action" data-action="mark-posted" ` +
+                  `data-id="${p.id}">Mark Posted</button>` +
               `</span>` +
             `</li>`
         );
@@ -425,27 +429,44 @@ async function loadReady() {
 }
 
 document.getElementById('ready-list').addEventListener('click', async (e) => {
-    const btn = e.target.closest('button.ready-copy');
+    const btn = e.target.closest('button[data-action]');
     if (!btn) return;
     e.stopPropagation();
     const id = btn.dataset.id;
-    const post = _readyPosts.find(p => String(p.id) === String(id));
-    if (!post) {
-        document.getElementById('cmd-status').textContent =
-            'Post not found in ready cache — try Refresh Hub.';
+
+    if (btn.dataset.action === 'copy') {
+        const post = _readyPosts.find(p => String(p.id) === String(id));
+        if (!post) {
+            document.getElementById('cmd-status').textContent =
+                'Post not found in ready cache — try Refresh Hub.';
+            return;
+        }
+        const text = post.content || '';
+        try {
+            await navigator.clipboard.writeText(text);
+            document.getElementById('cmd-status').textContent = 'Copied post text.';
+            document.getElementById('cmd-output').textContent =
+                `Copied #${post.id} ${post.platform} (${text.length} chars)\n` +
+                'Copying does not post publicly. Paste it into the target ' +
+                'platform when you are ready.';
+        } catch (err) {
+            document.getElementById('cmd-status').textContent =
+                'Clipboard write failed: ' + err;
+        }
         return;
     }
-    const text = post.content || '';
-    try {
-        await navigator.clipboard.writeText(text);
-        document.getElementById('cmd-status').textContent = 'Copied post text.';
-        document.getElementById('cmd-output').textContent =
-            `Copied #${post.id} ${post.platform} (${text.length} chars)\n` +
-            'Copying does not post publicly. Paste it into the target ' +
-            'platform when you are ready.';
-    } catch (err) {
-        document.getElementById('cmd-status').textContent =
-            'Clipboard write failed: ' + err;
+
+    if (btn.dataset.action === 'mark-posted') {
+        if (!confirm('Mark this post as posted? This only updates local tracking.')) {
+            return;
+        }
+        const ok = await _postSinglePostStatus(id, 'posted', `Mark posted #${id}`);
+        if (ok) {
+            document.getElementById('cmd-status').textContent =
+                `Marked #${id} as posted.`;
+            await refreshAll();
+        }
+        return;
     }
 });
 

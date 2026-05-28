@@ -54,6 +54,8 @@ Each Recent Parker Work row also has small ✓ / ✗ buttons for one-click appro
 
 Approved drafts appear in the Hub's Ready to Post queue. From there, Topher can copy the post text and manually publish it. Approval does not auto-post publicly.
 
+Ready to Post items can be marked as posted after manual publishing. This only updates local tracking and does not publish automatically.
+
 ---
 
 ## Daily ops runner
