@@ -145,6 +145,10 @@
             border-radius: 3px; font-size: 0.72rem; font-weight: 500;
             background: #e9ecef; color: #495057; margin-left: 0.25rem;
         }
+        .connection-missing {
+            font-size: 0.78rem; color: #856404; margin-top: 0.15rem;
+            font-family: ui-monospace, Menlo, Consolas, monospace;
+        }
 
         /* --- Ready to Post cards (v4.4) ----------------------------- */
         #ready-list { display: flex; flex-direction: column; gap: 0.75rem; }
@@ -272,6 +276,13 @@
         <div class="partner-rooms" id="partner-rooms">
             <div class="muted">Loading partners…</div>
         </div>
+    </section>
+
+    <section>
+        <h2>Connections</h2>
+        <ul id="connections-list" class="recent-list">
+            <li class="muted">Loading…</li>
+        </ul>
     </section>
 
     <section>

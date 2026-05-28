@@ -16,11 +16,14 @@ the underlying scripts (daily_runner, status_snapshot, morning_summary).
 The Hub only reads files and POSTs to those scripts.
 """
 
+import os
 import sqlite3
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -42,6 +45,11 @@ import status as status_mod  # noqa: E402
 # Run any pending column migrations (e.g. v4.0's edited_at) on startup so
 # the Hub doesn't return KeyError before the first approval_manager call.
 approval_manager.init_db()
+
+# Make .env vars available for /api/connections. social_posters also calls
+# load_dotenv on its own import; calling here is idempotent and ensures the
+# right .env loads regardless of import order.
+load_dotenv(ROOT / ".env")
 
 
 app = FastAPI(title="PartnerDesk Hub")
@@ -537,6 +545,51 @@ def _run(args: list[str]) -> dict:
         "stdout": result.stdout,
         "stderr": result.stderr,
     }
+
+
+# Map each platform's display name to the env keys it needs to publish.
+# The /api/connections endpoint reports only key NAMES — never values —
+# so this dict can be safely surfaced to the browser.
+_PLATFORM_ENV_REQUIREMENTS = {
+    "LinkedIn": [
+        "LINKEDIN_ACCESS_TOKEN",
+        "LINKEDIN_AUTHOR_URN",
+    ],
+    "Facebook": [
+        "FACEBOOK_PAGE_ID",
+        "FACEBOOK_PAGE_ACCESS_TOKEN",
+    ],
+    "Google Business Profile": [
+        "GBP_ACCESS_TOKEN",
+        "GBP_ACCOUNT_ID",
+        "GBP_LOCATION_ID",
+    ],
+    "Instagram": [
+        "INSTAGRAM_BUSINESS_ACCOUNT_ID",
+        "INSTAGRAM_ACCESS_TOKEN",
+    ],
+}
+
+
+@app.get("/api/connections")
+def api_connections() -> dict:
+    """
+    Reports which publishing platforms are configured by checking that each
+    platform's required env keys are present and non-empty.
+
+    Returns ONLY env key NAMES that are missing — never any value. No OAuth,
+    no outbound calls, no DB writes. Treats whitespace-only values as missing
+    so a stray space in .env doesn't count as "configured."
+    """
+    connections = []
+    for platform, keys in _PLATFORM_ENV_REQUIREMENTS.items():
+        missing = [k for k in keys if not (os.getenv(k) or "").strip()]
+        connections.append({
+            "platform": platform,
+            "status": "not_configured" if missing else "connected",
+            "missing": missing,
+        })
+    return {"connections": connections}
 
 
 @app.get("/api/partners")

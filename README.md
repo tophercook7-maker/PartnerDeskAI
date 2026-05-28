@@ -77,6 +77,14 @@ Edited drafts track a local `edited_at` timestamp for review history. Editing re
 
 ---
 
+## Connections
+
+The Hub shows which publishing platforms are configured by checking required `.env` keys. It never displays secret values.
+
+The Connections card lists every supported publishing platform (LinkedIn, Facebook, Google Business Profile, Instagram) along with its status (`Connected` or `Missing setup`). Missing platforms show the *names* of the env keys that still need to be set — values are never returned by the API or rendered in the page.
+
+---
+
 ## LinkedIn publishing
 
 Approved LinkedIn drafts can be published manually from the Hub using the official LinkedIn Posts API.

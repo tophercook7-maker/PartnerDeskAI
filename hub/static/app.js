@@ -577,6 +577,43 @@ async function loadAnalytics() {
     }
 }
 
+// --- Connections center -------------------------------------------------
+
+function renderConnections(items) {
+    const el = document.getElementById('connections-list');
+    if (!items || items.length === 0) {
+        el.innerHTML = '<li class="muted">No platforms configured.</li>';
+        return;
+    }
+    el.innerHTML = items.map(c => {
+        const isConnected = c.status === 'connected';
+        const statusClass = isConnected ? 'status-approved' : 'status-rejected';
+        const statusText  = isConnected ? 'Connected' : 'Missing setup';
+        const missingLine = c.missing && c.missing.length
+            ? `<div class="connection-missing">Missing: ${c.missing.map(_escape).join(', ')}</div>`
+            : '';
+        return (
+            `<li>${_escape(c.platform)} — ` +
+              `<span class="status-badge ${statusClass}">${statusText}</span>` +
+              missingLine +
+            `</li>`
+        );
+    }).join('');
+}
+
+async function loadConnections() {
+    try {
+        const r = await fetch('/api/connections');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        renderConnections(d.connections || []);
+    } catch (err) {
+        document.getElementById('connections-list').innerHTML =
+            '<li class="muted">Could not load connections.</li>';
+    }
+}
+
+
 // --- Ready to Post queue -------------------------------------------------
 
 // Approved posts come down with content so the Copy button can hand the
@@ -794,6 +831,7 @@ async function refreshAll() {
         await Promise.all([
             loadStatus(), loadSummary(), loadLogs(),
             loadHistory(), loadAnalytics(), loadReady(),
+            loadConnections(),
         ]);
         document.getElementById('cmd-status').textContent = 'Hub refreshed.';
     } catch (err) {
