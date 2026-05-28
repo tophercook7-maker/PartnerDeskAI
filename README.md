@@ -48,6 +48,8 @@ The Recent Parker Work filters include a live "Showing X of Y" counter.
 
 The Hub can approve all currently visible Recent Parker Work rows after filtering. Approval updates the local database and post history only; it does not post publicly.
 
+The Hub can also reject all currently visible Recent Parker Work rows after filtering. Rejected drafts stay in the database.
+
 ---
 
 ## Daily ops runner

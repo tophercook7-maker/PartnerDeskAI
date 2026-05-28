@@ -173,21 +173,21 @@ document.getElementById('filter-search').addEventListener('input',  applyRecentF
 document.getElementById('filter-platform').addEventListener('change', applyRecentFilters);
 document.getElementById('filter-status').addEventListener('change',   applyRecentFilters);
 
-// Approve all currently visible (filtered) drafts in one batched POST.
-document.getElementById('approve-visible').addEventListener('click', async () => {
+// Shared driver for the "Approve all visible" / "Reject all visible" buttons.
+// `opts` carries the user-facing copy so each button can stay short.
+async function _setVisibleStatus(targetStatus, opts) {
     const visible = _getFilteredRecentPosts();
     if (visible.length === 0) {
-        document.getElementById('cmd-status').textContent =
-            'No visible drafts to approve.';
+        document.getElementById('cmd-status').textContent = opts.emptyMsg;
         document.getElementById('cmd-output').textContent = '';
         return;
     }
-    if (!confirm(`Approve ${visible.length} visible draft(s)? This does not post publicly.`)) {
-        return;
-    }
+    const prompt = opts.confirmMsg.replace('{N}', visible.length);
+    if (!confirm(prompt)) return;
+
     setBusy(true);
     document.getElementById('cmd-status').textContent =
-        `Approving ${visible.length} draft(s)…`;
+        `${opts.label} — ${visible.length} draft(s)…`;
     document.getElementById('cmd-output').textContent = '';
     try {
         const r = await fetch('/api/posts/batch/status', {
@@ -195,12 +195,12 @@ document.getElementById('approve-visible').addEventListener('click', async () =>
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 ids: visible.map(p => p.id),
-                status: 'approved',
+                status: targetStatus,
             }),
         });
         if (!r.ok) {
             const errText = await r.text();
-            showCmd('Approve visible',
+            showCmd(opts.label,
                     { exit_code: r.status, stdout: '', stderr: errText });
             return;
         }
@@ -211,18 +211,38 @@ document.getElementById('approve-visible').addEventListener('click', async () =>
         if (d.missing_count > 0) {
             lines.push(`Missing ${d.missing_count} id(s): [${d.missing_ids.join(', ')}]`);
         }
-        lines.push('Approval updates the local database and post history only; ' +
-                   'it does not post publicly.');
-        showCmd('Approve visible',
+        lines.push(opts.successFooter);
+        showCmd(opts.label,
                 { exit_code: 0, stdout: lines.join('\n'), stderr: '' });
         await refreshAll();
     } catch (err) {
         document.getElementById('cmd-status').textContent =
-            'Batch approve failed: ' + err;
+            `${opts.label} failed: ` + err;
     } finally {
         setBusy(false);
     }
-});
+}
+
+document.getElementById('approve-visible').addEventListener('click', () =>
+    _setVisibleStatus('approved', {
+        label:         'Approve visible',
+        emptyMsg:      'No visible drafts to approve.',
+        confirmMsg:    'Approve {N} visible draft(s)? This does not post publicly.',
+        successFooter: 'Approval updates the local database and post history ' +
+                       'only; it does not post publicly.',
+    })
+);
+
+document.getElementById('reject-visible').addEventListener('click', () =>
+    _setVisibleStatus('rejected', {
+        label:         'Reject visible',
+        emptyMsg:      'No visible drafts to reject.',
+        confirmMsg:    'Reject {N} visible draft(s)? Rejected drafts stay in ' +
+                       'the database but will not be approved.',
+        successFooter: 'Rejected drafts stay in the database; they will not ' +
+                       'be approved.',
+    })
+);
 
 async function loadStatus() {
     const r = await fetch('/api/status');
