@@ -375,12 +375,120 @@ document.getElementById('reject-visible').addEventListener('click', () =>
     })
 );
 
+// --- Partner Rooms (v4.3) -----------------------------------------------
+
+// Human-readable labels for metric keys. Falls back to a humanized key
+// if a future metric isn't listed here, so adding a metric on the
+// backend doesn't break rendering.
+const _METRIC_LABELS = {
+    pending:             'Pending drafts',
+    approved:            'Approved',
+    posted:              'Posted',
+    prospects_tracked:   'Prospects tracked',
+    outreach_queue:      'Outreach queue',
+    summaries_generated: 'Summaries generated',
+    snapshots_archived:  'Snapshots archived',
+};
+
+function _humanMetric(key) {
+    return _METRIC_LABELS[key] || key.replace(/_/g, ' ');
+}
+
+function _partnerInitials(name) {
+    return name.split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
+}
+
+function renderPartners(partners) {
+    const el = document.getElementById('partner-rooms');
+    if (!partners || partners.length === 0) {
+        el.innerHTML = '<div class="muted">No partners.</div>';
+        return;
+    }
+    el.innerHTML = partners.map(p => {
+        const statusClass = p.status === 'active'
+            ? 'partner-status-active'
+            : 'partner-status-standby';
+        const statusLabel = p.status[0].toUpperCase() + p.status.slice(1);
+
+        // Metrics grid — each partner exposes its own keys.
+        const metricsHtml = Object.entries(p.metrics || {}).map(([k, v]) => {
+            // Parker's pending/approved/posted get id hooks so loadStatus
+            // and refresh paths can update them in place.
+            let valHtml = String(v);
+            if (p.key === 'parker') {
+                if (k === 'pending')  valHtml = `<span id="parker-pending">${v}</span>`;
+                if (k === 'approved') valHtml = `<span id="parker-approved">${v}</span>`;
+                if (k === 'posted')   valHtml = `<span id="parker-posted">${v}</span>`;
+            }
+            return `<div><strong>${_escape(_humanMetric(k))}:</strong> ${valHtml}</div>`;
+        }).join('');
+
+        const nextHtml = p.key === 'parker'
+            ? `<div class="partner-next"><strong>Next:</strong>` +
+              `<pre id="parker-next">…</pre></div>`
+            : '';
+
+        const actionsHtml = p.key === 'parker'
+            ? `<div class="partner-actions">` +
+                `<button data-partner-action="parker-refresh">Refresh</button>` +
+                `<button data-partner-action="parker-view-drafts">View drafts</button>` +
+              `</div>`
+            : `<div class="partner-actions">` +
+                `<button disabled>Coming Soon</button>` +
+              `</div>`;
+
+        return (
+            `<div class="partner-room ${_escape(p.key)}">` +
+              `<div class="partner-header">` +
+                `<div class="partner-avatar">${_escape(_partnerInitials(p.name))}</div>` +
+                `<div>` +
+                  `<h3>${_escape(p.name)}</h3>` +
+                  `<div class="partner-status ${statusClass}">${_escape(statusLabel)}</div>` +
+                `</div>` +
+              `</div>` +
+              `<div class="partner-role">${_escape(p.role || '')}</div>` +
+              `<div class="partner-metrics">${metricsHtml}</div>` +
+              nextHtml +
+              actionsHtml +
+            `</div>`
+        );
+    }).join('');
+}
+
+async function loadPartners() {
+    try {
+        const r = await fetch('/api/partners');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        renderPartners(d.partners || []);
+    } catch (err) {
+        document.getElementById('partner-rooms').innerHTML =
+            '<div class="muted">Could not load partners.</div>';
+    }
+}
+
+// Delegate Parker's room buttons. Logan/Olivia buttons are disabled.
+document.getElementById('partner-rooms').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-partner-action]');
+    if (!btn) return;
+    const action = btn.dataset.partnerAction;
+    if (action === 'parker-refresh') {
+        refreshAll();
+    } else if (action === 'parker-view-drafts') {
+        const target = document.getElementById('recent-posts');
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+});
+
 async function loadStatus() {
     const r = await fetch('/api/status');
     const d = await r.json();
-    document.getElementById('parker-pending').textContent = d.review.pending_drafts;
-    document.getElementById('parker-warnings').textContent = d.review.drafts_with_warnings;
-    document.getElementById('parker-next').textContent = d.next_action;
+    // Parker's pending count & next action live in the partner room now;
+    // update them in-place when they exist (post-loadPartners render).
+    const pending = document.getElementById('parker-pending');
+    if (pending) pending.textContent = d.review.pending_drafts;
+    const next = document.getElementById('parker-next');
+    if (next) next.textContent = d.next_action;
     _recentPosts = d.recent_posts || [];
     // Re-applies whatever filters the user has set; their input values
     // are preserved across refresh because the DOM is not torn down.
@@ -635,6 +743,10 @@ async function loadLogs() {
 async function refreshAll() {
     document.getElementById('cmd-status').textContent = 'Reloading…';
     try {
+        // Render partner rooms first so loadStatus() can populate
+        // Parker's pending/next-action spans (they only exist after
+        // renderPartners runs).
+        await loadPartners();
         await Promise.all([
             loadStatus(), loadSummary(), loadLogs(),
             loadHistory(), loadAnalytics(), loadReady(),

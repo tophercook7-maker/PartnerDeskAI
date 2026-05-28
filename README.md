@@ -12,6 +12,19 @@ Nothing is auto-posted.
 
 ---
 
+## Partners
+
+PartnerDeskAI is evolving into a multi-partner local AI operating system.
+
+Current partners:
+- **Parker Promo** — content + publishing
+- **Logan Leads** — lead generation (in progress)
+- **Olivia Office** — operations/admin (in progress)
+
+The Hub is the shared station where partners report activity and expose actions.
+
+---
+
 ## PartnerDesk Hub
 
 ```bash

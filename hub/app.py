@@ -539,6 +539,55 @@ def _run(args: list[str]) -> dict:
     }
 
 
+@app.get("/api/partners")
+def api_partners() -> dict:
+    """
+    Lightweight partner roster for the Hub's Partner Rooms section.
+    Parker's metrics are pulled live from the posts table; Logan and
+    Olivia ship as zero-valued placeholders for now. Read-only — no DB
+    writes, no OpenAI calls.
+    """
+    # Direct status_counts() so we get every status (including 'posted')
+    # without touching status._gather_status's documented JSON shape.
+    counts = approval_manager.status_counts() if DB_PATH.is_file() else {}
+
+    return {
+        "partners": [
+            {
+                "key":    "parker",
+                "name":   "Parker Promo",
+                "status": "active",
+                "role":   "Content + publishing",
+                "metrics": {
+                    "pending":  counts.get("draft", 0),
+                    "approved": counts.get("approved", 0),
+                    "posted":   counts.get("posted", 0),
+                },
+            },
+            {
+                "key":    "logan",
+                "name":   "Logan Leads",
+                "status": "standby",
+                "role":   "Lead generation",
+                "metrics": {
+                    "prospects_tracked": 0,
+                    "outreach_queue":    0,
+                },
+            },
+            {
+                "key":    "olivia",
+                "name":   "Olivia Office",
+                "status": "standby",
+                "role":   "Operations / admin",
+                "metrics": {
+                    "summaries_generated": 0,
+                    "snapshots_archived":  0,
+                },
+            },
+        ],
+    }
+
+
 @app.post("/api/run/daily-ops")
 def run_daily_ops() -> dict:
     """Full daily sequence: generate (calls OpenAI) + snapshot + summary."""

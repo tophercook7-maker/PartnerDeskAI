@@ -50,6 +50,80 @@
         .card.coming { opacity: 0.55; }
         .card h3 { margin-top: 0; }
         .card hr { border: 0; border-top: 1px solid #eee; margin: 0.6rem 0; }
+
+        /* --- Partner Rooms (v4.3) ----------------------------------- */
+        .partner-rooms {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        .partner-room {
+            border: 1px solid #ddd; border-radius: 8px;
+            padding: 1rem; background: #fff;
+            border-top: 4px solid #ccc;
+            transition: box-shadow 0.15s, transform 0.15s;
+            display: flex; flex-direction: column;
+        }
+        .partner-room:hover {
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+            transform: translateY(-1px);
+        }
+        .partner-room.parker { border-top-color: #2a6ec1; }
+        .partner-room.logan  { border-top-color: #7c4dff; }
+        .partner-room.olivia { border-top-color: #00897b; }
+
+        .partner-header {
+            display: flex; align-items: center;
+            gap: 0.75rem; margin-bottom: 0.5rem;
+        }
+        .partner-header h3 { margin: 0; font-size: 1.1rem; }
+        .partner-avatar {
+            width: 44px; height: 44px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            color: #fff; font-weight: 600; font-size: 0.95rem;
+            flex-shrink: 0; background: #999;
+        }
+        .partner-room.parker .partner-avatar { background: #2a6ec1; }
+        .partner-room.logan  .partner-avatar { background: #7c4dff; }
+        .partner-room.olivia .partner-avatar { background: #00897b; }
+
+        .partner-status {
+            display: inline-block;
+            font-size: 0.78rem; font-weight: 500;
+            padding: 0.05rem 0.5rem; border-radius: 3px;
+            margin-top: 0.2rem;
+        }
+        .partner-status-active  { background: #d4edda; color: #155724; }
+        .partner-status-standby { background: #e9ecef; color: #6c757d; }
+
+        .partner-role {
+            color: #666; font-size: 0.88rem; margin-bottom: 0.75rem;
+        }
+        .partner-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.25rem 0.75rem;
+            font-size: 0.9rem; margin-bottom: 0.75rem;
+        }
+        .partner-metrics > div {
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .partner-metrics strong { color: #555; font-weight: 500; }
+
+        .partner-next { font-size: 0.9rem; margin-bottom: 0.75rem; }
+        .partner-next pre {
+            margin: 0.25rem 0; padding: 0.4rem 0.6rem;
+            font-size: 0.85rem;
+        }
+
+        .partner-actions {
+            display: flex; gap: 0.5rem; flex-wrap: wrap;
+            margin-top: auto;
+        }
+        .partner-actions button {
+            font-size: 0.85rem; padding: 0.35rem 0.7rem;
+        }
+        .partner-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
         .muted { color: #888; font-size: 0.92rem; }
         .recent-list { list-style: none; padding: 0; margin: 0; }
         .recent-list li {
@@ -168,26 +242,9 @@
     </div>
 
     <section>
-        <h2>Partners</h2>
-        <div class="cards" id="partners">
-            <div class="card">
-                <h3>Parker Promo</h3>
-                <div class="muted">Status: Active</div>
-                <div class="muted">Role: Social media drafts, CTAs, offers, hashtag memory</div>
-                <hr>
-                <div>Pending drafts: <span id="parker-pending">…</span></div>
-                <div>Warnings: <span id="parker-warnings">…</span></div>
-                <div>Next action:</div>
-                <pre id="parker-next">…</pre>
-            </div>
-            <div class="card coming">
-                <h3>Logan Leads</h3>
-                <div class="muted">Coming soon</div>
-            </div>
-            <div class="card coming">
-                <h3>Olivia Office</h3>
-                <div class="muted">Coming soon</div>
-            </div>
+        <h2>Partner Rooms</h2>
+        <div class="partner-rooms" id="partner-rooms">
+            <div class="muted">Loading partners…</div>
         </div>
     </section>
 
