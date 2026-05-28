@@ -18,6 +18,67 @@
         }
         h1 { margin-bottom: 0; }
         .subtitle { color: #666; margin-top: 0.25rem; }
+
+        /* --- Mission Control (v5.1) -------------------------------- */
+        #mission-control-section {
+            background: linear-gradient(180deg, #1a1d24 0%, #232730 100%);
+            color: #e6e9ee;
+            padding: 1.25rem 1.5rem;
+            border-radius: 12px;
+            margin: 1.25rem 0 1.5rem;
+            border: 1px solid #2a2d33;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+        }
+        #mission-control-section h2 {
+            margin: 0 0 1rem 0; color: #fff;
+            font-size: 0.95rem; font-weight: 600;
+            letter-spacing: 1.5px; text-transform: uppercase;
+        }
+        .mission-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 0.75rem; margin-bottom: 1rem;
+        }
+        .stat-card {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px; padding: 0.85rem 1rem;
+        }
+        .stat-value {
+            font-size: 1.8rem; font-weight: 600;
+            color: #fff; line-height: 1; margin-bottom: 0.3rem;
+        }
+        .stat-label {
+            font-size: 0.72rem; color: #a8b0bd;
+            letter-spacing: 0.6px; text-transform: uppercase;
+        }
+        .mission-partner-strip {
+            display: flex; flex-wrap: wrap;
+            gap: 0.5rem 1rem; padding: 0.6rem 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            font-size: 0.88rem; color: #c5cbd6;
+        }
+        .partner-strip-item { display: inline-flex; align-items: center; gap: 0.3rem; }
+        .mission-mood {
+            font-size: 0.95rem; color: #c5cbd6; margin-top: 0.75rem;
+            display: flex; align-items: center; gap: 0.4rem;
+        }
+        /* Vivid mood badges (the muted .status-* palette gets washed
+           out on the dark Mission Control background). */
+        .mood-red    { background: #dc3545; color: #fff; padding: 0.15rem 0.6rem;
+                       border-radius: 3px; font-weight: 500; }
+        .mood-yellow { background: #ffc107; color: #5c4400; padding: 0.15rem 0.6rem;
+                       border-radius: 3px; font-weight: 500; }
+        .mood-green  { background: #28a745; color: #fff; padding: 0.15rem 0.6rem;
+                       border-radius: 3px; font-weight: 500; }
+        .partner-strip-badge {
+            font-size: 0.74rem; padding: 0.1rem 0.55rem;
+            border-radius: 3px; font-weight: 500;
+        }
+        .partner-strip-badge.active  { background: #28a745; color: #fff; }
+        .partner-strip-badge.standby { background: #ffc107; color: #5c4400; }
+        .partner-strip-badge.offline { background: #dc3545; color: #fff; }
         .row {
             display: flex; gap: 0.5rem; flex-wrap: wrap;
             margin: 1.5rem 0;
@@ -279,6 +340,13 @@
 <body>
     <h1>PartnerDesk Hub</h1>
     <div class="subtitle">Local AI Business Partner Station</div>
+
+    <section id="mission-control-section">
+        <h2>Mission Control</h2>
+        <div id="mission-control">
+            <div class="muted">Loading…</div>
+        </div>
+    </section>
 
     <div class="row">
         <button id="btn-refresh" class="primary">Refresh Hub</button>

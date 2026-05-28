@@ -9,6 +9,93 @@ function _fmtEdited(v) {
     return v ? String(v).slice(0, 16) : 'never';
 }
 
+
+// --- Mission Control (v5.1) ----------------------------------------------
+
+// Latest payloads from /api/status and /api/partners. Populated by the
+// existing loaders so renderMissionControl doesn't re-fetch.
+let _lastStatus = null;
+let _lastPartners = null;
+
+function _computeMood(status, readyCount) {
+    // Priority matches the spec — first matching rule wins.
+    if (status && status.health && status.health.status !== 'PASS') {
+        return { label: 'Needs attention', cls: 'mood-red' };
+    }
+    if (status && status.review && status.review.pending_drafts > 0) {
+        return { label: 'Needs review', cls: 'mood-yellow' };
+    }
+    if (readyCount > 0) {
+        return { label: 'Ready to publish', cls: 'mood-green' };
+    }
+    return { label: 'Ready', cls: 'mood-green' };
+}
+
+function _statCard(label, value) {
+    return (
+        `<div class="stat-card">` +
+          `<div class="stat-value">${_escape(String(value))}</div>` +
+          `<div class="stat-label">${_escape(label)}</div>` +
+        `</div>`
+    );
+}
+
+function _partnerBadgeClass(status) {
+    if (status === 'active')  return 'active';
+    if (status === 'standby') return 'standby';
+    return 'offline';
+}
+
+function renderMissionControl() {
+    const el = document.getElementById('mission-control');
+    if (!el) return;
+    // Don't render until we have at least the status payload — otherwise
+    // we'd show "0 / 0" and a misleading mood.
+    if (!_lastStatus) return;
+
+    const todaysDrafts = (_lastStatus.today && _lastStatus.today.markdown_files) || 0;
+    const pending      = (_lastStatus.review && _lastStatus.review.pending_drafts) || 0;
+    const readyCount   = _readyPosts.length;
+    const conns        = Object.values(_connectionsByPlatform || {});
+    const totalConns   = conns.length;
+    const verified     = conns.filter(c => c.status === 'verified').length;
+    const partners     = _lastPartners || [];
+    const mood         = _computeMood(_lastStatus, readyCount);
+
+    const statsHtml = (
+        `<div class="mission-stats">` +
+          _statCard("Today's Drafts", todaysDrafts) +
+          _statCard('Pending Review', pending) +
+          _statCard('Ready to Post',  readyCount) +
+          _statCard('Connections Verified', `${verified} / ${totalConns}`) +
+        `</div>`
+    );
+
+    const stripHtml = partners.length
+        ? `<div class="mission-partner-strip">` +
+            partners.map(p => {
+                const label = p.status[0].toUpperCase() + p.status.slice(1);
+                const cls   = _partnerBadgeClass(p.status);
+                return (
+                    `<span class="partner-strip-item">` +
+                      `<strong>${_escape(p.name)}:</strong>` +
+                      ` <span class="partner-strip-badge ${cls}">${_escape(label)}</span>` +
+                    `</span>`
+                );
+            }).join('') +
+          `</div>`
+        : '';
+
+    const moodHtml = (
+        `<div class="mission-mood">` +
+          `<strong>System Mood:</strong> ` +
+          `<span class="${mood.cls}">${_escape(mood.label)}</span>` +
+        `</div>`
+    );
+
+    el.innerHTML = statsHtml + stripHtml + moodHtml;
+}
+
 // Cache of the latest /api/status recent_posts so the filters can re-render
 // without re-fetching when the user types.
 let _recentPosts = [];
@@ -460,7 +547,8 @@ async function loadPartners() {
         const r = await fetch('/api/partners');
         if (!r.ok) throw new Error('http ' + r.status);
         const d = await r.json();
-        renderPartners(d.partners || []);
+        _lastPartners = d.partners || [];  // Mission Control reads this
+        renderPartners(_lastPartners);
     } catch (err) {
         document.getElementById('partner-rooms').innerHTML =
             '<div class="muted">Could not load partners.</div>';
@@ -483,6 +571,7 @@ document.getElementById('partner-rooms').addEventListener('click', (e) => {
 async function loadStatus() {
     const r = await fetch('/api/status');
     const d = await r.json();
+    _lastStatus = d;  // Mission Control reads this cached payload
     // Parker's pending count & next action live in the partner room now;
     // update them in-place when they exist (post-loadPartners render).
     const pending = document.getElementById('parker-pending');
@@ -962,6 +1051,9 @@ async function refreshAll() {
             loadStatus(), loadSummary(), loadLogs(),
             loadHistory(), loadAnalytics(), loadReady(),
         ]);
+        // Mission Control reads cached payloads from the loaders above,
+        // so it runs last to ensure every cache is populated.
+        renderMissionControl();
         document.getElementById('cmd-status').textContent = 'Hub refreshed.';
     } catch (err) {
         document.getElementById('cmd-status').textContent = 'Refresh failed: ' + err;
