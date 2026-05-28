@@ -56,6 +56,8 @@ Approved drafts appear in the Hub's Ready to Post queue. From there, Topher can 
 
 Ready to Post items can be marked as posted after manual publishing. This only updates local tracking and does not publish automatically.
 
+Draft content can be edited directly in the Hub preview modal before approval, copying, or manual posting. Editing only updates the local SQLite content field.
+
 ---
 
 ## Daily ops runner

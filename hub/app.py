@@ -116,6 +116,52 @@ def api_posts_ready() -> dict:
     return {"items": [dict(r) for r in rows]}
 
 
+class ContentUpdate(BaseModel):
+    content: str
+
+
+@app.put("/api/posts/{post_id}")
+def api_update_post_content(post_id: int, body: ContentUpdate) -> dict:
+    """
+    Update only `posts.content` for the given post. Does not change status,
+    never inserts post_history, never calls OpenAI.
+
+    Validation:
+      - Missing post id            -> 404
+      - Empty content (after strip) -> 400
+      - Missing/wrong-typed body    -> Pydantic 422
+
+    Returns the refreshed post in the same shape as GET /api/posts/{id}
+    (id, platform, topic, status, created_at, content).
+    """
+    if not body.content.strip():
+        raise HTTPException(status_code=400, detail="content cannot be empty")
+
+    post = approval_manager.get_post(post_id)
+    if post is None:
+        raise HTTPException(status_code=404, detail=f"Post {post_id} not found")
+
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute(
+            "UPDATE posts SET content = ? WHERE id = ?",
+            (body.content, post_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    updated = approval_manager.get_post(post_id)
+    return {
+        "id":         updated["id"],
+        "platform":   updated["platform"],
+        "topic":      updated["topic"],
+        "status":     updated["status"],
+        "created_at": updated["created_at"],
+        "content":    updated["content"],
+    }
+
+
 @app.get("/api/posts/{post_id}")
 def api_post(post_id: int) -> dict:
     """

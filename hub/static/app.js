@@ -83,8 +83,22 @@ function renderRecentPosts(posts) {
 
 let _currentPreviewId = null;
 
+// Edit-mode toggle. Default = read-only: <pre> visible, Edit/Approve/Reject
+// visible. Edit mode: <textarea> visible, Save/Cancel visible; Approve/Reject
+// hidden so they can't be clicked over unsaved edits. Close stays in both.
+function _setPreviewEditMode(editing) {
+    document.getElementById('preview-content').style.display        = editing ? 'none' : '';
+    document.getElementById('preview-content-editor').style.display = editing ? ''     : 'none';
+    document.getElementById('preview-edit').style.display    = editing ? 'none' : '';
+    document.getElementById('preview-save').style.display    = editing ? ''     : 'none';
+    document.getElementById('preview-cancel').style.display  = editing ? ''     : 'none';
+    document.getElementById('preview-approve').style.display = editing ? 'none' : '';
+    document.getElementById('preview-reject').style.display  = editing ? 'none' : '';
+}
+
 function openPreview(postId) {
     _currentPreviewId = postId;
+    _setPreviewEditMode(false);
     const overlay = document.getElementById('preview-overlay');
     document.getElementById('preview-platform').textContent = '…';
     document.getElementById('preview-topic').textContent = '…';
@@ -114,6 +128,7 @@ function openPreview(postId) {
 
 function closePreview() {
     _currentPreviewId = null;
+    _setPreviewEditMode(false);
     const overlay = document.getElementById('preview-overlay');
     overlay.classList.remove('open');
     overlay.setAttribute('aria-hidden', 'true');
@@ -178,6 +193,68 @@ document.getElementById('preview-approve').addEventListener('click', () => {
 document.getElementById('preview-reject').addEventListener('click', () => {
     if (!confirm('Reject this draft?')) return;
     setPostStatus('rejected');
+});
+
+document.getElementById('preview-edit').addEventListener('click', () => {
+    // Seed the textarea with the currently displayed content so the user
+    // starts from what they see, not a stale value.
+    const current = document.getElementById('preview-content').textContent;
+    document.getElementById('preview-content-editor').value = current;
+    _setPreviewEditMode(true);
+    document.getElementById('preview-content-editor').focus();
+});
+
+document.getElementById('preview-cancel').addEventListener('click', () => {
+    // No revert needed — the <pre> still shows the unedited content.
+    _setPreviewEditMode(false);
+});
+
+document.getElementById('preview-save').addEventListener('click', async () => {
+    if (_currentPreviewId == null) return;
+    const id = _currentPreviewId;
+    const newContent = document.getElementById('preview-content-editor').value;
+    if (!newContent.trim()) {
+        document.getElementById('cmd-status').textContent =
+            'Content cannot be empty.';
+        return;
+    }
+    if (!confirm('Save changes to this draft?')) return;
+
+    setBusy(true);
+    document.getElementById('cmd-status').textContent =
+        `Saving edits to post #${id}…`;
+    document.getElementById('cmd-output').textContent = '';
+    try {
+        const r = await fetch(`/api/posts/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: newContent }),
+        });
+        if (!r.ok) {
+            const errText = await r.text();
+            showCmd(`Edit #${id}`,
+                    { exit_code: r.status, stdout: '', stderr: errText });
+            return;
+        }
+        const d = await r.json();
+        // Update the displayed content with the server's response (so we
+        // reflect whatever the database actually stored).
+        document.getElementById('preview-content').textContent = d.content;
+        showCmd(`Edit #${id}`, {
+            exit_code: 0,
+            stdout: `Saved edits to post #${d.id}.\n` +
+                    'Editing only updates the local SQLite content field; ' +
+                    'it does not approve, copy, or post publicly.',
+            stderr: '',
+        });
+        _setPreviewEditMode(false);
+        await refreshAll();
+    } catch (err) {
+        document.getElementById('cmd-status').textContent =
+            'Save failed: ' + err;
+    } finally {
+        setBusy(false);
+    }
 });
 
 document.getElementById('preview-close').addEventListener('click', closePreview);
