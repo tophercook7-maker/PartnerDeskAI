@@ -833,7 +833,28 @@ const _ACTIVITY_TYPE_LABELS = {
 // cache — no refetch — so filtering is instant and doesn't generate
 // extra server load.
 let _activityItems  = [];
-let _activityFilter = 'all';
+
+// Persist the chip selection in localStorage (v5.7) so the user's
+// filter survives page reloads. Validated against _ACTIVITY_TYPES on
+// read so a stale or unknown value just falls back to "all". Wrapped
+// in try/catch because localStorage throws in private-browsing mode
+// and when storage quotas are hit.
+const _ACTIVITY_FILTER_KEY = 'partnerdesk.activityFilter';
+
+function _readPersistedActivityFilter() {
+    try {
+        const saved = localStorage.getItem(_ACTIVITY_FILTER_KEY);
+        if (saved && _ACTIVITY_TYPES.includes(saved)) return saved;
+    } catch (e) { /* storage blocked — fall through to default */ }
+    return 'all';
+}
+
+function _writePersistedActivityFilter(value) {
+    try { localStorage.setItem(_ACTIVITY_FILTER_KEY, value); }
+    catch (e) { /* storage blocked — filter still works in-memory */ }
+}
+
+let _activityFilter = _readPersistedActivityFilter();
 
 function _filteredActivityItems() {
     if (_activityFilter === 'all') return _activityItems;
@@ -955,6 +976,7 @@ document.addEventListener('click', (ev) => {
     const type = chip.dataset.activityType;
     if (!type || type === _activityFilter) return;
     _activityFilter = type;
+    _writePersistedActivityFilter(type);
     _renderActivityFilters();
     renderActivity(_filteredActivityItems());
 });
