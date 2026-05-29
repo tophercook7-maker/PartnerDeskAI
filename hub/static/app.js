@@ -751,55 +751,6 @@ async function loadHistory() {
     }
 }
 
-function _renderCountList(elId, items, primaryKey) {
-    const el = document.getElementById(elId);
-    if (!items || items.length === 0) {
-        el.innerHTML = '<li class="muted">none</li>';
-        return;
-    }
-    el.innerHTML = items.map(i =>
-        `<li>${_escape(i[primaryKey])} — ${i.count}</li>`
-    ).join('');
-}
-
-function renderAnalytics(d) {
-    const empty = document.getElementById('analytics-empty');
-    const body = document.getElementById('analytics-body');
-    if (!d || !d.total) {
-        empty.style.display = '';
-        body.style.display = 'none';
-        return;
-    }
-    empty.style.display = 'none';
-    body.style.display = '';
-    document.getElementById('analytics-meta').textContent =
-        `Last ${d.days} days — ${d.total} approved`;
-
-    _renderCountList('analytics-topics',    d.by_topic,    'topic');
-    _renderCountList('analytics-platforms', d.by_platform, 'platform');
-
-    const combos = document.getElementById('analytics-combos');
-    if (!d.by_topic_platform || d.by_topic_platform.length === 0) {
-        combos.innerHTML = '<li class="muted">none</li>';
-    } else {
-        combos.innerHTML = d.by_topic_platform.map(i =>
-            `<li>${_escape(i.topic)} — ${_escape(i.platform)} — ${i.count}</li>`
-        ).join('');
-    }
-}
-
-async function loadAnalytics() {
-    try {
-        const r = await fetch('/api/history/analytics?days=30');
-        if (!r.ok) throw new Error('http ' + r.status);
-        const d = await r.json();
-        renderAnalytics(d);
-    } catch (err) {
-        document.getElementById('analytics-meta').textContent =
-            'Could not load analytics.';
-    }
-}
-
 // --- System Activity feed (v5.3) ----------------------------------------
 
 const _ACTIVITY_ICONS = {
@@ -1450,7 +1401,7 @@ async function refreshAll() {
         await Promise.all([loadPartners(), loadConnections()]);
         await Promise.all([
             loadStatus(), loadSummary(), loadLogs(),
-            loadHistory(), loadAnalytics(), loadReady(),
+            loadHistory(), loadReady(),
             loadActivity(), loadReports(),
         ]);
         // Mission Control reads cached payloads from the loaders above,
