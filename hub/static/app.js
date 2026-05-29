@@ -877,6 +877,15 @@ function _renderActivityFilters() {
         const cls    = ['activity-chip'];
         if (active) cls.push('active');
         if (empty)  cls.push('empty');
+        // v5.9: show a "×" shortcut on the active non-"all" chip so the
+        // user can reset the filter in one click. Rendered as a <span>
+        // (not a nested <button>) to keep HTML valid; the click
+        // delegator catches it via closest('.activity-chip-clear').
+        const showClear = active && t !== 'all';
+        const clearHTML = showClear
+            ? `<span class="activity-chip-clear" aria-hidden="true" ` +
+              `title="Clear filter (back to All)">×</span>`
+            : '';
         return (
             `<button type="button" class="${cls.join(' ')}" ` +
               `data-activity-type="${_escape(t)}"` +
@@ -885,6 +894,7 @@ function _renderActivityFilters() {
             `>` +
               _escape(_ACTIVITY_TYPE_LABELS[t] || t) +
               `<span class="activity-chip-count">(${n})</span>` +
+              clearHTML +
             `</button>`
         );
     }).join('');
@@ -971,6 +981,17 @@ async function loadActivity() {
 // per-render rebinding. Empty chips are <button disabled> so clicks on
 // them never reach this handler.
 document.addEventListener('click', (ev) => {
+    // v5.9: explicit clear-filter shortcut on the active chip. Catch
+    // this BEFORE the chip-toggle path — otherwise the existing
+    // `type === _activityFilter` early-return would swallow the click.
+    if (ev.target.closest('.activity-chip-clear')) {
+        if (_activityFilter === 'all') return;
+        _activityFilter = 'all';
+        _writePersistedActivityFilter('all');
+        _renderActivityFilters();
+        renderActivity(_filteredActivityItems());
+        return;
+    }
     const chip = ev.target.closest('.activity-chip');
     if (!chip || chip.disabled) return;
     const type = chip.dataset.activityType;

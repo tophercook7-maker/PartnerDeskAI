@@ -179,6 +179,19 @@
         .activity-chip-count {
             margin-left: 0.35rem; font-size: 0.7rem; opacity: 0.75;
         }
+        /* Clear-filter "×" inside the active chip (v5.9). */
+        .activity-chip-clear {
+            display: inline-block;
+            margin-left: 0.4rem;
+            min-width: 1.1em; height: 1.1em;
+            line-height: 1em;
+            text-align: center;
+            border-radius: 50%;
+            font-size: 0.95em;
+            background: rgba(255, 255, 255, 0.22);
+            transition: background-color 0.12s;
+        }
+        .activity-chip-clear:hover { background: rgba(255, 255, 255, 0.5); }
         /* Day divider — inserted by renderActivity() when the date
            crosses from today into an older day. Sticky below the chip
            row so the current day stays labeled while scrolling (v5.6). */
