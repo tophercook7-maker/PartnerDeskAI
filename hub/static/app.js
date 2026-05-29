@@ -976,6 +976,70 @@ async function loadActivity() {
     }
 }
 
+// --- Report Center (v5.12) ----------------------------------------------
+// Read-only panel surfacing /api/history/analytics with a window
+// selector (7/30/90/365 days) and proportional bars per row.
+
+function _renderReportList(items, key) {
+    if (!items || items.length === 0) {
+        return '<li class="muted">No data in this window.</li>';
+    }
+    const max = Math.max(...items.map(it => it.count || 0)) || 1;
+    return items.map(it => {
+        const count = it.count || 0;
+        const pct   = Math.round((count / max) * 100);
+        const label = it[key] || '(unknown)';
+        return (
+            `<li style="--bar-width: ${pct}%">` +
+              `<span class="label" title="${_escape(label)}">${_escape(label)}</span>` +
+              `<span class="count">${count}</span>` +
+            `</li>`
+        );
+    }).join('');
+}
+
+function renderReports(data) {
+    const headlineEl  = document.getElementById('reports-headline');
+    const topicsEl    = document.getElementById('reports-topics');
+    const platformsEl = document.getElementById('reports-platforms');
+    if (!data) {
+        headlineEl.textContent = 'Could not load reports.';
+        headlineEl.classList.add('muted');
+        topicsEl.innerHTML    = '<li class="muted">—</li>';
+        platformsEl.innerHTML = '<li class="muted">—</li>';
+        return;
+    }
+    const n    = data.total || 0;
+    const days = data.days  || 30;
+    const noun = n === 1 ? 'approval' : 'approvals';
+    const dnoun = days === 1 ? 'day' : 'days';
+    headlineEl.textContent = `${n} ${noun} in the last ${days} ${dnoun}`;
+    headlineEl.classList.remove('muted');
+    topicsEl.innerHTML    = _renderReportList(data.by_topic    || [], 'topic');
+    platformsEl.innerHTML = _renderReportList(data.by_platform || [], 'platform');
+}
+
+async function loadReports(daysOverride) {
+    const select = document.getElementById('reports-days');
+    const days   = daysOverride
+        || parseInt((select && select.value) || '30', 10)
+        || 30;
+    try {
+        const r = await fetch(`/api/history/analytics?days=${days}`);
+        if (!r.ok) throw new Error('http ' + r.status);
+        renderReports(await r.json());
+    } catch (err) {
+        renderReports(null);
+    }
+}
+
+// Window selector: re-fetch on change (cheap — analytics endpoint is
+// already query-only and won't trigger any side effects).
+const _reportsSelect = document.getElementById('reports-days');
+if (_reportsSelect) {
+    _reportsSelect.addEventListener('change', () => loadReports());
+}
+
 // Chip click delegator (v5.5). Bound once at module load via event
 // delegation, so newly rendered chips inherit the handler without
 // per-render rebinding. Empty chips are <button disabled> so clicks on
@@ -1387,7 +1451,7 @@ async function refreshAll() {
         await Promise.all([
             loadStatus(), loadSummary(), loadLogs(),
             loadHistory(), loadAnalytics(), loadReady(),
-            loadActivity(),
+            loadActivity(), loadReports(),
         ]);
         // Mission Control reads cached payloads from the loaders above,
         // so it runs last to ensure every cache is populated.

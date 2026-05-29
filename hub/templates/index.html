@@ -192,6 +192,63 @@
             transition: background-color 0.12s;
         }
         .activity-chip-clear:hover { background: rgba(255, 255, 255, 0.5); }
+        /* --- Report Center (v5.12) --------------------------------- */
+        #reports-section { padding: 1rem 1.25rem; }
+        .reports-controls {
+            display: flex; gap: 0.65rem; align-items: center;
+            flex-wrap: wrap; margin-bottom: 0.8rem;
+        }
+        .reports-controls label {
+            font-size: 0.85rem; color: #555;
+        }
+        .reports-controls select {
+            padding: 0.3rem 0.5rem; border: 1px solid #ccc;
+            border-radius: 4px; font-size: 0.85rem;
+            background: #fff;
+        }
+        #reports-headline {
+            font-size: 0.85rem;
+        }
+        #reports-headline:not(.muted) { color: #222; font-weight: 500; }
+        .reports-grid {
+            display: grid; gap: 0.9rem;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        }
+        .reports-card {
+            border: 1px solid #e5e5e5; border-radius: 6px;
+            padding: 0.85rem; background: #fafafa;
+        }
+        .reports-card h3 {
+            margin: 0 0 0.55rem; font-size: 0.92rem; color: #333;
+        }
+        .reports-list { list-style: none; padding: 0; margin: 0; }
+        /* Each row is a flex container with a horizontal proportional
+           bar drawn as a CSS linear-gradient. --bar-width is set per-
+           row via inline style by the JS renderer. */
+        .reports-list li {
+            display: flex; justify-content: space-between;
+            align-items: center;
+            padding: 0.32rem 0.55rem;
+            margin-bottom: 0.2rem;
+            font-size: 0.85rem;
+            border-radius: 3px;
+            background: linear-gradient(to right,
+                #cfe1ff var(--bar-width, 0%),
+                transparent var(--bar-width, 0%));
+        }
+        .reports-list li.muted {
+            display: block; background: none;
+        }
+        .reports-list li .label {
+            flex: 1; padding-right: 0.6rem;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .reports-list li .count {
+            font-weight: 600; color: #2a6ec1;
+            flex-shrink: 0;
+            font-variant-numeric: tabular-nums;
+        }
+
         /* Day divider — inserted by renderActivity() when the date
            crosses from today into an older day. Sticky below the chip
            row so the current day stays labeled while scrolling (v5.6). */
@@ -496,6 +553,34 @@
         <ul id="activity-feed" class="activity-feed">
             <li class="muted">Loading…</li>
         </ul>
+    </section>
+
+    <section id="reports-section">
+        <h2>Report Center</h2>
+        <div class="reports-controls">
+            <label for="reports-days">Window:</label>
+            <select id="reports-days" aria-label="Reports window">
+                <option value="7">Last 7 days</option>
+                <option value="30" selected>Last 30 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="365">Last 12 months</option>
+            </select>
+            <span id="reports-headline" class="muted">Loading…</span>
+        </div>
+        <div class="reports-grid">
+            <div class="reports-card">
+                <h3>Top Topics</h3>
+                <ul id="reports-topics" class="reports-list">
+                    <li class="muted">Loading…</li>
+                </ul>
+            </div>
+            <div class="reports-card">
+                <h3>Top Platforms</h3>
+                <ul id="reports-platforms" class="reports-list">
+                    <li class="muted">Loading…</li>
+                </ul>
+            </div>
+        </div>
     </section>
 
     <div class="row">
