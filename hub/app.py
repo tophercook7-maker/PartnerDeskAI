@@ -745,15 +745,33 @@ def api_activity() -> dict:
         deduped.append(e)
     deduped = deduped[:25]
 
+    today_str = datetime.now().strftime("%Y-%m-%d")
     items = []
     for e in deduped:
-        # ts looks like "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DD HH:MM" — slice
-        # out HH:MM for the display column. Fall back to the raw value.
-        time_str = e["ts"][11:16] if len(e["ts"]) >= 16 else e["ts"]
+        # ts looks like "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DD HH:MM".
+        full = e["ts"]
+        date_part = full[:10]
+        time_part = full[11:16] if len(full) >= 16 else full
+
+        # display_time = bare "HH:MM" for today; "MMM D HH:MM" for older
+        # events so the date is visible without checking the divider.
+        # Build the month/day part manually so we don't depend on the
+        # GNU-only "%-d" strftime extension.
+        if date_part == today_str:
+            display_time = time_part
+        else:
+            try:
+                dt = datetime.strptime(full[:16], "%Y-%m-%d %H:%M")
+                display_time = f"{dt.strftime('%b')} {dt.day} {dt.strftime('%H:%M')}"
+            except ValueError:
+                display_time = full
+
         items.append({
-            "time":    time_str,
-            "message": e["message"],
-            "type":    e["type"],
+            "time":         time_part,    # kept for backward compat
+            "date":         date_part,
+            "display_time": display_time,
+            "message":      e["message"],
+            "type":         e["type"],
         })
     return {"items": items}
 

@@ -811,23 +811,57 @@ const _ACTIVITY_ICONS = {
     system:     '⚙',
 };
 
+function _activityDateLabel(dateStr) {
+    // "YYYY-MM-DD" -> "May 27". Built locally (no toLocaleDateString
+    // surprises) and timezone-agnostic since we never touch hours.
+    const months = ['Jan','Feb','Mar','Apr','May','Jun',
+                    'Jul','Aug','Sep','Oct','Nov','Dec'];
+    const parts = (dateStr || '').split('-');
+    if (parts.length !== 3) return dateStr || '';
+    const m = parseInt(parts[1], 10);
+    const d = parseInt(parts[2], 10);
+    if (!m || !d || m < 1 || m > 12) return dateStr;
+    return `${months[m - 1]} ${d}`;
+}
+
 function renderActivity(items) {
     const el = document.getElementById('activity-feed');
     if (!items || items.length === 0) {
         el.innerHTML = '<li class="muted">No recent activity yet.</li>';
         return;
     }
-    el.innerHTML = items.map(it => {
+    // Compare against the user's local today. The server already
+    // formats display_time for the server-side today, but a divider
+    // anchored to local date keeps the UI honest if the two ever drift.
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-` +
+                     `${String(now.getMonth() + 1).padStart(2, '0')}-` +
+                     `${String(now.getDate()).padStart(2, '0')}`;
+
+    const parts = [];
+    let lastDate = null;
+    for (const it of items) {
+        // Emit a day divider when the date changes — but skip it for
+        // today, since bare "HH:MM" rows already imply "today".
+        if (it.date && it.date !== lastDate && it.date !== todayStr) {
+            parts.push(
+                `<li class="activity-divider">— ${_escape(_activityDateLabel(it.date))} —</li>`
+            );
+        }
+        lastDate = it.date || lastDate;
+
         const icon = _ACTIVITY_ICONS[it.type] || _ACTIVITY_ICONS.system;
         const typeClass = `activity-type-${_escape(it.type || 'system')}`;
-        return (
+        const timeStr = it.display_time || it.time || '';
+        parts.push(
             `<li class="${typeClass}">` +
-              `<span class="activity-time">${_escape(it.time || '')}</span>` +
+              `<span class="activity-time">${_escape(timeStr)}</span>` +
               `<span class="activity-icon">${_escape(icon)}</span>` +
               `<span class="activity-message">${_escape(it.message || '')}</span>` +
             `</li>`
         );
-    }).join('');
+    }
+    el.innerHTML = parts.join('');
 }
 
 async function loadActivity() {
