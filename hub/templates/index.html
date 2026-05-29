@@ -144,10 +144,18 @@
             font-size: 0.82rem; color: #888; min-width: 6.5em;
             flex-shrink: 0; white-space: nowrap;
         }
-        /* Type-filter chips above the feed (v5.5). */
+        /* Type-filter chips above the feed (v5.5).
+           Sticky at viewport top so the active filter stays visible
+           when the feed scrolls past the screen (v5.6). */
         .activity-filters {
             display: flex; gap: 0.4rem; flex-wrap: wrap;
-            margin-bottom: 0.75rem;
+            margin: 0 0 0.75rem;
+            padding: 0.5rem 0;
+            position: sticky;
+            top: 0;
+            background: #fff;
+            border-bottom: 1px solid #eee;
+            z-index: 2;
         }
         .activity-chip {
             padding: 0.25rem 0.7rem;
@@ -172,7 +180,8 @@
             margin-left: 0.35rem; font-size: 0.7rem; opacity: 0.75;
         }
         /* Day divider — inserted by renderActivity() when the date
-           crosses from today into an older day. */
+           crosses from today into an older day. Sticky below the chip
+           row so the current day stays labeled while scrolling (v5.6). */
         .activity-feed li.activity-divider {
             display: block;
             border-bottom: 0;
@@ -182,6 +191,10 @@
             text-align: center;
             letter-spacing: 0.5px;
             text-transform: uppercase;
+            position: sticky;
+            top: 3em;
+            background: #fff;
+            z-index: 1;
         }
         .activity-icon {
             width: 1.4em; text-align: center; flex-shrink: 0;
