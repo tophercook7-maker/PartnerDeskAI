@@ -811,6 +811,64 @@ const _ACTIVITY_ICONS = {
     system:     '⚙',
 };
 
+// Type-filter chip taxonomy (v5.5). Order matches the chip row left-to-
+// right; "all" is always first and always enabled. Keep in sync with
+// _ACTIVITY_ICONS — chips show one row per known type so the user can
+// see categories even before any event of that type exists.
+const _ACTIVITY_TYPES = [
+    'all', 'generation', 'approval', 'connection', 'publish', 'refresh', 'system',
+];
+const _ACTIVITY_TYPE_LABELS = {
+    all:        'All',
+    generation: 'Generation',
+    approval:   'Approval',
+    connection: 'Connection',
+    publish:    'Publish',
+    refresh:    'Refresh',
+    system:     'System',
+};
+
+// Client-side cache of the most recent /api/activity response and the
+// user's current filter selection. Chip clicks re-render from this
+// cache — no refetch — so filtering is instant and doesn't generate
+// extra server load.
+let _activityItems  = [];
+let _activityFilter = 'all';
+
+function _filteredActivityItems() {
+    if (_activityFilter === 'all') return _activityItems;
+    return _activityItems.filter(it => (it.type || 'system') === _activityFilter);
+}
+
+function _renderActivityFilters() {
+    const el = document.getElementById('activity-filters');
+    if (!el) return;
+    // Per-type counts off the cached items. "all" gets the total.
+    const counts = { all: _activityItems.length };
+    for (const it of _activityItems) {
+        const t = it.type || 'system';
+        counts[t] = (counts[t] || 0) + 1;
+    }
+    el.innerHTML = _ACTIVITY_TYPES.map(t => {
+        const n      = counts[t] || 0;
+        const active = (t === _activityFilter);
+        const empty  = (t !== 'all' && n === 0);
+        const cls    = ['activity-chip'];
+        if (active) cls.push('active');
+        if (empty)  cls.push('empty');
+        return (
+            `<button type="button" class="${cls.join(' ')}" ` +
+              `data-activity-type="${_escape(t)}"` +
+              (empty ? ' disabled aria-disabled="true"' : '') +
+              (active ? ' aria-pressed="true"' : ' aria-pressed="false"') +
+            `>` +
+              _escape(_ACTIVITY_TYPE_LABELS[t] || t) +
+              `<span class="activity-chip-count">(${n})</span>` +
+            `</button>`
+        );
+    }).join('');
+}
+
 function _activityDateLabel(dateStr) {
     // "YYYY-MM-DD" -> "May 27". Built locally (no toLocaleDateString
     // surprises) and timezone-agnostic since we never touch hours.
@@ -827,7 +885,14 @@ function _activityDateLabel(dateStr) {
 function renderActivity(items) {
     const el = document.getElementById('activity-feed');
     if (!items || items.length === 0) {
-        el.innerHTML = '<li class="muted">No recent activity yet.</li>';
+        // Distinguish "no events at all" from "filter excluded them all"
+        // so the user understands why the feed appears empty after a
+        // chip click.
+        const empty = (_activityFilter === 'all' || _activityItems.length === 0)
+            ? 'No recent activity yet.'
+            : `No ${_ACTIVITY_TYPE_LABELS[_activityFilter] || _activityFilter} ` +
+              `events in the recent activity.`;
+        el.innerHTML = `<li class="muted">${_escape(empty)}</li>`;
         return;
     }
     // Compare against the user's local today. The server already
@@ -869,12 +934,30 @@ async function loadActivity() {
         const r = await fetch('/api/activity');
         if (!r.ok) throw new Error('http ' + r.status);
         const d = await r.json();
-        renderActivity(d.items || []);
+        _activityItems = d.items || [];
+        _renderActivityFilters();
+        renderActivity(_filteredActivityItems());
     } catch (err) {
+        _activityItems = [];
+        _renderActivityFilters();
         document.getElementById('activity-feed').innerHTML =
             '<li class="muted">Could not load activity.</li>';
     }
 }
+
+// Chip click delegator (v5.5). Bound once at module load via event
+// delegation, so newly rendered chips inherit the handler without
+// per-render rebinding. Empty chips are <button disabled> so clicks on
+// them never reach this handler.
+document.addEventListener('click', (ev) => {
+    const chip = ev.target.closest('.activity-chip');
+    if (!chip || chip.disabled) return;
+    const type = chip.dataset.activityType;
+    if (!type || type === _activityFilter) return;
+    _activityFilter = type;
+    _renderActivityFilters();
+    renderActivity(_filteredActivityItems());
+});
 
 
 // --- Connections center -------------------------------------------------

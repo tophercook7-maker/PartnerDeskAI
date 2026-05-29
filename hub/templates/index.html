@@ -144,6 +144,33 @@
             font-size: 0.82rem; color: #888; min-width: 6.5em;
             flex-shrink: 0; white-space: nowrap;
         }
+        /* Type-filter chips above the feed (v5.5). */
+        .activity-filters {
+            display: flex; gap: 0.4rem; flex-wrap: wrap;
+            margin-bottom: 0.75rem;
+        }
+        .activity-chip {
+            padding: 0.25rem 0.7rem;
+            border: 1px solid #d0d0d0;
+            border-radius: 999px;
+            background: #fafafa;
+            font-size: 0.78rem;
+            line-height: 1.2;
+            color: #444;
+            cursor: pointer;
+            user-select: none;
+        }
+        .activity-chip:hover { background: #f0f0f0; }
+        .activity-chip.active {
+            background: #2a6ec1; border-color: #2a6ec1; color: #fff;
+        }
+        .activity-chip.active:hover { background: #2a6ec1; }
+        .activity-chip.empty {
+            opacity: 0.4; cursor: not-allowed;
+        }
+        .activity-chip-count {
+            margin-left: 0.35rem; font-size: 0.7rem; opacity: 0.75;
+        }
         /* Day divider — inserted by renderActivity() when the date
            crosses from today into an older day. */
         .activity-feed li.activity-divider {
@@ -438,6 +465,8 @@
 
     <section id="activity-section">
         <h2>System Activity</h2>
+        <div id="activity-filters" class="activity-filters"
+             aria-label="Filter activity by type"></div>
         <ul id="activity-feed" class="activity-feed">
             <li class="muted">Loading…</li>
         </ul>
