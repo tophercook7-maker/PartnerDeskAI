@@ -680,6 +680,9 @@ def api_activity() -> dict:
                                 a non-NULL posted_at (v5.8)
       - connection events    → each verified entry in
                                 data/connection_status.json
+      - refresh events       → mtime of data/connection_status.json,
+                                which represents the most recent trust-
+                                state refresh (v5.11) — stat() only
       - system events        → mtime of each non-empty .log in logs/
                                 modified within the trailing 14 days
                                 (v5.10) — stat() only, no contents read
@@ -755,6 +758,29 @@ def api_activity() -> dict:
             "type":    "connection",
             "message": f"{pretty} connection verified",
         })
+
+    # Refresh events from connection_status.json mtime (v5.11). The
+    # file is written only by connection_state.record_verification(),
+    # so its mtime is the timestamp of the most recent trust-state
+    # refresh — i.e. the last time any platform's verify probe ran
+    # (Hub's Verify Connections button or the CLI `verify` command).
+    # File mtime captures only the LAST write, so this surfaces at most
+    # ONE refresh event per request (the latest); the dedupe further
+    # down would collapse duplicates anyway.
+    cs_path = ROOT / "data" / "connection_status.json"
+    if cs_path.is_file():
+        try:
+            cs_stat = cs_path.stat()
+        except OSError:
+            cs_stat = None
+        if cs_stat is not None and cs_stat.st_size > 0:
+            cs_mtime = datetime.fromtimestamp(cs_stat.st_mtime)
+            if (datetime.now() - cs_mtime).days <= 14:
+                events.append({
+                    "ts":      cs_mtime.strftime("%Y-%m-%d %H:%M:%S"),
+                    "type":    "refresh",
+                    "message": "Connection states refreshed",
+                })
 
     # System events from log file mtimes (v5.10). One event per .log
     # file in logs/ that has size > 0 and was modified within the last
