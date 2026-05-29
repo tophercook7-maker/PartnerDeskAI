@@ -800,6 +800,49 @@ async function loadAnalytics() {
     }
 }
 
+// --- System Activity feed (v5.3) ----------------------------------------
+
+const _ACTIVITY_ICONS = {
+    generation: '✨',
+    approval:   '✓',
+    publish:    '📤',
+    refresh:    '🔄',
+    connection: '🔗',
+    system:     '⚙',
+};
+
+function renderActivity(items) {
+    const el = document.getElementById('activity-feed');
+    if (!items || items.length === 0) {
+        el.innerHTML = '<li class="muted">No recent activity yet.</li>';
+        return;
+    }
+    el.innerHTML = items.map(it => {
+        const icon = _ACTIVITY_ICONS[it.type] || _ACTIVITY_ICONS.system;
+        const typeClass = `activity-type-${_escape(it.type || 'system')}`;
+        return (
+            `<li class="${typeClass}">` +
+              `<span class="activity-time">${_escape(it.time || '')}</span>` +
+              `<span class="activity-icon">${_escape(icon)}</span>` +
+              `<span class="activity-message">${_escape(it.message || '')}</span>` +
+            `</li>`
+        );
+    }).join('');
+}
+
+async function loadActivity() {
+    try {
+        const r = await fetch('/api/activity');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        renderActivity(d.items || []);
+    } catch (err) {
+        document.getElementById('activity-feed').innerHTML =
+            '<li class="muted">Could not load activity.</li>';
+    }
+}
+
+
 // --- Connections center -------------------------------------------------
 
 // Cache of /api/connections keyed by lowercase platform name so other
@@ -1184,6 +1227,7 @@ async function refreshAll() {
         await Promise.all([
             loadStatus(), loadSummary(), loadLogs(),
             loadHistory(), loadAnalytics(), loadReady(),
+            loadActivity(),
         ]);
         // Mission Control reads cached payloads from the loaders above,
         // so it runs last to ensure every cache is populated.

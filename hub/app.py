@@ -668,6 +668,96 @@ def api_connections() -> dict:
     return {"connections": connections}
 
 
+@app.get("/api/activity")
+def api_activity() -> dict:
+    """
+    Read-only activity feed assembled from existing sources:
+      - generation events    → group rows of `posts` by created_at minute
+                                (one daily_runner run inserts ~4 posts at
+                                the same minute)
+      - approval events      → each row in `post_history`
+      - connection events    → each verified entry in
+                                data/connection_status.json
+    No new schema, no log-file parsing, no polling loop. Capped at 25
+    entries, sorted newest first, with (timestamp, message) dedupe so a
+    duplicate run never spams the feed.
+    """
+    events: list[dict] = []
+
+    if DB_PATH.is_file():
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        try:
+            # Generation batches: group recent posts by created_at minute.
+            for row in conn.execute(
+                "SELECT substr(created_at, 1, 16) AS minute, "
+                "       COUNT(*) AS n, "
+                "       MAX(created_at) AS last_ts "
+                "FROM posts "
+                "GROUP BY minute "
+                "ORDER BY last_ts DESC LIMIT 10"
+            ).fetchall():
+                noun = "draft" if row["n"] == 1 else "drafts"
+                events.append({
+                    "ts":      row["last_ts"],
+                    "type":    "generation",
+                    "message": f"Parker generated {row['n']} {noun}",
+                })
+
+            # Each approval (post_history row).
+            for row in conn.execute(
+                "SELECT topic, platform, posted_date "
+                "FROM post_history ORDER BY posted_date DESC LIMIT 15"
+            ).fetchall():
+                events.append({
+                    "ts":      row["posted_date"],
+                    "type":    "approval",
+                    "message": f"Approved {row['platform']} draft — {row['topic']}",
+                })
+        finally:
+            conn.close()
+
+    # Verified connections from the local cache. Cache timestamps are
+    # "YYYY-MM-DD HH:MM" (no seconds), so pad for consistent lexicographic
+    # sort against the SQLite timestamps which include seconds.
+    for platform_key, entry in connection_state.load_states().items():
+        if entry.get("state") != "verified":
+            continue
+        ts = entry.get("last_verified_at")
+        if not ts:
+            continue
+        pretty = platform_key.replace("_", " ").title()
+        events.append({
+            "ts":      ts if len(ts) > 16 else f"{ts}:00",
+            "type":    "connection",
+            "message": f"{pretty} connection verified",
+        })
+
+    # Sort newest first, dedupe identical (ts, message) pairs, cap at 25.
+    events.sort(key=lambda e: e["ts"], reverse=True)
+    seen: set[tuple[str, str]] = set()
+    deduped: list[dict] = []
+    for e in events:
+        key = (e["ts"], e["message"])
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(e)
+    deduped = deduped[:25]
+
+    items = []
+    for e in deduped:
+        # ts looks like "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DD HH:MM" — slice
+        # out HH:MM for the display column. Fall back to the raw value.
+        time_str = e["ts"][11:16] if len(e["ts"]) >= 16 else e["ts"]
+        items.append({
+            "time":    time_str,
+            "message": e["message"],
+            "type":    e["type"],
+        })
+    return {"items": items}
+
+
 @app.get("/api/partners")
 def api_partners() -> dict:
     """

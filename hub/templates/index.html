@@ -127,6 +127,34 @@
         .mission-action-btn.danger:hover {
             background: rgba(220, 53, 69, 0.18); color: #ffb3b3;
         }
+
+        /* --- System Activity feed (v5.3) --------------------------- */
+        #activity-section { padding: 1rem 1.25rem; }
+        .activity-feed { list-style: none; padding: 0; margin: 0; }
+        .activity-feed li {
+            display: flex; align-items: center; gap: 0.65rem;
+            padding: 0.4rem 0;
+            border-bottom: 1px solid #f3f3f3;
+            font-size: 0.9rem;
+        }
+        .activity-feed li:last-child { border-bottom: 0; }
+        .activity-feed li.muted { display: block; }
+        .activity-time {
+            font-family: ui-monospace, Menlo, Consolas, monospace;
+            font-size: 0.82rem; color: #888; min-width: 3.2em;
+            flex-shrink: 0;
+        }
+        .activity-icon {
+            width: 1.4em; text-align: center; flex-shrink: 0;
+            font-size: 0.95rem;
+        }
+        .activity-message { flex: 1; color: #333; }
+        .activity-type-generation .activity-icon { color: #2a6ec1; }
+        .activity-type-approval   .activity-icon { color: #155724; }
+        .activity-type-connection .activity-icon { color: #7c4dff; }
+        .activity-type-refresh    .activity-icon { color: #00897b; }
+        .activity-type-publish    .activity-icon { color: #b34a4a; }
+        .activity-type-system     .activity-icon { color: #666; }
         .row {
             display: flex; gap: 0.5rem; flex-wrap: wrap;
             margin: 1.5rem 0;
@@ -394,6 +422,13 @@
         <div id="mission-control">
             <div class="muted">Loading…</div>
         </div>
+    </section>
+
+    <section id="activity-section">
+        <h2>System Activity</h2>
+        <ul id="activity-feed" class="activity-feed">
+            <li class="muted">Loading…</li>
+        </ul>
     </section>
 
     <div class="row">
