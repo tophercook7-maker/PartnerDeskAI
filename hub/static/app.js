@@ -931,15 +931,22 @@ async function loadActivity() {
 // Read-only panel surfacing /api/history/analytics with a window
 // selector (7/30/90/365 days) and proportional bars per row.
 
-function _renderReportList(items, key) {
+function _renderReportList(items, labeller) {
+    // `labeller` may be either a key string (e.g. 'topic') or a
+    // function (item) => string. Function form (v5.14) lets the
+    // combos card build a compound "topic · platform" label without
+    // a second helper.
     if (!items || items.length === 0) {
         return '<li class="muted">No data in this window.</li>';
     }
-    const max = Math.max(...items.map(it => it.count || 0)) || 1;
+    const max    = Math.max(...items.map(it => it.count || 0)) || 1;
+    const labelOf = typeof labeller === 'function'
+        ? labeller
+        : (it) => it[labeller];
     return items.map(it => {
         const count = it.count || 0;
         const pct   = Math.round((count / max) * 100);
-        const label = it[key] || '(unknown)';
+        const label = labelOf(it) || '(unknown)';
         return (
             `<li style="--bar-width: ${pct}%">` +
               `<span class="label" title="${_escape(label)}">${_escape(label)}</span>` +
@@ -953,11 +960,13 @@ function renderReports(data) {
     const headlineEl  = document.getElementById('reports-headline');
     const topicsEl    = document.getElementById('reports-topics');
     const platformsEl = document.getElementById('reports-platforms');
+    const combosEl    = document.getElementById('reports-combos');
     if (!data) {
         headlineEl.textContent = 'Could not load reports.';
         headlineEl.classList.add('muted');
         topicsEl.innerHTML    = '<li class="muted">—</li>';
         platformsEl.innerHTML = '<li class="muted">—</li>';
+        combosEl.innerHTML    = '<li class="muted">—</li>';
         return;
     }
     const n    = data.total || 0;
@@ -968,6 +977,10 @@ function renderReports(data) {
     headlineEl.classList.remove('muted');
     topicsEl.innerHTML    = _renderReportList(data.by_topic    || [], 'topic');
     platformsEl.innerHTML = _renderReportList(data.by_platform || [], 'platform');
+    combosEl.innerHTML    = _renderReportList(
+        data.by_topic_platform || [],
+        (it) => `${it.topic || '?'} · ${it.platform || '?'}`,
+    );
 }
 
 async function loadReports(daysOverride) {
