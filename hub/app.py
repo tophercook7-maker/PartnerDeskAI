@@ -676,11 +676,13 @@ def api_activity() -> dict:
                                 (one daily_runner run inserts ~4 posts at
                                 the same minute)
       - approval events      → each row in `post_history`
+      - publish events       → rows of `posts` with status='posted' and
+                                a non-NULL posted_at (v5.8)
       - connection events    → each verified entry in
                                 data/connection_status.json
-    No new schema, no log-file parsing, no polling loop. Capped at 25
-    entries, sorted newest first, with (timestamp, message) dedupe so a
-    duplicate run never spams the feed.
+    No log-file parsing, no polling loop. Capped at 25 entries, sorted
+    newest first, with (timestamp, message) dedupe so a duplicate run
+    never spams the feed.
     """
     events: list[dict] = []
 
@@ -704,7 +706,10 @@ def api_activity() -> dict:
                     "message": f"Parker generated {row['n']} {noun}",
                 })
 
-            # Each approval (post_history row).
+            # Each approval (post_history row). post_history has long
+            # been the approval log in this codebase — the column name
+            # "posted_date" is historical and refers to the approval
+            # moment, not a publish moment.
             for row in conn.execute(
                 "SELECT topic, platform, posted_date "
                 "FROM post_history ORDER BY posted_date DESC LIMIT 15"
@@ -713,6 +718,22 @@ def api_activity() -> dict:
                     "ts":      row["posted_date"],
                     "type":    "approval",
                     "message": f"Approved {row['platform']} draft — {row['topic']}",
+                })
+
+            # Publish events (v5.8). Only surfaces rows that have a real
+            # posted_at — rows that were marked 'posted' before the
+            # posted_at column existed have NULL and are skipped (we
+            # cannot fabricate a timestamp for those).
+            for row in conn.execute(
+                "SELECT topic, platform, posted_at "
+                "FROM posts "
+                "WHERE status = 'posted' AND posted_at IS NOT NULL "
+                "ORDER BY posted_at DESC LIMIT 15"
+            ).fetchall():
+                events.append({
+                    "ts":      row["posted_at"],
+                    "type":    "publish",
+                    "message": f"Published {row['platform']} post — {row['topic']}",
                 })
         finally:
             conn.close()

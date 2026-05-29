@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS posts (
     image_idea TEXT,
     status TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    edited_at TIMESTAMP NULL
+    edited_at TIMESTAMP NULL,
+    posted_at TIMESTAMP NULL
 );
 
 CREATE TABLE IF NOT EXISTS post_history (
@@ -49,6 +50,8 @@ def _migrate_posts_columns(conn: sqlite3.Connection) -> None:
     existing = {row[1] for row in conn.execute("PRAGMA table_info(posts)").fetchall()}
     if "edited_at" not in existing:
         conn.execute("ALTER TABLE posts ADD COLUMN edited_at TIMESTAMP NULL")
+    if "posted_at" not in existing:
+        conn.execute("ALTER TABLE posts ADD COLUMN posted_at TIMESTAMP NULL")
 
 
 def init_db() -> None:
@@ -148,10 +151,24 @@ def status_counts() -> dict[str, int]:
 
 
 def mark_status(post_id: int, status: str) -> None:
-    """Set a post's status (e.g. 'approved' or 'rejected')."""
+    """
+    Set a post's status. For the 'posted' transition we also stamp
+    posted_at so the System Activity feed can surface a real publish
+    event with a real timestamp; other transitions leave posted_at
+    untouched so re-running an approve/reject never overwrites it.
+    """
     conn = _connect()
     try:
-        conn.execute("UPDATE posts SET status = ? WHERE id = ?", (status, post_id))
+        if status == "posted":
+            conn.execute(
+                "UPDATE posts SET status = ?, posted_at = CURRENT_TIMESTAMP "
+                "WHERE id = ?",
+                (status, post_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE posts SET status = ? WHERE id = ?", (status, post_id)
+            )
         conn.commit()
     finally:
         conn.close()
