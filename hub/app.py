@@ -17,6 +17,7 @@ The Hub only reads files and POSTs to those scripts.
 """
 
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -666,6 +667,70 @@ def api_connections() -> dict:
             "warning":               warning,
         })
     return {"connections": connections}
+
+
+# Report Inbox (v5.15). Strict filename pattern keeps the Hub-side
+# read endpoints safe against path-traversal — only files named
+# exactly YYYY-MM-DD.md inside reports/ can be opened.
+_REPORTS_DIR = ROOT / "reports"
+_REPORT_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
+
+
+@app.get("/api/reports")
+def api_reports_list() -> dict:
+    """
+    Read-only list of available daily report files. Returns metadata
+    only (name, date stem, size, mtime) — never opens file contents.
+    Filenames not matching YYYY-MM-DD.md are silently filtered out so
+    stray files in reports/ never appear in the inbox.
+    """
+    items: list[dict] = []
+    if _REPORTS_DIR.is_dir():
+        for p in _REPORTS_DIR.glob("*.md"):
+            if not _REPORT_NAME_RE.fullmatch(p.name):
+                continue
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            items.append({
+                "name":  p.name,
+                "date":  p.stem,
+                "size":  st.st_size,
+                "mtime": datetime.fromtimestamp(st.st_mtime)
+                                 .strftime("%Y-%m-%d %H:%M:%S"),
+            })
+    items.sort(key=lambda x: x["date"], reverse=True)
+    return {"items": items, "count": len(items)}
+
+
+@app.get("/api/reports/{filename}")
+def api_reports_get(filename: str) -> dict:
+    """
+    Read-only fetch of a specific report's markdown content. Filename
+    is validated against a strict YYYY-MM-DD.md regex before any
+    filesystem access — there is no way to ask for ../, an absolute
+    path, or any non-report file.
+    """
+    if not _REPORT_NAME_RE.fullmatch(filename):
+        raise HTTPException(status_code=400, detail="Invalid report filename")
+    p = _REPORTS_DIR / filename
+    # resolve() collapses any . / .. that somehow slipped past the regex,
+    # then we verify the result is actually inside _REPORTS_DIR.
+    try:
+        resolved = p.resolve()
+        _REPORTS_DIR.resolve()  # ensure _REPORTS_DIR is resolvable
+        if _REPORTS_DIR.resolve() not in resolved.parents:
+            raise HTTPException(status_code=400, detail="Invalid report path")
+    except OSError:
+        raise HTTPException(status_code=404, detail=f"Report {filename!r} not found")
+    if not p.is_file():
+        raise HTTPException(status_code=404, detail=f"Report {filename!r} not found")
+    try:
+        content = p.read_text(encoding="utf-8")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"name": filename, "date": p.stem, "content": content}
 
 
 @app.get("/api/activity")

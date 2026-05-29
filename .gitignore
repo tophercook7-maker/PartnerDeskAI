@@ -22,6 +22,7 @@ archive/
 summaries/*.md
 status_history/*.json
 data/connection_status.json
+reports/*.md
 
 # OS
 .DS_Store

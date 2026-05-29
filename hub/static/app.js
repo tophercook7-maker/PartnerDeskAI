@@ -1004,6 +1004,84 @@ if (_reportsSelect) {
     _reportsSelect.addEventListener('change', () => loadReports());
 }
 
+// --- Report Inbox (v5.15) -----------------------------------------------
+// Read-only browser for daily reports written by daily_report.py.
+// The list shows file metadata only (name, date, size, mtime); contents
+// are fetched on demand when a row is clicked.
+
+let _inboxItems = [];
+let _inboxSelected = null;  // currently displayed report filename
+
+function _formatInboxSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderInboxList() {
+    const el = document.getElementById('inbox-list');
+    if (!_inboxItems.length) {
+        el.innerHTML = '<li class="muted">No reports yet. The cron writes one each morning.</li>';
+        return;
+    }
+    el.innerHTML = _inboxItems.map(it => {
+        const sel = (it.name === _inboxSelected) ? ' selected' : '';
+        return (
+            `<li class="${sel ? 'selected' : ''}" data-report="${_escape(it.name)}">` +
+              `<strong>${_escape(it.date)}</strong>` +
+              `<span class="meta">${_formatInboxSize(it.size)} · ${_escape(it.mtime)}</span>` +
+            `</li>`
+        );
+    }).join('');
+}
+
+async function loadInbox() {
+    try {
+        const r = await fetch('/api/reports');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _inboxItems = d.items || [];
+        renderInboxList();
+        // Auto-load the newest report so the preview isn't empty on first
+        // visit. Only do this when nothing has been selected yet.
+        if (!_inboxSelected && _inboxItems.length > 0) {
+            await loadInboxReport(_inboxItems[0].name);
+        }
+    } catch (err) {
+        _inboxItems = [];
+        document.getElementById('inbox-list').innerHTML =
+            '<li class="muted">Could not load inbox.</li>';
+    }
+}
+
+async function loadInboxReport(filename) {
+    const preview = document.getElementById('inbox-preview');
+    preview.innerHTML = '<div class="muted">Loading…</div>';
+    try {
+        const r = await fetch(`/api/reports/${encodeURIComponent(filename)}`);
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _inboxSelected = filename;
+        renderInboxList();  // refresh the list so the new selection highlights
+        // The report content is markdown text. Render in a <pre> so the
+        // headers, lists, and separators are visible without pulling in
+        // a markdown library.
+        preview.innerHTML = `<pre>${_escape(d.content || '')}</pre>`;
+    } catch (err) {
+        preview.innerHTML = '<div class="muted">Could not load report.</div>';
+    }
+}
+
+// Click delegation for the inbox list. Lives on document.addEventListener
+// so newly-rendered rows automatically inherit it without per-render
+// rebinding.
+document.addEventListener('click', (ev) => {
+    const li = ev.target.closest('#inbox-list li[data-report]');
+    if (!li) return;
+    const name = li.dataset.report;
+    if (name && name !== _inboxSelected) loadInboxReport(name);
+});
+
 // Chip click delegator (v5.5). Bound once at module load via event
 // delegation, so newly rendered chips inherit the handler without
 // per-render rebinding. Empty chips are <button disabled> so clicks on
@@ -1415,7 +1493,7 @@ async function refreshAll() {
         await Promise.all([
             loadStatus(), loadSummary(), loadLogs(),
             loadHistory(), loadReady(),
-            loadActivity(), loadReports(),
+            loadActivity(), loadReports(), loadInbox(),
         ]);
         // Mission Control reads cached payloads from the loaders above,
         // so it runs last to ensure every cache is populated.

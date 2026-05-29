@@ -220,6 +220,54 @@
         }
         /* Full-width card below the 2-card grid (v5.14). */
         .reports-card-wide { margin-top: 0.9rem; }
+
+        /* --- Report Inbox (v5.15) ---------------------------------- */
+        #report-inbox-section { padding: 1rem 1.25rem; }
+        .inbox-layout {
+            display: grid;
+            grid-template-columns: minmax(200px, 260px) 1fr;
+            gap: 1rem;
+            align-items: start;
+        }
+        @media (max-width: 700px) {
+            .inbox-layout { grid-template-columns: 1fr; }
+        }
+        .inbox-list {
+            list-style: none; padding: 0; margin: 0;
+            border: 1px solid #e5e5e5; border-radius: 6px;
+            background: #fafafa;
+            max-height: 22em; overflow: auto;
+        }
+        .inbox-list li {
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            font-size: 0.88rem;
+        }
+        .inbox-list li:last-child { border-bottom: 0; }
+        .inbox-list li.muted { cursor: default; color: #888; }
+        .inbox-list li:hover:not(.muted) { background: #f0f4ff; }
+        .inbox-list li.selected {
+            background: #2a6ec1; color: #fff;
+        }
+        .inbox-list li .meta {
+            display: block; font-size: 0.72rem;
+            opacity: 0.7; margin-top: 0.1rem;
+        }
+        .inbox-preview {
+            border: 1px solid #e5e5e5; border-radius: 6px;
+            padding: 1rem 1.15rem;
+            background: #fff;
+            min-height: 18em;
+            max-height: 36em; overflow: auto;
+            font-size: 0.92rem;
+            line-height: 1.5;
+        }
+        .inbox-preview pre {
+            white-space: pre-wrap; word-wrap: break-word;
+            margin: 0; font-family: ui-monospace, Menlo, Consolas, monospace;
+            font-size: 0.85rem;
+        }
         .reports-card h3 {
             margin: 0 0 0.55rem; font-size: 0.92rem; color: #333;
         }
@@ -580,6 +628,18 @@
             <ul id="reports-combos" class="reports-list">
                 <li class="muted">Loading…</li>
             </ul>
+        </div>
+    </section>
+
+    <section id="report-inbox-section">
+        <h2>Report Inbox</h2>
+        <div class="inbox-layout">
+            <ul id="inbox-list" class="inbox-list" aria-label="Daily reports">
+                <li class="muted">Loading…</li>
+            </ul>
+            <div id="inbox-preview" class="inbox-preview">
+                <div class="muted">Select a report to view.</div>
+            </div>
         </div>
     </section>
 

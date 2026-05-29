@@ -36,10 +36,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-STEPS: list[tuple[str, str]] = [
+STEPS: list[tuple] = [
+    # (label, script, *args). Optional positional args are passed
+    # through to the child process. The daily_report step needs
+    # --yesterday so the report captures the FULL previous day rather
+    # than only the hours that elapsed before the cron fired.
     ("Generate daily drafts", "automation/daily_runner.py"),
     ("Write status snapshot", "automation/status_snapshot.py"),
     ("Write morning summary", "automation/morning_summary.py"),
+    ("Write daily report",    "automation/daily_report.py",   "--yesterday"),
 ]
 
 
@@ -72,10 +77,11 @@ def main() -> int:
         active_steps = STEPS
 
     total = len(active_steps)
-    for idx, (label, script) in enumerate(active_steps, start=1):
+    for idx, step in enumerate(active_steps, start=1):
+        label, script, *extra_args = step
         _say(f"[{idx}/{total}] {label}")
         result = subprocess.run(
-            [sys.executable, str(ROOT / script)],
+            [sys.executable, str(ROOT / script), *extra_args],
             cwd=ROOT,
         )
         if result.returncode != 0:
