@@ -680,9 +680,11 @@ def api_activity() -> dict:
                                 a non-NULL posted_at (v5.8)
       - connection events    → each verified entry in
                                 data/connection_status.json
-    No log-file parsing, no polling loop. Capped at 25 entries, sorted
-    newest first, with (timestamp, message) dedupe so a duplicate run
-    never spams the feed.
+      - system events        → mtime of each non-empty .log in logs/
+                                modified within the trailing 14 days
+                                (v5.10) — stat() only, no contents read
+    No polling loop. Capped at 25 entries, sorted newest first, with
+    (timestamp, message) dedupe so a duplicate run never spams the feed.
     """
     events: list[dict] = []
 
@@ -753,6 +755,43 @@ def api_activity() -> dict:
             "type":    "connection",
             "message": f"{pretty} connection verified",
         })
+
+    # System events from log file mtimes (v5.10). One event per .log
+    # file in logs/ that has size > 0 and was modified within the last
+    # 14 days. Read-only stat() — never opens or parses file contents,
+    # never writes anything.
+    logs_dir = ROOT / "logs"
+    if logs_dir.is_dir():
+        now = datetime.now()
+        for log_path in logs_dir.glob("*.log"):
+            try:
+                st = log_path.stat()
+            except OSError:
+                continue
+            if st.st_size == 0:
+                continue
+            mtime = datetime.fromtimestamp(st.st_mtime)
+            if (now - mtime).days > 14:
+                continue
+            name = log_path.stem
+            is_date_stem = (
+                len(name) == 10 and name[4] == "-" and name[7] == "-"
+                and name[:4].isdigit() and name[5:7].isdigit()
+                and name[8:10].isdigit()
+            )
+            if is_date_stem:
+                message = "Daily ops completed"
+            elif name == "launchd.out":
+                message = "Launchd output log updated"
+            elif name == "launchd.err":
+                message = "Launchd error log updated"
+            else:
+                message = f"{name} log updated"
+            events.append({
+                "ts":      mtime.strftime("%Y-%m-%d %H:%M:%S"),
+                "type":    "system",
+                "message": message,
+            })
 
     # Sort newest first, dedupe identical (ts, message) pairs, cap at 25.
     events.sort(key=lambda e: e["ts"], reverse=True)
