@@ -223,6 +223,22 @@
 
         /* --- Report Inbox (v5.15) ---------------------------------- */
         #report-inbox-section { padding: 1rem 1.25rem; }
+        /* Filter row above the inbox list (v5.18). */
+        .inbox-filters {
+            display: flex; gap: 0.6rem; align-items: center;
+            flex-wrap: wrap; margin-bottom: 0.75rem;
+        }
+        .inbox-filters input[type="search"] {
+            padding: 0.35rem 0.6rem; border: 1px solid #ccc;
+            border-radius: 4px; font-size: 0.85rem;
+            min-width: 12rem; flex: 1;
+        }
+        .inbox-filters select {
+            padding: 0.32rem 0.5rem; border: 1px solid #ccc;
+            border-radius: 4px; font-size: 0.85rem;
+            background: #fff;
+        }
+        #inbox-count { font-size: 0.8rem; }
         .inbox-layout {
             display: grid;
             grid-template-columns: minmax(200px, 260px) 1fr;
@@ -667,6 +683,18 @@
 
     <section id="report-inbox-section">
         <h2>Report Inbox</h2>
+        <div class="inbox-filters">
+            <input type="search" id="inbox-search"
+                   placeholder="Filter by date…"
+                   aria-label="Filter inbox by date" />
+            <select id="inbox-window" aria-label="Inbox window">
+                <option value="all" selected>All time</option>
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+            </select>
+            <span id="inbox-count" class="muted">…</span>
+        </div>
         <div class="inbox-layout">
             <ul id="inbox-list" class="inbox-list" aria-label="Daily reports">
                 <li class="muted">Loading…</li>

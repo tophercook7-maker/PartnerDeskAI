@@ -1014,6 +1014,44 @@ let _inboxSelected = null;  // currently displayed report filename
 let _inboxContent  = '';    // cached raw markdown of the displayed report
                              // (v5.17 — backs the download button without
                              // a refetch on click)
+// Filter state (v5.18). Pure client-side filter over _inboxItems; no
+// refetch on input change. Persisted only in-memory — survives within
+// a session but resets on reload (intentional: filters scoped to the
+// current visit, not a long-term preference).
+let _inboxSearch = '';
+let _inboxWindow = 'all';
+
+function _filteredInboxItems() {
+    let out = _inboxItems;
+    const q = _inboxSearch.trim().toLowerCase();
+    if (q) {
+        out = out.filter(it => (it.name || '').toLowerCase().includes(q));
+    }
+    if (_inboxWindow !== 'all') {
+        const n = parseInt(_inboxWindow, 10) || 0;
+        if (n > 0) {
+            // "Last N days" includes today + the N-1 prior days.
+            const cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - (n - 1));
+            const cutoffStr = cutoff.toISOString().slice(0, 10);
+            out = out.filter(it => (it.date || '') >= cutoffStr);
+        }
+    }
+    return out;
+}
+
+function _renderInboxCount(filteredCount) {
+    const el = document.getElementById('inbox-count');
+    if (!el) return;
+    const total = _inboxItems.length;
+    if (total === 0) {
+        el.textContent = '0 reports';
+    } else if (filteredCount === total) {
+        el.textContent = `${total} report${total === 1 ? '' : 's'}`;
+    } else {
+        el.textContent = `Showing ${filteredCount} of ${total}`;
+    }
+}
 
 function _formatInboxSize(bytes) {
     if (bytes < 1024) return `${bytes} B`;
@@ -1023,11 +1061,19 @@ function _formatInboxSize(bytes) {
 
 function renderInboxList() {
     const el = document.getElementById('inbox-list');
-    if (!_inboxItems.length) {
+    const filtered = _filteredInboxItems();
+    _renderInboxCount(filtered.length);
+    if (_inboxItems.length === 0) {
         el.innerHTML = '<li class="muted">No reports yet. The cron writes one each morning.</li>';
         return;
     }
-    el.innerHTML = _inboxItems.map(it => {
+    if (filtered.length === 0) {
+        // Distinguish "no reports at all" from "filter excluded them all"
+        // so the user knows why the list looks empty.
+        el.innerHTML = '<li class="muted">No reports match the current filter.</li>';
+        return;
+    }
+    el.innerHTML = filtered.map(it => {
         const sel = (it.name === _inboxSelected) ? ' selected' : '';
         return (
             `<li class="${sel ? 'selected' : ''}" data-report="${_escape(it.name)}">` +
@@ -1158,6 +1204,24 @@ document.addEventListener('click', (ev) => {
     const name = li.dataset.report;
     if (name && name !== _inboxSelected) loadInboxReport(name);
 });
+
+// Filter input bindings (v5.18). Re-render the list on each change;
+// renderInboxList already pulls the filtered subset and updates the
+// count display.
+const _inboxSearchEl = document.getElementById('inbox-search');
+if (_inboxSearchEl) {
+    _inboxSearchEl.addEventListener('input', () => {
+        _inboxSearch = _inboxSearchEl.value || '';
+        renderInboxList();
+    });
+}
+const _inboxWindowEl = document.getElementById('inbox-window');
+if (_inboxWindowEl) {
+    _inboxWindowEl.addEventListener('change', () => {
+        _inboxWindow = _inboxWindowEl.value || 'all';
+        renderInboxList();
+    });
+}
 
 // Chip click delegator (v5.5). Bound once at module load via event
 // delegation, so newly rendered chips inherit the handler without
