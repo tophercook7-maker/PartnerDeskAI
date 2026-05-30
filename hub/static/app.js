@@ -1075,9 +1075,16 @@ function renderInboxList() {
     }
     el.innerHTML = filtered.map(it => {
         const sel = (it.name === _inboxSelected) ? ' selected' : '';
+        // v5.19: per-day counts pulled from /api/reports (default to 0
+        // for backward compatibility with any cached pre-v5.19 response).
+        const approvals = it.approvals || 0;
+        const publishes = it.publishes || 0;
+        const apN = `${approvals} approval${approvals === 1 ? '' : 's'}`;
+        const puN = `${publishes} published`;
         return (
             `<li class="${sel ? 'selected' : ''}" data-report="${_escape(it.name)}">` +
               `<strong>${_escape(it.date)}</strong>` +
+              `<span class="meta">${apN} · ${puN}</span>` +
               `<span class="meta">${_formatInboxSize(it.size)} · ${_escape(it.mtime)}</span>` +
             `</li>`
         );

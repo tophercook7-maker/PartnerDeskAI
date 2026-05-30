@@ -680,10 +680,37 @@ _REPORT_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
 def api_reports_list() -> dict:
     """
     Read-only list of available daily report files. Returns metadata
-    only (name, date stem, size, mtime) — never opens file contents.
-    Filenames not matching YYYY-MM-DD.md are silently filtered out so
-    stray files in reports/ never appear in the inbox.
+    only (name, date stem, size, mtime, approvals, publishes) — never
+    opens file contents. Filenames not matching YYYY-MM-DD.md are
+    silently filtered out so stray files in reports/ never appear in
+    the inbox.
+
+    v5.19: per-row approval + publish counts come from two batched
+    GROUP BY queries against the DB (one for each table), so the cost
+    is O(2 queries) regardless of how many report files exist.
     """
+    approvals_by_date: dict[str, int] = {}
+    publishes_by_date: dict[str, int] = {}
+    if DB_PATH.is_file():
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            for d, n in conn.execute(
+                "SELECT date(posted_date) AS d, COUNT(*) "
+                "FROM post_history GROUP BY d"
+            ).fetchall():
+                if d:
+                    approvals_by_date[d] = n
+            for d, n in conn.execute(
+                "SELECT date(posted_at) AS d, COUNT(*) "
+                "FROM posts "
+                "WHERE status = 'posted' AND posted_at IS NOT NULL "
+                "GROUP BY d"
+            ).fetchall():
+                if d:
+                    publishes_by_date[d] = n
+        finally:
+            conn.close()
+
     items: list[dict] = []
     if _REPORTS_DIR.is_dir():
         for p in _REPORTS_DIR.glob("*.md"):
@@ -694,11 +721,13 @@ def api_reports_list() -> dict:
             except OSError:
                 continue
             items.append({
-                "name":  p.name,
-                "date":  p.stem,
-                "size":  st.st_size,
-                "mtime": datetime.fromtimestamp(st.st_mtime)
-                                 .strftime("%Y-%m-%d %H:%M:%S"),
+                "name":      p.name,
+                "date":      p.stem,
+                "size":      st.st_size,
+                "mtime":     datetime.fromtimestamp(st.st_mtime)
+                                     .strftime("%Y-%m-%d %H:%M:%S"),
+                "approvals": approvals_by_date.get(p.stem, 0),
+                "publishes": publishes_by_date.get(p.stem, 0),
             })
     items.sort(key=lambda x: x["date"], reverse=True)
     return {"items": items, "count": len(items)}
