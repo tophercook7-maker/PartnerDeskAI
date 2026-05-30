@@ -176,22 +176,13 @@ function _missionControlActivate(target, filter) {
 }
 
 function _missionControlAction(action) {
-    // For Run Daily Ops / Refresh Hub / Refresh Summary, just trigger
-    // the existing top-row buttons so there's one canonical handler
-    // per action (browser confirm, busy-state, refresh-on-success all
-    // already live there).
-    if (action === 'run-daily-ops') {
-        document.getElementById('btn-run').click();
-        return;
-    }
-    if (action === 'refresh-hub') {
-        document.getElementById('btn-refresh').click();
-        return;
-    }
-    if (action === 'refresh-summary') {
-        document.getElementById('btn-skip').click();
-        return;
-    }
+    // v5.36: call the named action functions directly. Previously
+    // these synthesized clicks on top-row buttons (now retired);
+    // the underlying logic lives in runDailyOps / refreshAll /
+    // refreshSummaryOnly as the canonical handlers.
+    if (action === 'run-daily-ops') { runDailyOps(); return; }
+    if (action === 'refresh-hub')   { refreshAll(); return; }
+    if (action === 'refresh-summary') { refreshSummaryOnly(); return; }
     if (action === 'verify-connections') {
         _scrollToSection('connections-list');
         return;
@@ -1765,14 +1756,14 @@ function _runControlPanelAction(action) {
     switch (action) {
         // --- Hub / System ---
         case 'refresh-hub':
-            _cpClickById('btn-refresh');
+            refreshAll();
             return;
         case 'run-daily-ops':
-            // #btn-run has its own confirm (calls OpenAI). Delegate.
-            _cpClickById('btn-run');
+            // runDailyOps() carries its own OpenAI-call confirm.
+            runDailyOps();
             return;
         case 'refresh-summary':
-            _cpClickById('btn-skip');
+            refreshSummaryOnly();
             return;
         case 'open-latest-report': {
             // Inbox is sorted newest-first → first row is the latest.
@@ -1791,9 +1782,9 @@ function _runControlPanelAction(action) {
         // --- Parker Promo ---
         case 'generate-drafts':
             // No standalone "generate-only" endpoint exists. Daily Ops
-            // runs daily_runner (generation) as its first step, so we
-            // delegate. #btn-run carries the OpenAI-call confirm.
-            _cpClickById('btn-run');
+            // runs daily_runner (generation) as its first step. The
+            // confirm dialog lives inside runDailyOps().
+            runDailyOps();
             return;
         case 'review-drafts': {
             // Mirror the v5.1 Mission Control "review-drafts" behavior:
@@ -1874,7 +1865,7 @@ function _runControlPanelAction(action) {
 // v5.35: brief "got your click" pulse on the clicked CP button. The
 // .is-busy class adds opacity + background tint AND pointer-events:none,
 // which doubles as a 800ms double-click lockout — useful protection
-// for the OpenAI-triggering buttons that delegate to #btn-run.
+// for the OpenAI-triggering buttons that call runDailyOps().
 function _cpPulse(btn) {
     btn.classList.add('is-busy');
     if (btn._cpPulseTimer) clearTimeout(btn._cpPulseTimer);
@@ -2136,9 +2127,12 @@ function showCmd(label, data) {
     document.getElementById('cmd-output').textContent = out;
 }
 
-document.getElementById('btn-refresh').addEventListener('click', refreshAll);
-
-document.getElementById('btn-run').addEventListener('click', async () => {
+// v5.36: named action functions. Previously these lived as inline
+// handlers on the now-removed top-row buttons (#btn-refresh, #btn-run,
+// #btn-skip). Extracted so the Control Panel and Mission Control can
+// call them directly instead of synthesizing button clicks on elements
+// that no longer exist.
+async function runDailyOps() {
     if (!confirm('This will call OpenAI and generate new drafts. Continue?')) return;
     setBusy(true);
     document.getElementById('cmd-status').textContent =
@@ -2154,9 +2148,9 @@ document.getElementById('btn-run').addEventListener('click', async () => {
     } finally {
         setBusy(false);
     }
-});
+}
 
-document.getElementById('btn-skip').addEventListener('click', async () => {
+async function refreshSummaryOnly() {
     setBusy(true);
     document.getElementById('cmd-status').textContent =
         'Refreshing summary and snapshot (no OpenAI call)…';
@@ -2171,7 +2165,7 @@ document.getElementById('btn-skip').addEventListener('click', async () => {
     } finally {
         setBusy(false);
     }
-});
+}
 
 // Initial load on page open.
 refreshAll();
