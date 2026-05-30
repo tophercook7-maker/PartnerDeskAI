@@ -245,6 +245,13 @@
             cursor: pointer; white-space: nowrap;
         }
         .inbox-toggle input[type="checkbox"] { cursor: pointer; }
+        .inbox-clear-btn {
+            background: transparent; border: 0;
+            color: #2a6ec1; font-size: 0.8rem;
+            cursor: pointer; padding: 0.2rem 0.4rem;
+            text-decoration: underline; text-underline-offset: 2px;
+        }
+        .inbox-clear-btn:hover { color: #1a5093; }
         .inbox-layout {
             display: grid;
             grid-template-columns: minmax(200px, 260px) 1fr;
@@ -703,6 +710,8 @@
                 <input type="checkbox" id="inbox-hide-empty" />
                 Hide empty days
             </label>
+            <button type="button" id="inbox-clear" class="inbox-clear-btn"
+                    title="Reset all inbox filters">Clear filters</button>
             <span id="inbox-count" class="muted">…</span>
         </div>
         <div class="inbox-layout">

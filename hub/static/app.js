@@ -1053,6 +1053,11 @@ function _writePersistedInboxFilters() {
     } catch (e) { /* storage blocked — filters still work in-memory */ }
 }
 
+function _clearPersistedInboxFilters() {
+    try { localStorage.removeItem(_INBOX_FILTERS_KEY); }
+    catch (e) { /* storage blocked */ }
+}
+
 // Hydrate module state from persistence at load. DOM elements get
 // synced further down where the input/select/checkbox handlers bind.
 (function _hydrateInboxFilters() {
@@ -1285,6 +1290,21 @@ if (_inboxHideEmptyEl) {
     _inboxHideEmptyEl.addEventListener('change', () => {
         _inboxHideEmpty = _inboxHideEmptyEl.checked;
         _writePersistedInboxFilters();
+        renderInboxList();
+    });
+}
+const _inboxClearEl = document.getElementById('inbox-clear');
+if (_inboxClearEl) {
+    _inboxClearEl.addEventListener('click', () => {
+        // v5.22: reset all three filters to their defaults, clear the
+        // persisted state, and re-sync the visible form elements.
+        _inboxSearch    = '';
+        _inboxWindow    = 'all';
+        _inboxHideEmpty = false;
+        _clearPersistedInboxFilters();
+        if (_inboxSearchEl)    _inboxSearchEl.value    = '';
+        if (_inboxWindowEl)    _inboxWindowEl.value    = 'all';
+        if (_inboxHideEmptyEl) _inboxHideEmptyEl.checked = false;
         renderInboxList();
     });
 }
