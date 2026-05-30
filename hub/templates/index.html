@@ -663,11 +663,75 @@
             background: #eee; padding: 0.1rem 0.4rem; border-radius: 3px;
             font-family: monospace; font-size: 0.85rem;
         }
+        /* v5.30: shortcuts hint in the subtitle and the floating panel. */
+        .shortcuts-hint {
+            font-size: 0.85rem; color: #777; margin-left: 0.4rem;
+        }
+        .shortcuts-hint kbd { font-size: 0.78rem; }
+        .shortcuts-panel {
+            position: fixed; inset: 0;
+            background: rgba(0, 0, 0, 0.2);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 100;
+        }
+        .shortcuts-panel[hidden] { display: none; }
+        .shortcuts-panel-inner {
+            background: #fff;
+            border-radius: 8px;
+            padding: 1rem 1.3rem 1.1rem;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
+            min-width: 300px; max-width: 460px;
+        }
+        .shortcuts-header {
+            display: flex; align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.55rem;
+        }
+        .shortcuts-header h3 {
+            margin: 0; font-size: 1rem; color: #2a6ec1;
+        }
+        .shortcuts-close {
+            background: transparent; border: 0; cursor: pointer;
+            font-size: 1.4rem; line-height: 1;
+            padding: 0 0.4rem; color: #888;
+        }
+        .shortcuts-close:hover { color: #000; }
+        .shortcuts-list {
+            list-style: none; padding: 0; margin: 0;
+            font-size: 0.88rem; line-height: 1.85;
+        }
+        .shortcuts-list kbd {
+            margin-right: 0.35rem;
+            min-width: 1.4em; text-align: center;
+            display: inline-block;
+        }
     </style>
 </head>
 <body>
     <h1>PartnerDesk Hub</h1>
-    <div class="subtitle">Local AI Business Partner Station</div>
+    <div class="subtitle">Local AI Business Partner Station
+        <span class="shortcuts-hint">— press <kbd>?</kbd> for keyboard shortcuts</span>
+    </div>
+
+    <!-- v5.30: keyboard shortcuts panel. Hidden by default; toggled
+         by '?'. Backdrop click and Esc also close it. -->
+    <div id="shortcuts-panel" class="shortcuts-panel" hidden
+         aria-hidden="true" role="dialog" aria-label="Keyboard shortcuts">
+        <div class="shortcuts-panel-inner">
+            <div class="shortcuts-header">
+                <h3>Keyboard shortcuts</h3>
+                <button type="button" id="shortcuts-close"
+                        class="shortcuts-close" aria-label="Close">×</button>
+            </div>
+            <ul class="shortcuts-list">
+                <li><kbd>/</kbd> Focus the inbox search input</li>
+                <li><kbd>↑</kbd> <kbd>↓</kbd> Move row focus in the inbox list</li>
+                <li><kbd>Enter</kbd> Open the focused report</li>
+                <li><kbd>Esc</kbd> Clear focus / close this panel</li>
+                <li><kbd>?</kbd> Toggle this panel</li>
+            </ul>
+        </div>
+    </div>
 
     <section id="mission-control-section">
         <h2>Mission Control</h2>

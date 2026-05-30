@@ -1384,7 +1384,44 @@ function _scrollFocusedInboxRowIntoView() {
     const li = document.querySelector('#inbox-list li.focused');
     if (li) li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
+// v5.30: keyboard shortcuts help panel toggle. Called from the '?'
+// hotkey, the close button, and backdrop clicks. Hidden state is
+// tracked via the native [hidden] attribute (no extra CSS class).
+function _toggleShortcutsPanel(show) {
+    const panel = document.getElementById('shortcuts-panel');
+    if (!panel) return;
+    const wantShow = (show === undefined) ? panel.hidden : show;
+    panel.hidden = !wantShow;
+    panel.setAttribute('aria-hidden', String(!wantShow));
+}
+// Backdrop + close-button clicks. Inner-card clicks pass through so
+// text inside can be selected/copied without dismissing the panel.
+document.addEventListener('click', (ev) => {
+    const panel = document.getElementById('shortcuts-panel');
+    if (!panel || panel.hidden) return;
+    if (ev.target.id === 'shortcuts-close' || ev.target === panel) {
+        _toggleShortcutsPanel(false);
+    }
+});
+
 document.addEventListener('keydown', (ev) => {
+    // v5.30: '?' toggles the help panel from anywhere (unless typing).
+    if (ev.key === '?' && !_isTypingInAnInput(ev.target)) {
+        ev.preventDefault();
+        _toggleShortcutsPanel();
+        return;
+    }
+    // v5.30: Esc closes the help panel if it's open. Caught BEFORE
+    // the inbox Esc handler so the same key doesn't both close the
+    // panel and clear inbox focus in one stroke.
+    if (ev.key === 'Escape') {
+        const panel = document.getElementById('shortcuts-panel');
+        if (panel && !panel.hidden) {
+            ev.preventDefault();
+            _toggleShortcutsPanel(false);
+            return;
+        }
+    }
     // Global hotkey first: '/' anywhere on the page (unless typing
     // into another input) jumps focus to the inbox search input.
     if (ev.key === '/' && !_isTypingInAnInput(ev.target)) {
