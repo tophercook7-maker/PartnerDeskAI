@@ -1767,11 +1767,45 @@ document.getElementById('connections-list').addEventListener('click', async (e) 
 });
 
 // v6.7: same verify-now path for the Meta Readiness Center cards.
+// v6.8: also handles the "Save notes" button per card.
 // Scoped to #meta-readiness so it doesn't compete with other delegators.
 document.getElementById('meta-readiness').addEventListener('click', async (e) => {
-    const btn = e.target.closest('button[data-action="verify-connection"]');
-    if (!btn) return;
-    await verifyConnection(btn.dataset.platformKey);
+    const verifyBtn = e.target.closest('button[data-action="verify-connection"]');
+    if (verifyBtn) {
+        await verifyConnection(verifyBtn.dataset.platformKey);
+        return;
+    }
+    const saveBtn = e.target.closest('button.meta-notes-save');
+    if (saveBtn) {
+        const platform = saveBtn.dataset.platform;
+        const textarea = document.querySelector(
+            `.meta-notes-input[data-platform="${platform}"]`
+        );
+        const statusEl = document.querySelector(
+            `.meta-notes-status[data-platform="${platform}"]`
+        );
+        if (!textarea) return;
+        const notes = textarea.value || '';
+        if (statusEl) statusEl.textContent = 'Saving…';
+        try {
+            const r = await fetch('/api/meta/notes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ platform, notes }),
+            });
+            const d = await r.json();
+            if (r.ok && d.ok) {
+                if (statusEl) statusEl.textContent =
+                    `Updated: ${d.updated_at}`;
+            } else {
+                if (statusEl) statusEl.textContent =
+                    `Save failed: ${d.detail || d.message || 'unknown'}`;
+            }
+        } catch (err) {
+            if (statusEl) statusEl.textContent = 'Save failed: ' + err;
+        }
+        return;
+    }
 });
 
 async function loadConnections() {
@@ -1827,12 +1861,29 @@ function renderMetaReadiness(data) {
         const lastChecked = p.last_verified_at
             ? `Last verified: ${_escape(p.last_verified_at)}`
             : 'Never verified.';
-        const verifyMsg = p.verify_message
-            ? `<span class="meta-verify-msg">${_escape(p.verify_message)}</span>`
-            : '';
         const docLink = p.doc_url
             ? `<a href="${_escape(p.doc_url)}" target="_blank" rel="noopener noreferrer">Docs ↗</a>`
             : '';
+        // v6.8: user-authored app-approval notes. Textarea is always
+        // visible — the Save button is the explicit commit. Escaped on
+        // initial render so prior content can't break the markup.
+        const notesText = p.notes || '';
+        const notesUpdated = p.notes_updated_at
+            ? `Updated: ${_escape(p.notes_updated_at)}`
+            : 'Never saved.';
+        const notesBlock =
+            `<h4>App approval notes</h4>` +
+            `<textarea class="meta-notes-input" rows="3" ` +
+              `data-platform="${_escape(slug)}" ` +
+              `placeholder="Track app review status, granted permissions, reviewer feedback…">` +
+              `${_escape(notesText)}` +
+            `</textarea>` +
+            `<div class="meta-notes-footer">` +
+              `<button type="button" class="row-action meta-notes-save" ` +
+                `data-platform="${_escape(slug)}">Save notes</button>` +
+              `<span class="meta-notes-status" data-platform="${_escape(slug)}">` +
+                `${_escape(notesUpdated)}</span>` +
+            `</div>`;
         return (
             `<div class="meta-card" data-platform="${_escape(slug)}">` +
               `<h3>${_escape(p.name)}` +
@@ -1842,6 +1893,7 @@ function renderMetaReadiness(data) {
               `<ul class="meta-keys">${keysHtml}</ul>` +
               `<h4>Setup steps</h4>` +
               `<ol class="meta-steps">${stepsHtml}</ol>` +
+              notesBlock +
               `<div class="meta-card-footer">` +
                 `<button type="button" class="row-action" ` +
                   `data-action="verify-connection" ` +

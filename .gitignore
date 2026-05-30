@@ -24,6 +24,8 @@ archive/
 summaries/*.md
 status_history/*.json
 data/connection_status.json
+data/meta_app_state.json
+data/.meta_app_state.*.tmp
 reports/*.md
 
 # OS

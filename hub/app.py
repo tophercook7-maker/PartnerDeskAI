@@ -48,6 +48,7 @@ import approval_manager  # noqa: E402
 import connection_state  # noqa: E402
 import env_writer  # noqa: E402
 import linkedin_oauth  # noqa: E402
+import meta_app_state  # noqa: E402
 import social_posters  # noqa: E402
 import status as status_mod  # noqa: E402
 
@@ -982,6 +983,7 @@ def api_meta_readiness() -> dict:
           connection_state.compute_state which already excludes tokens.
     """
     states = connection_state.load_states()
+    notes_state = meta_app_state.load()
     out: dict[str, dict] = {}
     for slug, meta in _META_READINESS_PLATFORMS.items():
         state = connection_state.compute_state(slug, states)
@@ -990,6 +992,9 @@ def api_meta_readiness() -> dict:
             for k in meta["required_keys"]
         ]
         missing = [r["key"] for r in required_keys if not r["present"]]
+        # v6.8: per-platform user notes (app review status etc.).
+        # Free-text only — no secrets, no Meta API payloads.
+        notes_entry = notes_state.get(slug, {})
         out[slug] = {
             "name":             meta["name"],
             "status":           state["state"],
@@ -999,8 +1004,38 @@ def api_meta_readiness() -> dict:
             "doc_url":          meta["doc_url"],
             "last_verified_at": state["last_verified_at"],
             "verify_message":   state["last_message"],
+            "notes":            notes_entry.get("notes") or "",
+            "notes_updated_at": notes_entry.get("updated_at") or None,
         }
     return out
+
+
+class MetaNotesUpdate(BaseModel):
+    platform: str
+    notes:    str
+
+
+@app.post("/api/meta/notes")
+def api_meta_notes(body: MetaNotesUpdate) -> dict:
+    """
+    Replace one Meta platform's notes with user-provided text. The text
+    is capped at meta_app_state.MAX_NOTES_LEN chars and stamped with
+    updated_at. Returns the saved entry — never includes anything
+    other than the notes + timestamp.
+
+    Safety:
+        - Refuses platforms outside the allowed set (FB, IG).
+        - meta_app_state validates + clamps length on save.
+        - Note text is user-typed free text; the frontend escapes
+          on render.
+    """
+    try:
+        result = meta_app_state.set_notes(body.platform, body.notes)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not write: {e}")
+    return {"ok": True, "platform": body.platform, **result}
 
 
 @app.get("/api/connections")

@@ -641,6 +641,26 @@
         .meta-verify-msg {
             color: #555; font-style: italic; flex: 1; min-width: 12em;
         }
+        /* v6.8 notes block */
+        .meta-notes-input {
+            width: 100%; box-sizing: border-box;
+            margin-top: 0.2rem; padding: 0.5rem 0.6rem;
+            font-family: ui-sans-serif, -apple-system, sans-serif;
+            font-size: 0.85rem; line-height: 1.45;
+            border: 1px solid #d0d0d0; border-radius: 4px;
+            background: #fff; resize: vertical;
+        }
+        .meta-notes-input:focus {
+            outline: none; border-color: #2a6ec1;
+            box-shadow: 0 0 0 1px #2a6ec1;
+        }
+        .meta-notes-footer {
+            display: flex; gap: 0.6rem; align-items: center;
+            margin-top: 0.3rem; flex-wrap: wrap;
+        }
+        .meta-notes-status {
+            font-size: 0.78rem; color: #666; font-style: italic;
+        }
         .connection-warning {
             font-size: 0.8rem; color: #856404; background: #fff3cd;
             padding: 0.2rem 0.5rem; border-radius: 3px;
