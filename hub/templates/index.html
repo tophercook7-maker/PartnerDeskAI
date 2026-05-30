@@ -585,6 +585,62 @@
         .connection-meta-pending {
             color: #2a6ec1; font-style: italic;
         }
+        /* --- v6.7 Meta Readiness Center ----------------------------- */
+        #meta-readiness-section { padding: 1rem 1.25rem; }
+        .meta-readiness-grid {
+            display: grid; gap: 0.9rem;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        }
+        .meta-card {
+            border: 1px solid #e5e5e5; border-radius: 6px;
+            padding: 0.85rem 0.95rem;
+            background: #fafafa;
+        }
+        .meta-card h3 {
+            margin: 0 0 0.45rem; font-size: 1rem; color: #2a6ec1;
+            display: flex; justify-content: space-between; align-items: baseline;
+        }
+        .meta-card-status {
+            font-size: 0.78rem; font-weight: 500;
+            padding: 0.1rem 0.45rem; border-radius: 3px;
+        }
+        .meta-card-status.verified       { background: #d4edda; color: #155724; }
+        .meta-card-status.configured     { background: #fff3cd; color: #856404; }
+        .meta-card-status.not_configured { background: #f8d7da; color: #721c24; }
+        .meta-card h4 {
+            font-size: 0.82rem; color: #555; margin: 0.65rem 0 0.25rem;
+            text-transform: uppercase; letter-spacing: 0.4px;
+        }
+        .meta-keys, .meta-steps {
+            list-style: none; padding: 0; margin: 0;
+            font-size: 0.85rem; line-height: 1.5;
+        }
+        .meta-keys li {
+            font-family: ui-monospace, Menlo, Consolas, monospace;
+            font-size: 0.8rem;
+            padding: 0.12rem 0;
+        }
+        .meta-key-mark { display: inline-block; width: 1.3em; }
+        .meta-key-present { color: #155724; }
+        .meta-key-missing { color: #721c24; }
+        .meta-steps { counter-reset: step; }
+        .meta-steps li {
+            counter-increment: step;
+            position: relative; padding-left: 1.6rem; margin-bottom: 0.15rem;
+        }
+        .meta-steps li::before {
+            content: counter(step) ".";
+            position: absolute; left: 0; color: #888; font-weight: 500;
+        }
+        .meta-card-footer {
+            margin-top: 0.6rem; display: flex; gap: 0.5rem;
+            align-items: center; flex-wrap: wrap;
+            font-size: 0.8rem;
+        }
+        .meta-card-footer a { color: #2a6ec1; }
+        .meta-verify-msg {
+            color: #555; font-style: italic; flex: 1; min-width: 12em;
+        }
         .connection-warning {
             font-size: 0.8rem; color: #856404; background: #fff3cd;
             padding: 0.2rem 0.5rem; border-radius: 3px;
@@ -829,6 +885,7 @@
                 <h3>Connections</h3>
                 <button type="button" data-cp-action="verify-all-connections" class="cp-btn">Verify All Connections</button>
                 <button type="button" data-cp-action="connect-linkedin" class="cp-btn primary">Connect LinkedIn</button>
+                <button type="button" data-cp-action="meta-readiness" class="cp-btn">Meta Readiness</button>
                 <button type="button" data-cp-action="setup-env" class="cp-btn">Setup .env</button>
                 <button type="button" data-cp-action="open-connection-help" class="cp-btn">Open Connection Wizard Help</button>
                 <button type="button" data-cp-action="show-missing-setup" class="cp-btn">Show Missing Setup</button>
@@ -922,6 +979,18 @@
         <ul id="connections-list" class="recent-list">
             <li class="muted">Loading…</li>
         </ul>
+    </section>
+
+    <section id="meta-readiness-section">
+        <h2>Meta Readiness Center</h2>
+        <div class="muted" style="margin-bottom: 0.6rem">
+            Setup state and remaining steps for Facebook + Instagram
+            publishing. Read-only: no posting happens here. Verify
+            buttons probe the Graph API with GET-only requests.
+        </div>
+        <div id="meta-readiness" class="meta-readiness-grid">
+            <div class="muted">Loading…</div>
+        </div>
     </section>
 
     <section>

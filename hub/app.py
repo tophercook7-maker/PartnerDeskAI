@@ -930,6 +930,79 @@ def _escape_html(s: str) -> str:
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+# --- v6.7: Meta (Facebook + Instagram) Readiness Center -----------------
+#
+# Per-platform setup metadata, kept here (Python) rather than scattered
+# across the frontend so all Meta-specific guidance lives in one place.
+
+_META_READINESS_PLATFORMS = {
+    "facebook": {
+        "name":          "Facebook",
+        "required_keys": ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN"],
+        "doc_url":       "https://developers.facebook.com/docs/pages-api",
+        "setup_steps": [
+            "Create a Meta Developer App at developers.facebook.com",
+            "Add the 'Facebook Login for Business' and 'Pages API' products",
+            "Request 'pages_manage_posts' + 'pages_read_engagement' permissions",
+            "Submit your app for review (Meta approval — currently pending)",
+            "After approval, generate a long-lived Page Access Token",
+            "Set FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN in .env",
+            "Click 'Verify' below — Hub probes Graph API read-only",
+        ],
+    },
+    "instagram": {
+        "name":          "Instagram",
+        "required_keys": ["INSTAGRAM_BUSINESS_ACCOUNT_ID", "INSTAGRAM_ACCESS_TOKEN"],
+        "doc_url":       "https://developers.facebook.com/docs/instagram-platform",
+        "setup_steps": [
+            "Convert your Instagram account to Business or Creator",
+            "Connect the IG account to a Facebook Page in Meta Business Suite",
+            "In your Meta Developer App, add the 'Instagram Graph API' product",
+            "Request 'instagram_content_publish' + 'instagram_basic' permissions",
+            "Submit for app review (same Meta approval as Facebook)",
+            "Set INSTAGRAM_BUSINESS_ACCOUNT_ID and INSTAGRAM_ACCESS_TOKEN in .env",
+            "Click 'Verify' below — Hub probes Graph API read-only",
+        ],
+    },
+}
+
+
+@app.get("/api/meta/readiness")
+def api_meta_readiness() -> dict:
+    """
+    Structured readiness report for Facebook + Instagram. Read-only,
+    purely informational — built so the Hub's Meta Readiness Center can
+    show "what's still needed" while you're waiting on Meta app review.
+
+    Safety:
+        - Returns env-key NAMES + present/absent booleans only.
+          Actual values are NEVER returned.
+        - Never calls any Meta API. Never modifies anything.
+        - last_verified_at + verify_message come from
+          connection_state.compute_state which already excludes tokens.
+    """
+    states = connection_state.load_states()
+    out: dict[str, dict] = {}
+    for slug, meta in _META_READINESS_PLATFORMS.items():
+        state = connection_state.compute_state(slug, states)
+        required_keys = [
+            {"key": k, "present": bool((os.getenv(k) or "").strip())}
+            for k in meta["required_keys"]
+        ]
+        missing = [r["key"] for r in required_keys if not r["present"]]
+        out[slug] = {
+            "name":             meta["name"],
+            "status":           state["state"],
+            "required_keys":    required_keys,
+            "missing_keys":     missing,
+            "setup_steps":      meta["setup_steps"],
+            "doc_url":          meta["doc_url"],
+            "last_verified_at": state["last_verified_at"],
+            "verify_message":   state["last_message"],
+        }
+    return out
+
+
 @app.get("/api/connections")
 def api_connections() -> dict:
     """

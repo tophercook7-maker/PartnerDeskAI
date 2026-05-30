@@ -1709,6 +1709,46 @@ function renderConnections(items) {
 //   open-setup        -> window.open(setup URL) in a new tab (noopener)
 //   verify-connection -> POST /api/connections/verify, show result in
 //                        the Command Output panel. Never prints tokens.
+// v6.7: extracted so the Meta Readiness Center's "Verify now" buttons
+// can call the same path as the Connections card without duplicating
+// the fetch + cmd-output + refresh logic.
+async function verifyConnection(platform) {
+    if (!platform) return;
+    document.getElementById('cmd-status').textContent =
+        `Verifying ${platform}…`;
+    document.getElementById('cmd-output').textContent = '';
+    try {
+        const r = await fetch('/api/connections/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ platform }),
+        });
+        const d = await r.json();
+        if (r.ok) {
+            showCmd(`Verify (${platform})`, {
+                exit_code: d.ok ? 0 : 1,
+                stdout: d.message || '',
+                stderr: '',
+            });
+            // Refresh connections (badges flip) AND ready posts
+            // (publish buttons enable/disable based on the new
+            // verified state) AND meta-readiness (card badges flip).
+            await loadConnections();
+            await loadReady();
+            await loadMetaReadiness();
+        } else {
+            showCmd(`Verify (${platform})`, {
+                exit_code: r.status,
+                stdout: '',
+                stderr: d.detail || `HTTP ${r.status}`,
+            });
+        }
+    } catch (err) {
+        document.getElementById('cmd-status').textContent =
+            'Verify failed: ' + err;
+    }
+}
+
 document.getElementById('connections-list').addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
@@ -1721,42 +1761,17 @@ document.getElementById('connections-list').addEventListener('click', async (e) 
     }
 
     if (action === 'verify-connection') {
-        const platform = btn.dataset.platformKey;
-        if (!platform) return;
-        document.getElementById('cmd-status').textContent =
-            `Verifying ${platform}…`;
-        document.getElementById('cmd-output').textContent = '';
-        try {
-            const r = await fetch('/api/connections/verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ platform }),
-            });
-            const d = await r.json();
-            if (r.ok) {
-                showCmd(`Verify (${platform})`, {
-                    exit_code: d.ok ? 0 : 1,
-                    stdout: d.message || '',
-                    stderr: '',
-                });
-                // Refresh connections (badges flip) AND ready posts
-                // (publish buttons enable/disable based on the new
-                // verified state).
-                await loadConnections();
-                await loadReady();
-            } else {
-                showCmd(`Verify (${platform})`, {
-                    exit_code: r.status,
-                    stdout: '',
-                    stderr: d.detail || `HTTP ${r.status}`,
-                });
-            }
-        } catch (err) {
-            document.getElementById('cmd-status').textContent =
-                'Verify failed: ' + err;
-        }
+        await verifyConnection(btn.dataset.platformKey);
         return;
     }
+});
+
+// v6.7: same verify-now path for the Meta Readiness Center cards.
+// Scoped to #meta-readiness so it doesn't compete with other delegators.
+document.getElementById('meta-readiness').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-action="verify-connection"]');
+    if (!btn) return;
+    await verifyConnection(btn.dataset.platformKey);
 });
 
 async function loadConnections() {
@@ -1776,6 +1791,77 @@ async function loadConnections() {
     } catch (err) {
         document.getElementById('connections-list').innerHTML =
             '<li class="muted">Could not load connections.</li>';
+    }
+}
+
+// --- v6.7: Meta Readiness Center ----------------------------------------
+// Side-by-side cards for Facebook + Instagram showing setup state +
+// remaining steps + verify-now button. Data comes from the read-only
+// /api/meta/readiness endpoint (env-key NAMES + present/absent only,
+// never values).
+
+function renderMetaReadiness(data) {
+    const el = document.getElementById('meta-readiness');
+    if (!el) return;
+    if (!data || Object.keys(data).length === 0) {
+        el.innerHTML = '<div class="muted">No Meta platforms configured.</div>';
+        return;
+    }
+    const STATUS_TEXT = {
+        verified:       'Verified',
+        configured:     'Configured (not verified)',
+        not_configured: 'Not configured',
+    };
+    el.innerHTML = Object.entries(data).map(([slug, p]) => {
+        const statusCls = (p.status || 'not_configured').toLowerCase();
+        const statusTxt = STATUS_TEXT[statusCls] || statusCls;
+        const keysHtml = (p.required_keys || []).map(k => {
+            const mark = k.present
+                ? '<span class="meta-key-mark meta-key-present">✓</span>'
+                : '<span class="meta-key-mark meta-key-missing">✗</span>';
+            return `<li>${mark}${_escape(k.key)}</li>`;
+        }).join('');
+        const stepsHtml = (p.setup_steps || [])
+            .map(s => `<li>${_escape(s)}</li>`)
+            .join('');
+        const lastChecked = p.last_verified_at
+            ? `Last verified: ${_escape(p.last_verified_at)}`
+            : 'Never verified.';
+        const verifyMsg = p.verify_message
+            ? `<span class="meta-verify-msg">${_escape(p.verify_message)}</span>`
+            : '';
+        const docLink = p.doc_url
+            ? `<a href="${_escape(p.doc_url)}" target="_blank" rel="noopener noreferrer">Docs ↗</a>`
+            : '';
+        return (
+            `<div class="meta-card" data-platform="${_escape(slug)}">` +
+              `<h3>${_escape(p.name)}` +
+                `<span class="meta-card-status ${statusCls}">${_escape(statusTxt)}</span>` +
+              `</h3>` +
+              `<h4>Required env keys</h4>` +
+              `<ul class="meta-keys">${keysHtml}</ul>` +
+              `<h4>Setup steps</h4>` +
+              `<ol class="meta-steps">${stepsHtml}</ol>` +
+              `<div class="meta-card-footer">` +
+                `<button type="button" class="row-action" ` +
+                  `data-action="verify-connection" ` +
+                  `data-platform-key="${_escape(slug)}">Verify now</button>` +
+                docLink +
+                `<span class="meta-verify-msg" title="${_escape(lastChecked)}">${_escape(lastChecked)}</span>` +
+              `</div>` +
+            `</div>`
+        );
+    }).join('');
+}
+
+async function loadMetaReadiness() {
+    try {
+        const r = await fetch('/api/meta/readiness');
+        if (!r.ok) throw new Error('http ' + r.status);
+        renderMetaReadiness(await r.json());
+    } catch (err) {
+        const el = document.getElementById('meta-readiness');
+        if (el) el.innerHTML = '<div class="muted">Could not load Meta readiness.</div>';
     }
 }
 
@@ -1936,6 +2022,12 @@ function _runControlPanelAction(action) {
             );
             return;
         }
+        case 'meta-readiness':
+            // v6.7: scroll to the Meta Readiness Center section.
+            if (!_cpScrollToH2('Meta Readiness Center')) {
+                _cpStatus('Meta Readiness section not found.');
+            }
+            return;
         case 'connect-linkedin': {
             // v6.1: kicks off the OAuth flow. Confirm first because we
             // navigate away from the Hub to LinkedIn and we will write
@@ -2249,6 +2341,7 @@ async function refreshAll() {
             loadStatus(), loadSummary(), loadLogs(),
             loadHistory(), loadReady(),
             loadActivity(), loadReports(), loadInbox(),
+            loadMetaReadiness(),
         ]);
         // Mission Control reads cached payloads from the loaders above,
         // so it runs last to ensure every cache is populated.
