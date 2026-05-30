@@ -286,6 +286,17 @@
         /* v5.23: dim the counts meta on days with zero approvals AND
            zero publishes, so busy days visually lead the eye. */
         .inbox-list li .meta.quiet { opacity: 0.45; }
+        /* v5.25: today marker — left-edge accent + inline date suffix.
+           inset box-shadow paints inside the row without shifting layout. */
+        .inbox-list li.today {
+            box-shadow: inset 3px 0 0 #2a6ec1;
+        }
+        .row-today {
+            margin-left: 0.4rem; font-size: 0.7rem;
+            color: #2a6ec1; font-weight: 500;
+            text-transform: uppercase; letter-spacing: 0.3px;
+        }
+        .inbox-list li.selected .row-today { color: #fff; opacity: 0.85; }
         .inbox-preview {
             border: 1px solid #e5e5e5; border-radius: 6px;
             padding: 1rem 1.15rem;

@@ -1129,6 +1129,13 @@ function renderInboxList() {
     const filtered = _filteredInboxItems();
     _renderInboxCount(filtered.length);
     _updateClearButtonVisibility();  // v5.24
+    // v5.25: compute today's local date (not UTC) so the marker matches
+    // when the cron will have written the day's report. Same local-date
+    // construction the v5.4 activity feed uses for consistency.
+    const _now = new Date();
+    const _todayStr = `${_now.getFullYear()}-` +
+                      `${String(_now.getMonth() + 1).padStart(2, '0')}-` +
+                      `${String(_now.getDate()).padStart(2, '0')}`;
     if (_inboxItems.length === 0) {
         el.innerHTML = '<li class="muted">No reports yet. The cron writes one each morning.</li>';
         return;
@@ -1140,7 +1147,6 @@ function renderInboxList() {
         return;
     }
     el.innerHTML = filtered.map(it => {
-        const sel = (it.name === _inboxSelected) ? ' selected' : '';
         // v5.19: per-day counts pulled from /api/reports (default to 0
         // for backward compatibility with any cached pre-v5.19 response).
         const approvals = it.approvals || 0;
@@ -1150,9 +1156,19 @@ function renderInboxList() {
         // v5.23: dim the counts line when both totals are zero, so busy
         // days visually pop without filtering.
         const quiet = (approvals === 0 && publishes === 0) ? ' quiet' : '';
+        // v5.25: today marker — small suffix + a "today" row class for
+        // the left-edge accent. Multiple classes can apply (e.g., the
+        // selected row that is also today's row).
+        const isToday = (it.date === _todayStr);
+        const cls = [];
+        if (it.name === _inboxSelected) cls.push('selected');
+        if (isToday) cls.push('today');
+        const todaySuffix = isToday
+            ? ' <span class="row-today">· today</span>'
+            : '';
         return (
-            `<li class="${sel ? 'selected' : ''}" data-report="${_escape(it.name)}">` +
-              `<strong>${_escape(it.date)}</strong>` +
+            `<li class="${cls.join(' ')}" data-report="${_escape(it.name)}">` +
+              `<strong>${_escape(it.date)}${todaySuffix}</strong>` +
               `<span class="meta${quiet}">${apN} · ${puN}</span>` +
               `<span class="meta">${_formatInboxSize(it.size)} · ${_escape(it.mtime)}</span>` +
             `</li>`
