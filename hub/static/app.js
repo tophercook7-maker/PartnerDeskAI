@@ -1839,6 +1839,22 @@ function _runControlPanelAction(action) {
             window.location.href = '/api/oauth/linkedin/start';
             return;
         }
+        case 'setup-env': {
+            // v6.2: guidance-only. The setup wizard is interactive (CLI
+            // getpass) so it MUST run in the terminal, never in the
+            // browser. No secrets are ever exposed to the browser.
+            _cpScrollToH2('Connections');
+            _cpStatusHTML(
+                'Run <kbd>python3 automation/setup_env.py</kbd> in the terminal ' +
+                'to interactively configure <code>.env</code>. The wizard prompts ' +
+                'only for missing values, masks existing secrets, never prints ' +
+                'new secret values after entry, and writes atomically via ' +
+                '<code>env_writer</code> (with a <code>.env.bak</code> snapshot ' +
+                'per write). For a one-shot read-only report: ' +
+                '<kbd>python3 automation/setup_env.py status</kbd>.',
+            );
+            return;
+        }
         case 'open-connection-help':
             _cpScrollToH2('Connections');
             _cpStatusHTML(

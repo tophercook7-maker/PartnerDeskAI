@@ -152,6 +152,27 @@ Verified connections show a warning when their last verification is older than 7
 
 ---
 
+## Environment Setup Wizard
+
+```bash
+python3 automation/setup_env.py
+```
+
+Creates `.env` if missing (from `.env.example`) and prompts only for missing values. Secrets are never printed or committed. Existing values are masked (e.g. `sk-XXXX...YYYY`) and require explicit confirm to overwrite.
+
+CLI subcommands:
+
+```bash
+python3 automation/setup_env.py status      # read-only report, no prompts
+python3 automation/setup_env.py core        # walk just the Core section
+python3 automation/setup_env.py linkedin    # walk just LinkedIn
+python3 automation/setup_env.py facebook
+python3 automation/setup_env.py instagram
+python3 automation/setup_env.py gbp
+```
+
+The Hub's Control Panel has a **Setup .env** button that displays terminal guidance (the wizard itself runs only in the terminal — secret entry uses `getpass` and is never exposed to the browser).
+
 ## LinkedIn OAuth connect flow
 
 The Hub's Control Panel has a **Connect LinkedIn** button that runs the OAuth code-grant flow end-to-end:
