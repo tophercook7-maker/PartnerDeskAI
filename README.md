@@ -33,6 +33,14 @@ bash automation/open_hub.sh
 
 Starts the local Hub server if needed and opens `http://127.0.0.1:8787`.
 
+## Desktop Hub Icon
+
+```bash
+bash automation/create_desktop_launcher.sh
+```
+
+Creates `PartnerDesk Hub.command` on the Desktop. Double-click it to start/open the Hub.
+
 ## PartnerDesk Hub
 
 ```bash
