@@ -1871,10 +1871,24 @@ function _runControlPanelAction(action) {
     }
 }
 
+// v5.35: brief "got your click" pulse on the clicked CP button. The
+// .is-busy class adds opacity + background tint AND pointer-events:none,
+// which doubles as a 800ms double-click lockout — useful protection
+// for the OpenAI-triggering buttons that delegate to #btn-run.
+function _cpPulse(btn) {
+    btn.classList.add('is-busy');
+    if (btn._cpPulseTimer) clearTimeout(btn._cpPulseTimer);
+    btn._cpPulseTimer = setTimeout(() => {
+        btn.classList.remove('is-busy');
+        btn._cpPulseTimer = null;
+    }, 800);
+}
+
 document.addEventListener('click', (ev) => {
     const btn = ev.target.closest('[data-cp-action]');
     if (!btn) return;
     _runControlPanelAction(btn.dataset.cpAction);
+    _cpPulse(btn);
 });
 
 
