@@ -1035,6 +1035,25 @@ function _writePersistedInboxSelected(name) {
         else      localStorage.removeItem(_INBOX_SELECTED_KEY);
     } catch (e) { /* storage blocked */ }
 }
+
+// v5.28: auto-scroll the most important row into view once per page
+// lifetime so the inbox stays usable as the report archive grows.
+// Priority is selected → today → first row. The flag prevents
+// subsequent renders (refresh, filter change, chip click) from
+// fighting the user's scroll position.
+let _inboxAutoScrollDone = false;
+
+function _autoScrollInboxOnce() {
+    if (_inboxAutoScrollDone) return;
+    const list = document.getElementById('inbox-list');
+    if (!list) return;
+    const target = list.querySelector('li.selected')
+                || list.querySelector('li.today')
+                || list.querySelector('li[data-report]');
+    if (!target) return;
+    target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    _inboxAutoScrollDone = true;
+}
 // Filter state (v5.18). Pure client-side filter over _inboxItems; no
 // refetch on input change. Persisted only in-memory — survives within
 // a session but resets on reload (intentional: filters scoped to the
@@ -1218,6 +1237,11 @@ async function loadInbox() {
             }
             await loadInboxReport(hit ? persisted : _inboxItems[0].name);
         }
+        // v5.28: scroll the priority row into view once we've
+        // settled on a selection. Idempotent across this page load —
+        // the flag inside _autoScrollInboxOnce ensures subsequent
+        // refreshAll() cycles don't yank the user's scroll position.
+        _autoScrollInboxOnce();
     } catch (err) {
         _inboxItems = [];
         document.getElementById('inbox-list').innerHTML =
