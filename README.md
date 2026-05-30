@@ -41,6 +41,14 @@ bash automation/create_desktop_launcher.sh
 
 Creates `PartnerDesk Hub.command` on the Desktop. Double-click it to start/open the Hub.
 
+## PartnerDesk Desktop App (v6.0)
+
+```bash
+bash automation/create_desktop_app.sh
+```
+
+Creates a proper macOS `.app` bundle (`PartnerDesk Hub.app`) on the Desktop. Unlike the `.command` launcher above, double-clicking the `.app` does NOT flash a Terminal window — it launches the Hub natively, shows the right name in Spotlight and the Dock, and can be dragged to the Dock for one-click access. Pure shell + bundle structure, no new dependencies.
+
 ## PartnerDesk Hub
 
 ```bash
