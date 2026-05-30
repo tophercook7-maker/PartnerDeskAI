@@ -34,7 +34,11 @@ import urllib.request
 
 AUTHORIZATION_URL = "https://www.linkedin.com/oauth/v2/authorization"
 TOKEN_URL         = "https://www.linkedin.com/oauth/v2/accessToken"
-SCOPE             = "w_member_social"
+USERINFO_URL      = "https://api.linkedin.com/v2/userinfo"
+# openid + profile enable /v2/userinfo for auto-fetching the member URN
+# (requires "Sign In with LinkedIn using OpenID Connect" product on the
+# LinkedIn app). w_member_social is the existing posting scope.
+SCOPE             = "openid profile w_member_social"
 
 
 class LinkedInOAuthError(Exception):
@@ -135,3 +139,51 @@ def exchange_code_for_token(code: str, timeout: float = 15.0) -> dict:
             + (data.get("error_description") or data.get("error") or "(unknown)")
         )
     return data
+
+
+def fetch_userinfo(access_token: str, timeout: float = 10.0) -> dict:
+    """
+    GET LinkedIn's /v2/userinfo (OpenID Connect) using the access
+    token as a Bearer credential. Returns the parsed JSON, which
+    includes `sub` — the LinkedIn member identifier we wrap as
+    `urn:li:person:{sub}` to form the author URN.
+
+    The token is sent in the Authorization header — NEVER in the URL.
+
+    Raises LinkedInOAuthError on:
+      - empty token
+      - HTTP error (most commonly 401/403 if the LinkedIn app doesn't
+        have the "Sign In with LinkedIn using OpenID Connect" product
+        enabled, in which case the openid/profile scopes were ignored
+        and the token can't read userinfo)
+      - non-JSON response
+    Callers should treat URN auto-fetch as best-effort and proceed
+    with token storage regardless.
+    """
+    if not access_token:
+        raise LinkedInOAuthError("Empty access token")
+    req = urllib.request.Request(
+        USERINFO_URL,
+        method="GET",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Accept":        "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        try:
+            err = json.loads(e.read().decode("utf-8", errors="replace"))
+            msg = (err.get("message") or err.get("error_description")
+                   or err.get("error") or f"HTTP {e.code}")
+        except Exception:
+            msg = f"HTTP {e.code}"
+        raise LinkedInOAuthError(f"LinkedIn userinfo failed: {msg}")
+    except urllib.error.URLError as e:
+        raise LinkedInOAuthError(f"LinkedIn userinfo network error: {e.reason}")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        raise LinkedInOAuthError("LinkedIn userinfo returned non-JSON")

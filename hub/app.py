@@ -766,14 +766,31 @@ def api_oauth_linkedin_callback(
     access_token = token_resp.get("access_token", "")
     token_len = len(access_token)
 
-    # Atomic .env write. update_env preserves file mode + makes a .bak
-    # snapshot. The return value contains structural info ONLY —
-    # never the token value.
+    # v6.3: best-effort URN auto-fetch via /v2/userinfo. Requires the
+    # OAuth scope to include openid+profile, which we now request in
+    # the start URL. If the LinkedIn app doesn't have "Sign In with
+    # LinkedIn using OpenID Connect" enabled the userinfo call will
+    # 401/403; we record that and continue without URN — the access
+    # token is still valid for posting.
+    urn_writes: dict[str, str] = {}
+    urn_msg = ""
     try:
-        write_result = env_writer.update_env(
-            ROOT / ".env",
-            {"LINKEDIN_ACCESS_TOKEN": access_token},
-        )
+        info = linkedin_oauth.fetch_userinfo(access_token)
+        sub = (info.get("sub") or "").strip()
+        if sub:
+            urn_writes["LINKEDIN_AUTHOR_URN"] = f"urn:li:person:{sub}"
+            urn_msg = f"URN auto-fetched and saved (urn:li:person:{sub[:6]}…)."
+        else:
+            urn_msg = "userinfo returned no `sub` claim — URN not set."
+    except linkedin_oauth.LinkedInOAuthError as e:
+        urn_msg = f"URN auto-fetch unavailable ({e}). Set LINKEDIN_AUTHOR_URN manually."
+
+    # Atomic .env write — bundle the token AND URN (if any) into ONE
+    # update so .env.bak captures the pre-OAuth state once, not twice.
+    # env_writer preserves file mode and never logs values.
+    updates = {"LINKEDIN_ACCESS_TOKEN": access_token, **urn_writes}
+    try:
+        write_result = env_writer.update_env(ROOT / ".env", updates)
     except (FileNotFoundError, ValueError, OSError) as e:
         return _oauth_result_page(
             "Token received but .env write failed",
@@ -782,14 +799,15 @@ def api_oauth_linkedin_callback(
             ok=False,
         )
 
-    # Refresh process env so the new token is visible to the verify probe.
+    # Refresh process env so the new values are visible to the verify probe.
     os.environ["LINKEDIN_ACCESS_TOKEN"] = access_token
-    # Clear the local variable so it's not lingering in memory longer
-    # than necessary. (Best-effort — Python doesn't guarantee erasure.)
+    if "LINKEDIN_AUTHOR_URN" in urn_writes:
+        os.environ["LINKEDIN_AUTHOR_URN"] = urn_writes["LINKEDIN_AUTHOR_URN"]
+    # Clear the local token reference; Python can't guarantee zeroisation
+    # but this drops one accessible reference sooner.
     del access_token
 
-    # Trigger verify; record the outcome. Won't fully pass until
-    # LINKEDIN_AUTHOR_URN is also set — see the success message body.
+    # Trigger verify; record the outcome.
     verify_result = social_posters.verify_linkedin_connection()
     connection_state.record_verification(
         "linkedin",
@@ -797,19 +815,20 @@ def api_oauth_linkedin_callback(
         message=verify_result.get("message", ""),
     )
 
-    op = "replaced" if "LINKEDIN_ACCESS_TOKEN" in write_result["replaced"] else "added"
+    op_token = ("replaced"
+                if "LINKEDIN_ACCESS_TOKEN" in write_result["replaced"] else "added")
     body = (
-        f"<p><strong>Access token {op}</strong> in <code>.env</code> "
-        f"(length: {token_len} chars). A backup of the previous .env was saved "
-        "to <code>.env.bak</code>.</p>"
+        f"<p><strong>Access token {op_token}</strong> in <code>.env</code> "
+        f"(length: {token_len} chars). Backup saved to <code>.env.bak</code>.</p>"
+        f"<p><strong>Author URN:</strong> {_escape_html(urn_msg)}</p>"
         f"<p><strong>Verify probe:</strong> {_escape_html(verify_result.get('message', ''))}</p>"
     )
-    if not verify_result.get("ok"):
+    if not verify_result.get("ok") and "LINKEDIN_AUTHOR_URN" not in urn_writes:
         body += (
-            "<p>This is expected if <code>LINKEDIN_AUTHOR_URN</code> is not yet "
-            "set. Add it to <code>.env</code> (your member URN, e.g. "
-            "<code>urn:li:person:XXXX</code>) and click Verify Connections "
-            "in the Hub.</p>"
+            "<p>If you can find your member URN manually (your LinkedIn "
+            "profile URL → numeric ID), add it to <code>.env</code> as "
+            "<code>LINKEDIN_AUTHOR_URN=urn:li:person:XXXX</code> and click "
+            "Verify Connections.</p>"
         )
     return _oauth_result_page("LinkedIn connected", body, ok=True)
 

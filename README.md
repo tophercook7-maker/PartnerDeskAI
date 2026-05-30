@@ -178,11 +178,12 @@ The Hub's Control Panel has a **Setup .env** button that displays terminal guida
 The Hub's Control Panel has a **Connect LinkedIn** button that runs the OAuth code-grant flow end-to-end:
 
 1. Click → confirm → browser is redirected to LinkedIn
-2. Authenticate with LinkedIn (you authorize PartnerDeskAI's `w_member_social` scope)
+2. Authenticate with LinkedIn (you authorize the `openid profile w_member_social` scopes)
 3. LinkedIn redirects back to `/api/oauth/linkedin/callback` with the authorization code
 4. Hub exchanges the code for an access token (POST with client secret in the body, never in a URL)
-5. Token is written atomically to `.env` via `automation/env_writer.py` (a `.env.bak` snapshot is saved first; file mode preserved)
-6. Hub triggers a verify probe
+5. Hub calls `/v2/userinfo` with the new token to auto-fetch the member URN (best-effort)
+6. Both `LINKEDIN_ACCESS_TOKEN` and `LINKEDIN_AUTHOR_URN` are written in a single atomic update to `.env` via `automation/env_writer.py` (a `.env.bak` snapshot is saved first; file mode preserved)
+7. Hub triggers a verify probe
 
 Prerequisites in `.env`:
 
@@ -192,7 +193,7 @@ LINKEDIN_CLIENT_SECRET=<your LinkedIn app's client secret>
 LINKEDIN_REDIRECT_URI=http://127.0.0.1:8787/api/oauth/linkedin/callback
 ```
 
-The redirect URI must match exactly what's registered in your LinkedIn Developer App. After the flow completes, also set `LINKEDIN_AUTHOR_URN` manually (your member URN, e.g. `urn:li:person:XXXX`) — the existing OAuth scope doesn't include `r_liteprofile` so we can't auto-fetch it. Tokens and secrets are never logged or rendered in any HTTP response.
+The redirect URI must match exactly what's registered in your LinkedIn Developer App. The app must have BOTH products enabled: **"Sign In with LinkedIn using OpenID Connect"** (so `openid`/`profile` scopes are accepted, enabling URN auto-fetch) and **"Share on LinkedIn"** (so `w_member_social` is accepted, enabling posting). If the OpenID product isn't enabled, the OAuth flow still completes for posting — only the URN auto-fetch is skipped and you'll need to set `LINKEDIN_AUTHOR_URN` manually. Tokens and secrets are never logged or rendered in any HTTP response.
 
 ## LinkedIn publishing
 
