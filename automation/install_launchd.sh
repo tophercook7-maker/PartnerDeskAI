@@ -5,21 +5,21 @@
 # One-shot macOS launchd installer for PartnerDeskAI's daily run.
 #
 # Writes ~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
-# so the system runs:
-#
-#     python3 /Users/christophercook/Documents/PartnerDeskAI/automation/daily_ops.py
-#
-# every day at 09:00 local time. Output is captured to
-# <project>/logs/launchd.out.log and launchd.err.log.
+# so the system runs `python3 <repo>/automation/daily_ops.py` every day at
+# 09:00 local time. Output is captured to <repo>/logs/launchd.out.log and
+# launchd.err.log.
 #
 # Idempotent: safe to re-run. Each run overwrites the plist and reloads the
 # agent (unload errors are ignored so the first run works on a clean system).
 #
 # This script does NOT run daily_ops.py itself. It only installs the schedule.
+#
+# PROJECT_DIR is derived from this script's own location, so moving the repo
+# only requires re-running install_launchd.sh from the new location.
 
 set -euo pipefail
 
-PROJECT_DIR="/Users/christophercook/Documents/PartnerDeskAI"
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PLIST="$HOME/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist"
 LABEL="com.mixedmakershop.partnerdeskai.daily"
 

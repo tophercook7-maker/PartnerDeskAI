@@ -511,10 +511,10 @@ rm ~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
     <key>ProgramArguments</key>
     <array>
         <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
-        <string>/Users/christophercook/Documents/PartnerDeskAI/automation/daily_ops.py</string>
+        <string>/path/to/PartnerDeskAI/automation/daily_ops.py</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/christophercook/Documents/PartnerDeskAI</string>
+    <string>/path/to/PartnerDeskAI</string>
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key><integer>9</integer>
@@ -522,12 +522,14 @@ rm ~/Library/LaunchAgents/com.mixedmakershop.partnerdeskai.daily.plist
     </dict>
     <key>RunAtLoad</key><false/>
     <key>StandardOutPath</key>
-    <string>/Users/christophercook/Documents/PartnerDeskAI/logs/launchd.out.log</string>
+    <string>/path/to/PartnerDeskAI/logs/launchd.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/christophercook/Documents/PartnerDeskAI/logs/launchd.err.log</string>
+    <string>/path/to/PartnerDeskAI/logs/launchd.err.log</string>
 </dict>
 </plist>
 ```
+
+The example above uses `/path/to/PartnerDeskAI` as a placeholder. `automation/install_launchd.sh` fills in the actual repo path automatically, derived from the script's own location — so just run `bash automation/install_launchd.sh` from your repo and the plist is written correctly regardless of where you've checked the repo out.
 
 ---
 
