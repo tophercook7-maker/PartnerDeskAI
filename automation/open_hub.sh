@@ -72,9 +72,24 @@ else
     }
     echo "Starting Hub on port ${PORT} using ${PY}…"
     mkdir -p logs
+
+    # v6.4 reliability fix:
+    #   - `< /dev/null` detaches stdin so the child can't inherit a
+    #     terminal that might close out from under it.
+    #   - stdout/stderr → log files (not the terminal).
+    #   - `&` backgrounds; `disown $!` removes the job from this
+    #     shell's job-control table so when the shell exits, the
+    #     child isn't sent SIGHUP / SIGTERM as part of the cleanup.
+    #   - PID captured to logs/hub.pid so hub_doctor.sh can find it.
+    # The previous nohup-only invocation lost the server when this
+    # script's parent (Terminal session OR the .app wrapper) exited.
     nohup "$PY" -m uvicorn hub.app:app \
         --host 127.0.0.1 --port "${PORT}" \
+        < /dev/null \
         > logs/hub.out.log 2> logs/hub.err.log &
+    HUB_PID=$!
+    echo "$HUB_PID" > logs/hub.pid
+    disown "$HUB_PID" 2>/dev/null || true
 
     # Poll for readiness so the browser doesn't open before the server
     # is responding. Cap at 10 seconds (20 × 0.5s). Track success in a
@@ -88,11 +103,16 @@ else
         sleep 0.5
     done
     if [[ "$ready" != true ]]; then
+        alive="no"
+        kill -0 "$HUB_PID" 2>/dev/null && alive="yes"
         echo "ERROR: Hub did not become ready on ${URL} within 10 seconds." >&2
+        echo "  PID: ${HUB_PID} (alive? ${alive})" >&2
         echo "  Check logs/hub.err.log for uvicorn startup errors:" >&2
         tail -20 logs/hub.err.log 2>/dev/null | sed 's/^/    /' >&2
+        echo "  Run: bash automation/hub_doctor.sh  for a full status report." >&2
         exit 1
     fi
+    echo "Hub started: PID ${HUB_PID} (recorded in logs/hub.pid)"
 fi
 
 # Open the browser. `open` is macOS-native; on other platforms it

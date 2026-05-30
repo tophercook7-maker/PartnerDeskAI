@@ -1665,6 +1665,16 @@ function renderConnections(items) {
         const warningLine = c.warning
             ? `<div class="connection-warning">${_escape(c.warning)}</div>`
             : '';
+        // v6.4 Meta-prep: when Facebook/Instagram are not configured,
+        // surface a one-line hint that the user is likely waiting on
+        // Meta app approval. Status itself stays `not_configured` —
+        // this is purely a UI message, no backend state change.
+        const metaPlatforms = new Set(['Facebook', 'Instagram']);
+        const metaWaitLine = (c.status === 'not_configured' && metaPlatforms.has(c.platform))
+            ? `<div class="connection-meta connection-meta-pending">` +
+              `Waiting for Meta app approval / token. Add the env keys above ` +
+              `once your Meta Developer app's Page Posts permission is granted.</div>`
+            : '';
         // The Setup Help button opens the platform's setup URL in a
         // new tab. Disabled if /api/connections didn't return a URL.
         const url = c.setup_url || '';
@@ -1683,6 +1693,7 @@ function renderConnections(items) {
                 `${_escape(c.platform)} — ` +
                 `<span class="status-badge ${statusClass}">${statusText}</span>` +
                 missingLine +
+                metaWaitLine +
                 checkedLine +
                 warningLine +
               `</span>` +
