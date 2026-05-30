@@ -1058,6 +1058,20 @@ function _clearPersistedInboxFilters() {
     catch (e) { /* storage blocked */ }
 }
 
+// v5.24: Clear-filters button is only useful when at least one filter
+// differs from the defaults. Hiding it when nothing's active keeps the
+// filter row visually quiet.
+function _isInboxFiltersAtDefault() {
+    return _inboxSearch === ''
+        && _inboxWindow === 'all'
+        && _inboxHideEmpty === false;
+}
+function _updateClearButtonVisibility() {
+    const btn = document.getElementById('inbox-clear');
+    if (!btn) return;
+    btn.hidden = _isInboxFiltersAtDefault();
+}
+
 // Hydrate module state from persistence at load. DOM elements get
 // synced further down where the input/select/checkbox handlers bind.
 (function _hydrateInboxFilters() {
@@ -1114,6 +1128,7 @@ function renderInboxList() {
     const el = document.getElementById('inbox-list');
     const filtered = _filteredInboxItems();
     _renderInboxCount(filtered.length);
+    _updateClearButtonVisibility();  // v5.24
     if (_inboxItems.length === 0) {
         el.innerHTML = '<li class="muted">No reports yet. The cron writes one each morning.</li>';
         return;
