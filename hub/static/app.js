@@ -1054,6 +1054,56 @@ async function loadInbox() {
     }
 }
 
+// Render the small markdown subset that daily_report.py emits:
+// # / ## / ### headers, **bold**, "- " bullets, --- horizontal rule.
+// HTML is escaped FIRST so the converter is XSS-safe even if a topic
+// or platform label ever contains <, >, or & (defense in depth — the
+// generator currently produces plain ASCII, but we don't want to
+// silently rely on that).
+function _renderInboxMarkdown(text) {
+    const bold = (s) => s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    const lines = (text || '').split('\n');
+    const out = [];
+    let inList = false;
+    const closeList = () => {
+        if (inList) { out.push('</ul>'); inList = false; }
+    };
+    for (const raw of lines) {
+        const trimmed = raw.trim();
+        if (trimmed === '') { closeList(); continue; }
+        if (trimmed === '---') {
+            closeList();
+            out.push('<hr>');
+            continue;
+        }
+        let m;
+        if ((m = raw.match(/^###\s+(.+)$/))) {
+            closeList();
+            out.push(`<h3>${bold(_escape(m[1]))}</h3>`);
+            continue;
+        }
+        if ((m = raw.match(/^##\s+(.+)$/))) {
+            closeList();
+            out.push(`<h2>${bold(_escape(m[1]))}</h2>`);
+            continue;
+        }
+        if ((m = raw.match(/^#\s+(.+)$/))) {
+            closeList();
+            out.push(`<h1>${bold(_escape(m[1]))}</h1>`);
+            continue;
+        }
+        if ((m = raw.match(/^-\s+(.+)$/))) {
+            if (!inList) { out.push('<ul>'); inList = true; }
+            out.push(`<li>${bold(_escape(m[1]))}</li>`);
+            continue;
+        }
+        closeList();
+        out.push(`<p>${bold(_escape(raw))}</p>`);
+    }
+    closeList();
+    return out.join('\n');
+}
+
 async function loadInboxReport(filename) {
     const preview = document.getElementById('inbox-preview');
     preview.innerHTML = '<div class="muted">Loading…</div>';
@@ -1062,11 +1112,8 @@ async function loadInboxReport(filename) {
         if (!r.ok) throw new Error('http ' + r.status);
         const d = await r.json();
         _inboxSelected = filename;
-        renderInboxList();  // refresh the list so the new selection highlights
-        // The report content is markdown text. Render in a <pre> so the
-        // headers, lists, and separators are visible without pulling in
-        // a markdown library.
-        preview.innerHTML = `<pre>${_escape(d.content || '')}</pre>`;
+        renderInboxList();
+        preview.innerHTML = _renderInboxMarkdown(d.content || '');
     } catch (err) {
         preview.innerHTML = '<div class="muted">Could not load report.</div>';
     }

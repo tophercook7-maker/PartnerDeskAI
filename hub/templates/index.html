@@ -263,11 +263,27 @@
             font-size: 0.92rem;
             line-height: 1.5;
         }
-        .inbox-preview pre {
-            white-space: pre-wrap; word-wrap: break-word;
-            margin: 0; font-family: ui-monospace, Menlo, Consolas, monospace;
-            font-size: 0.85rem;
+        /* Markdown subset rendered by _renderInboxMarkdown (v5.16). */
+        .inbox-preview h1 { font-size: 1.15rem; margin: 0.4rem 0 0.4rem; }
+        .inbox-preview h2 {
+            font-size: 1rem; color: #2a6ec1;
+            margin: 0.75rem 0 0.3rem;
         }
+        .inbox-preview h3 {
+            font-size: 0.92rem; color: #444;
+            margin: 0.55rem 0 0.25rem;
+        }
+        .inbox-preview h1:first-child,
+        .inbox-preview h2:first-child,
+        .inbox-preview h3:first-child { margin-top: 0; }
+        .inbox-preview p  { margin: 0.3rem 0; }
+        .inbox-preview ul { padding-left: 1.2rem; margin: 0.25rem 0 0.55rem; }
+        .inbox-preview li { margin-bottom: 0.12rem; }
+        .inbox-preview hr {
+            border: 0; border-top: 1px solid #e3e3e3;
+            margin: 0.8rem 0 0.4rem;
+        }
+        .inbox-preview strong { color: #2a6ec1; }
         .reports-card h3 {
             margin: 0 0 0.55rem; font-size: 0.92rem; color: #333;
         }
