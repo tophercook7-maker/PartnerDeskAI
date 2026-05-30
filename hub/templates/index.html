@@ -662,6 +662,31 @@
             gap: 0.25rem 1rem; margin-bottom: 1rem; font-size: 0.92rem;
         }
         .preview-meta strong { color: #555; }
+        /* v6.3: publish receipt block — hidden by default, shown only
+           when the preview JS finds receipt fields on the post. */
+        .preview-receipt {
+            border: 1px solid #cfe1ff;
+            border-radius: 6px;
+            background: #f5f9ff;
+            padding: 0.6rem 0.9rem 0.4rem;
+            margin-bottom: 1rem;
+            font-size: 0.88rem;
+        }
+        .preview-receipt h3 {
+            margin: 0 0 0.45rem; font-size: 0.95rem; color: #2a6ec1;
+        }
+        .preview-receipt > div { margin-bottom: 0.2rem; }
+        .preview-receipt code {
+            background: rgba(0, 0, 0, 0.05);
+            padding: 0.05rem 0.3rem; border-radius: 2px;
+            font-size: 0.82rem;
+        }
+        /* Inline "Posted →" link in Recent Parker Work + activity feed. */
+        .posted-link, .activity-link {
+            color: #2a6ec1; text-decoration: none;
+            font-size: 0.82rem; margin-left: 0.4rem;
+        }
+        .posted-link:hover, .activity-link:hover { text-decoration: underline; }
         #preview-content-editor {
             width: 100%; min-height: 12em;
             font-family: ui-monospace, Menlo, Consolas, monospace;
@@ -973,6 +998,19 @@
                 <div><strong>Status:</strong> <span id="preview-status"></span></div>
                 <div><strong>Created:</strong> <span id="preview-created"></span></div>
                 <div><strong>Last edited:</strong> <span id="preview-edited">never</span></div>
+            </div>
+            <!-- v6.3: published-post receipt section. Hidden until the
+                 post has been published (status='posted' AND receipt
+                 fields populated). All values come from /api/posts/{id}
+                 which returns the safe receipt summary (no tokens). -->
+            <div id="preview-receipt" class="preview-receipt" hidden>
+                <h3>Publish receipt</h3>
+                <div><strong>Posted at:</strong> <span id="preview-posted-at"></span></div>
+                <div><strong>Platform id:</strong> <code id="preview-posted-id"></code></div>
+                <div><strong>Public URL:</strong>
+                    <a id="preview-posted-url" target="_blank" rel="noopener noreferrer"></a>
+                </div>
+                <div><strong>Response:</strong> <span id="preview-posted-summary"></span></div>
             </div>
             <h3>Content</h3>
             <pre id="preview-content"></pre>

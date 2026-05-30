@@ -28,7 +28,16 @@ CREATE TABLE IF NOT EXISTS posts (
     status TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     edited_at TIMESTAMP NULL,
-    posted_at TIMESTAMP NULL
+    posted_at TIMESTAMP NULL,
+    -- v6.3 published-post receipt fields. Populated by mark_published()
+    -- only on a confirmed successful publish. NEVER store tokens,
+    -- access credentials, or full response headers here — only the
+    -- platform's external id, the best-effort public URL, and a
+    -- short safe summary (status code + truncated message).
+    published_platform TEXT NULL,
+    published_external_id TEXT NULL,
+    published_url TEXT NULL,
+    published_response_summary TEXT NULL
 );
 
 CREATE TABLE IF NOT EXISTS post_history (
@@ -52,6 +61,15 @@ def _migrate_posts_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE posts ADD COLUMN edited_at TIMESTAMP NULL")
     if "posted_at" not in existing:
         conn.execute("ALTER TABLE posts ADD COLUMN posted_at TIMESTAMP NULL")
+    # v6.3 published-post receipt columns
+    if "published_platform" not in existing:
+        conn.execute("ALTER TABLE posts ADD COLUMN published_platform TEXT NULL")
+    if "published_external_id" not in existing:
+        conn.execute("ALTER TABLE posts ADD COLUMN published_external_id TEXT NULL")
+    if "published_url" not in existing:
+        conn.execute("ALTER TABLE posts ADD COLUMN published_url TEXT NULL")
+    if "published_response_summary" not in existing:
+        conn.execute("ALTER TABLE posts ADD COLUMN published_response_summary TEXT NULL")
 
 
 def init_db() -> None:
@@ -116,7 +134,9 @@ def get_post(post_id: int) -> dict | None:
     try:
         row = conn.execute(
             "SELECT id, platform, topic, content, hashtags, image_idea, status, "
-            "created_at, edited_at "
+            "created_at, edited_at, posted_at, "
+            "published_platform, published_external_id, "
+            "published_url, published_response_summary "
             "FROM posts WHERE id = ?",
             (post_id,),
         ).fetchone()
@@ -156,6 +176,10 @@ def mark_status(post_id: int, status: str) -> None:
     posted_at so the System Activity feed can surface a real publish
     event with a real timestamp; other transitions leave posted_at
     untouched so re-running an approve/reject never overwrites it.
+
+    Prefer mark_published() for the publish path — it sets status,
+    posted_at, AND the receipt fields in one atomic update so the row
+    is never in a half-recorded state.
     """
     conn = _connect()
     try:
@@ -169,6 +193,53 @@ def mark_status(post_id: int, status: str) -> None:
             conn.execute(
                 "UPDATE posts SET status = ? WHERE id = ?", (status, post_id)
             )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def mark_published(
+    post_id: int,
+    published_platform: str,
+    published_external_id: str | None,
+    published_url: str | None,
+    published_response_summary: str | None,
+) -> None:
+    """
+    Atomically transition a post to status='posted' AND record the
+    publish receipt (v6.3). One UPDATE so the row never appears in a
+    half-recorded state where status='posted' but receipt fields are
+    NULL (which would happen if a crash landed between two separate
+    UPDATEs).
+
+    Safety:
+        - Caller is responsible for ensuring no tokens / credentials
+          / full response headers are passed in the receipt fields.
+          published_response_summary should be SHORT and SAFE
+          (status code + truncated message, no auth headers).
+        - external_id / url / summary may all be None — some publishes
+          succeed without returning a usable id (we still record the
+          status transition).
+    """
+    conn = _connect()
+    try:
+        conn.execute(
+            "UPDATE posts SET "
+            "  status = 'posted', "
+            "  posted_at = CURRENT_TIMESTAMP, "
+            "  published_platform = ?, "
+            "  published_external_id = ?, "
+            "  published_url = ?, "
+            "  published_response_summary = ? "
+            "WHERE id = ?",
+            (
+                published_platform,
+                published_external_id,
+                published_url,
+                published_response_summary,
+                post_id,
+            ),
+        )
         conn.commit()
     finally:
         conn.close()

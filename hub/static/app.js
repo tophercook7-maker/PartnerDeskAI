@@ -276,11 +276,19 @@ function renderRecentPosts(posts) {
     el.innerHTML = posts.map(p => {
         const cls = knownStatus.has(p.status) ? p.status : 'draft';
         const topic = p.topic ? _escape(p.topic) : '(no topic)';
+        // v6.3: if a posted row has a public URL, show a small
+        // "Posted →" receipt link inline (target=_blank, noopener).
+        const postedLink = (p.status === 'posted' && p.published_url)
+            ? ` <a class="posted-link" href="${_escape(p.published_url)}" `
+              + `target="_blank" rel="noopener noreferrer" `
+              + `title="View the published post">Posted →</a>`
+            : '';
         return (
             `<li data-id="${p.id}">` +
               `<span class="row-main">` +
                 `#${p.id} ${_escape(p.platform)} — ${topic} ` +
                 `<span class="status-badge status-${cls}">${_escape(p.status)}</span>` +
+                postedLink +
               `</span>` +
               `<span class="row-actions">` +
                 `<button class="row-action row-approve" data-action="approve" ` +
@@ -323,6 +331,9 @@ function openPreview(postId) {
     document.getElementById('preview-created').textContent = '…';
     document.getElementById('preview-edited').textContent = '…';
     document.getElementById('preview-content').textContent = 'Loading…';
+    // v6.3: hide receipt section by default — only shown if the post
+    // has been published AND the API returned receipt fields.
+    document.getElementById('preview-receipt').hidden = true;
     overlay.classList.add('open');
     overlay.setAttribute('aria-hidden', 'false');
 
@@ -338,11 +349,40 @@ function openPreview(postId) {
             document.getElementById('preview-created').textContent = d.created_at;
             document.getElementById('preview-edited').textContent = _fmtEdited(d.edited_at);
             document.getElementById('preview-content').textContent = d.content || '(empty)';
+            _renderPreviewReceipt(d);
         })
         .catch(() => {
             document.getElementById('preview-content').textContent =
                 'Could not load draft preview.';
         });
+}
+
+// v6.3: populate the receipt section if the post has been published.
+// Hidden if no receipt data — we never invent fake receipts. The URL
+// link is opened with target=_blank rel=noopener so the published
+// content can't tamper with the Hub tab.
+function _renderPreviewReceipt(d) {
+    const receipt = document.getElementById('preview-receipt');
+    const hasReceipt = d && d.status === 'posted'
+        && (d.published_url || d.published_external_id || d.posted_at);
+    if (!hasReceipt) { receipt.hidden = true; return; }
+    document.getElementById('preview-posted-at').textContent =
+        d.posted_at || '(unknown)';
+    document.getElementById('preview-posted-id').textContent =
+        d.published_external_id || '(not returned)';
+    const a = document.getElementById('preview-posted-url');
+    if (d.published_url) {
+        a.href = d.published_url;
+        a.textContent = d.published_url;
+        a.style.display = '';
+    } else {
+        a.removeAttribute('href');
+        a.textContent = '(not available)';
+        a.style.display = '';
+    }
+    document.getElementById('preview-posted-summary').textContent =
+        d.published_response_summary || '(none)';
+    receipt.hidden = false;
 }
 
 function closePreview() {
@@ -891,11 +931,18 @@ function renderActivity(items) {
         const icon = _ACTIVITY_ICONS[it.type] || _ACTIVITY_ICONS.system;
         const typeClass = `activity-type-${_escape(it.type || 'system')}`;
         const timeStr = it.display_time || it.time || '';
+        // v6.3: publish events with a known public URL get a "View →"
+        // link suffix. The URL is rendered with rel="noopener noreferrer"
+        // and target="_blank" so opening it can't tamper with the Hub.
+        const linkSuffix = it.url
+            ? ` <a class="activity-link" href="${_escape(it.url)}" `
+              + `target="_blank" rel="noopener noreferrer">View →</a>`
+            : '';
         parts.push(
             `<li class="${typeClass}">` +
               `<span class="activity-time">${_escape(timeStr)}</span>` +
               `<span class="activity-icon">${_escape(icon)}</span>` +
-              `<span class="activity-message">${_escape(it.message || '')}</span>` +
+              `<span class="activity-message">${_escape(it.message || '')}${linkSuffix}</span>` +
             `</li>`
         );
     }

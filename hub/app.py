@@ -80,8 +80,13 @@ DB_PATH = ROOT / "database" / "partnerdesk.db"
 def _recent_posts(limit: int = 8) -> list[dict]:
     """
     Read-only: latest `limit` rows from posts ordered newest first.
-    Returns id/platform/topic/status/created_at/edited_at — content is
-    never included so the Hub API doesn't leak full draft bodies.
+    Content is NEVER included so the Hub API doesn't leak full draft
+    bodies on the default dashboard load.
+
+    v6.3: includes posted_at + published_url (when set) so the Recent
+    Parker Work row can show a "Posted →" link inline without a
+    second fetch. The full receipt summary stays on /api/posts/{id}
+    to keep this list payload small.
     """
     if not DB_PATH.is_file():
         return []
@@ -89,7 +94,8 @@ def _recent_posts(limit: int = 8) -> list[dict]:
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
-            "SELECT id, platform, topic, status, created_at, edited_at "
+            "SELECT id, platform, topic, status, created_at, edited_at, "
+            "posted_at, published_url "
             "FROM posts ORDER BY created_at DESC, id DESC LIMIT ?",
             (limit,),
         ).fetchall()
@@ -127,8 +133,13 @@ def api_posts_ready() -> dict:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
+        # v6.3: pull receipt fields so the ready/posted UI can show
+        # "Posted at <url>" if a row in this list ever transitions
+        # to status='posted' between renders (unusual but possible).
         rows = conn.execute(
-            "SELECT id, platform, topic, status, created_at, edited_at, content "
+            "SELECT id, platform, topic, status, created_at, edited_at, content, "
+            "posted_at, published_platform, published_external_id, "
+            "published_url, published_response_summary "
             "FROM posts WHERE status = 'approved' "
             "ORDER BY created_at DESC, id DESC LIMIT 20"
         ).fetchall()
@@ -225,8 +236,24 @@ def api_publish_post(post_id: int, body: PublishRequest) -> dict:
     result = publisher(post["content"] or "")
 
     # Only flip status when the connector confirms a successful publish.
+    # v6.3: extract receipt fields from the publisher's result and
+    # record them atomically alongside the status transition. The
+    # extract helper enforces "no tokens / no headers / safe summary".
     if result.get("ok"):
-        approval_manager.mark_status(post_id, "posted")
+        receipt = social_posters.extract_publish_receipt(result)
+        approval_manager.mark_published(
+            post_id,
+            published_platform=platform_key,
+            published_external_id=receipt["external_id"],
+            published_url=receipt["url"],
+            published_response_summary=receipt["summary"],
+        )
+        # Echo the receipt back to the immediate caller (the Hub UI's
+        # publish click handler) so it can render the success notice
+        # without a second fetch. Same safe fields the receipt helper
+        # produced — never the raw result dict (which may have
+        # platform-specific fields we haven't audited).
+        result["receipt"] = receipt
 
     return result
 
@@ -290,6 +317,9 @@ def api_post(post_id: int) -> dict:
         raise HTTPException(status_code=404, detail=f"Post {post_id} not found")
     # Match the documented shape exactly — drop hashtags/image_idea so the
     # Hub's API surface stays small and the preview UI stays simple.
+    # v6.3: include posted_at + receipt fields so the preview modal can
+    # render "Posted at <url>" when applicable. Receipt fields are NULL
+    # for any post that hasn't been published.
     return {
         "id":         post["id"],
         "platform":   post["platform"],
@@ -298,6 +328,11 @@ def api_post(post_id: int) -> dict:
         "created_at": post["created_at"],
         "edited_at":  post["edited_at"],
         "content":    post["content"],
+        "posted_at":                  post.get("posted_at"),
+        "published_platform":         post.get("published_platform"),
+        "published_external_id":      post.get("published_external_id"),
+        "published_url":              post.get("published_url"),
+        "published_response_summary": post.get("published_response_summary"),
     }
 
 
@@ -1081,17 +1116,22 @@ def api_activity() -> dict:
             # posted_at — rows that were marked 'posted' before the
             # posted_at column existed have NULL and are skipped (we
             # cannot fabricate a timestamp for those).
+            # v6.3: include published_url so the renderer can embed a
+            # "View →" link on rows that have a known public URL.
             for row in conn.execute(
-                "SELECT topic, platform, posted_at "
+                "SELECT topic, platform, posted_at, published_url "
                 "FROM posts "
                 "WHERE status = 'posted' AND posted_at IS NOT NULL "
                 "ORDER BY posted_at DESC LIMIT 15"
             ).fetchall():
-                events.append({
+                event = {
                     "ts":      row["posted_at"],
                     "type":    "publish",
                     "message": f"Published {row['platform']} post — {row['topic']}",
-                })
+                }
+                if row["published_url"]:
+                    event["url"] = row["published_url"]
+                events.append(event)
         finally:
             conn.close()
 
@@ -1204,13 +1244,18 @@ def api_activity() -> dict:
             except ValueError:
                 display_time = full
 
-        items.append({
+        item = {
             "time":         time_part,    # kept for backward compat
             "date":         date_part,
             "display_time": display_time,
             "message":      e["message"],
             "type":         e["type"],
-        })
+        }
+        # v6.3: pass through receipt url (set by the publish-event
+        # loop) so the activity-feed renderer can embed a link.
+        if e.get("url"):
+            item["url"] = e["url"]
+        items.append(item)
     return {"items": items}
 
 

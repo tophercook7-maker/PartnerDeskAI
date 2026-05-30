@@ -33,6 +33,65 @@ _LINKEDIN_DEFAULT_VERSION = "202605"
 _FACEBOOK_GRAPH_VERSION = "v20.0"
 
 
+def extract_publish_receipt(result: dict) -> dict:
+    """
+    Build the v6.3 publish-receipt fields from a publisher's success
+    dict. The receipt is what we persist to `posts` (via
+    approval_manager.mark_published) so the Hub can show "Posted at <url>"
+    after a publish without making extra API calls.
+
+    Input: the `result` dict returned by publish_linkedin_post /
+    publish_facebook_post when result["ok"] is True.
+
+    Output:
+        {"external_id": <str|None>,
+         "url":         <str|None>,
+         "summary":     <str>}   # always populated, max 160 chars
+
+    Safety:
+        - NEVER reads tokens, headers, or the post body itself.
+        - Reads ONLY fields the publisher already deemed safe to expose:
+          status_code, post_urn / id, message.
+        - URL construction is best-effort per platform; unknown
+          platforms or malformed ids yield url=None (not a wrong URL).
+    """
+    platform = (result.get("platform") or "").lower()
+    msg = (result.get("message") or "")[:120]
+    status_code = result.get("status_code")
+
+    external_id = None
+    url = None
+
+    if platform == "linkedin":
+        # publish_linkedin_post stores the URN under "post_urn".
+        external_id = (result.get("post_urn") or None)
+        if external_id and external_id.startswith("urn:li:share:"):
+            url = f"https://www.linkedin.com/feed/update/{external_id}/"
+        elif external_id and external_id.startswith("urn:li:ugcPost:"):
+            url = f"https://www.linkedin.com/feed/update/{external_id}/"
+    elif platform == "facebook":
+        # publish_facebook_post stores the post id under "id"
+        # in the form "<pageid>_<postid>".
+        external_id = (result.get("id") or None)
+        if external_id and "_" in external_id:
+            page_id, _, post_id = external_id.partition("_")
+            if page_id and post_id:
+                url = f"https://www.facebook.com/{page_id}/posts/{post_id}"
+
+    summary_parts = []
+    if status_code is not None:
+        summary_parts.append(f"HTTP {status_code}")
+    if msg:
+        summary_parts.append(msg)
+    summary = " — ".join(summary_parts)[:160] or "OK"
+
+    return {
+        "external_id": external_id,
+        "url":         url,
+        "summary":     summary,
+    }
+
+
 def publish_linkedin_post(content: str) -> dict:
     """
     Publish a single LinkedIn post via the official Posts API.

@@ -212,6 +212,8 @@ Approved LinkedIn drafts can be published manually from the Hub using the offici
 
 Publishing is never automatic. A post is only published after Topher clicks "Post to LinkedIn" in the Ready to Post queue and confirms the action in the browser prompt.
 
+After a successful publish, the platform's response is captured as a **publish receipt** and stored in the `posts` row (`published_platform`, `published_external_id`, `published_url`, `published_response_summary` — four nullable columns added in v6.3 via the existing `_migrate_posts_columns` idempotent migration). The receipt surfaces in three places: the System Activity feed adds a `View →` link on publish events with a known URL; the Recent Parker Work row adds a `Posted →` link inline; the Draft Preview modal shows a full receipt block (posted time, platform id, public URL, response summary). Receipt fields never contain tokens, response headers, or full request bodies — `social_posters.extract_publish_receipt()` enforces what's safe to persist.
+
 Configure:
 
 - `LINKEDIN_ACCESS_TOKEN`
