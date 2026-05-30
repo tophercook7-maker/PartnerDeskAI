@@ -25,6 +25,14 @@ The Hub is the shared station where partners report activity and expose actions.
 
 ---
 
+## Open the Hub
+
+```bash
+bash automation/open_hub.sh
+```
+
+Starts the local Hub server if needed and opens `http://127.0.0.1:8787`.
+
 ## PartnerDesk Hub
 
 ```bash
