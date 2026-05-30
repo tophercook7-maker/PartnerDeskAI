@@ -1060,6 +1060,23 @@ function _autoScrollInboxOnce() {
     target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     _inboxAutoScrollDone = true;
 }
+
+// v5.32: focus the inbox list once per page lifetime so ↓/j/k work
+// immediately without needing to click into the list first. Two safety
+// guards: only fire once, and only when nothing else has focus (the
+// user might have already clicked into another input). preventScroll
+// keeps the focus action from clobbering v5.28's smooth scroll.
+let _inboxAutoFocusDone = false;
+
+function _autoFocusInboxOnce() {
+    if (_inboxAutoFocusDone) return;
+    const ae = document.activeElement;
+    if (ae && ae !== document.body) return;
+    const list = document.getElementById('inbox-list');
+    if (!list) return;
+    list.focus({ preventScroll: true });
+    _inboxAutoFocusDone = true;
+}
 // Filter state (v5.18). Pure client-side filter over _inboxItems; no
 // refetch on input change. Persisted only in-memory — survives within
 // a session but resets on reload (intentional: filters scoped to the
@@ -1249,6 +1266,9 @@ async function loadInbox() {
         // the flag inside _autoScrollInboxOnce ensures subsequent
         // refreshAll() cycles don't yank the user's scroll position.
         _autoScrollInboxOnce();
+        // v5.32: give the inbox keyboard focus on first load so the
+        // user can use ↓/j/k without clicking first. Also one-shot.
+        _autoFocusInboxOnce();
     } catch (err) {
         _inboxItems = [];
         document.getElementById('inbox-list').innerHTML =
