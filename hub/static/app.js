@@ -1014,6 +1014,27 @@ let _inboxSelected = null;  // currently displayed report filename
 let _inboxContent  = '';    // cached raw markdown of the displayed report
                              // (v5.17 — backs the download button without
                              // a refetch on click)
+
+// v5.27: persist the currently-selected report name so reload returns
+// the user to the same report. Validated against the strict report-name
+// regex so a stale or malformed value can't trigger a fetch of an
+// invalid filename. Storage-blocked-safe via try/catch.
+const _INBOX_SELECTED_KEY = 'partnerdesk.inboxSelected';
+const _INBOX_NAME_RE = /^\d{4}-\d{2}-\d{2}\.md$/;
+
+function _readPersistedInboxSelected() {
+    try {
+        const saved = localStorage.getItem(_INBOX_SELECTED_KEY);
+        if (saved && _INBOX_NAME_RE.test(saved)) return saved;
+    } catch (e) { /* storage blocked */ }
+    return null;
+}
+function _writePersistedInboxSelected(name) {
+    try {
+        if (name) localStorage.setItem(_INBOX_SELECTED_KEY, name);
+        else      localStorage.removeItem(_INBOX_SELECTED_KEY);
+    } catch (e) { /* storage blocked */ }
+}
 // Filter state (v5.18). Pure client-side filter over _inboxItems; no
 // refetch on input change. Persisted only in-memory — survives within
 // a session but resets on reload (intentional: filters scoped to the
@@ -1183,10 +1204,19 @@ async function loadInbox() {
         const d = await r.json();
         _inboxItems = d.items || [];
         renderInboxList();
-        // Auto-load the newest report so the preview isn't empty on first
-        // visit. Only do this when nothing has been selected yet.
+        // First-visit auto-load. v5.27: prefer the persisted selection
+        // if it still exists in the current items list; otherwise fall
+        // back to the newest report. Stale persisted names (files that
+        // disappeared between sessions) get cleared from storage so
+        // they don't pollute future loads.
         if (!_inboxSelected && _inboxItems.length > 0) {
-            await loadInboxReport(_inboxItems[0].name);
+            const persisted = _readPersistedInboxSelected();
+            const hit = persisted
+                && _inboxItems.some(it => it.name === persisted);
+            if (persisted && !hit) {
+                _writePersistedInboxSelected(null);
+            }
+            await loadInboxReport(hit ? persisted : _inboxItems[0].name);
         }
     } catch (err) {
         _inboxItems = [];
@@ -1254,6 +1284,7 @@ async function loadInboxReport(filename) {
         const d = await r.json();
         _inboxSelected = filename;
         _inboxContent  = d.content || '';
+        _writePersistedInboxSelected(filename);  // v5.27
         renderInboxList();
         // v5.17: small toolbar with a Download button above the rendered
         // markdown. Click is handled by the delegator below, reading the
