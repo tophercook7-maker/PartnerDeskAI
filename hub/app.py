@@ -1323,6 +1323,105 @@ def run_refresh() -> dict:
     )
 
 
+# --- v6.6: Hub diagnostics --------------------------------------------------
+
+def _redact_secrets(text: str) -> str:
+    """
+    Defense-in-depth redaction for output that may be returned to the
+    browser (e.g. hub_doctor output). Three passes:
+
+      1. Every non-empty .env value of length > 8 is replaced
+         verbatim with [REDACTED]. Catches the case where a token
+         accidentally ended up in a log line.
+      2. OAuth-shaped query params (?code=, ?state=, ?access_token=)
+         have their values masked. uvicorn's access log records full
+         URLs; the OAuth callback URL contains a short-lived code we
+         shouldn't surface even briefly.
+      3. `Bearer <token>` patterns are masked. Belt-and-braces in
+         case any error path logs an Authorization header.
+
+    Pure string scrub — never raises, never reads env vars beyond
+    parsing .env at request time.
+    """
+    if not text:
+        return text
+    # 1. Verbatim .env values
+    env_path = ROOT / ".env"
+    if env_path.is_file():
+        try:
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                _key, _, value = line.partition("=")
+                value = value.strip().strip('"').strip("'")
+                if value and len(value) > 8:
+                    text = text.replace(value, "[REDACTED]")
+        except OSError:
+            pass
+    # 2. Sensitive OAuth-style query params
+    text = re.sub(
+        r"([?&](?:code|state|access_token|client_secret)=)[^&\s\"']+",
+        r"\1[REDACTED]",
+        text,
+    )
+    # 3. Bearer tokens
+    text = re.sub(
+        r"(Bearer\s+)[A-Za-z0-9._\-]+",
+        r"\1[REDACTED]",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return text
+
+
+@app.get("/api/hub/diagnostics")
+def api_hub_diagnostics() -> dict:
+    """
+    Run automation/hub_doctor.sh and return its (redacted) output for
+    the Hub's Control Panel "Show Hub Diagnostics" button.
+
+    Read-only: the doctor itself never starts/stops the server or
+    modifies any file. The endpoint:
+      - caps the subprocess at 5 seconds
+      - passes the doctor's combined stdout + stderr through
+        _redact_secrets before returning
+      - returns ok=False (not 500) on any error so the UI can render
+        the failure message in the same Command Output panel
+
+    Output is safe to display in the browser.
+    """
+    doctor = ROOT / "automation" / "hub_doctor.sh"
+    if not doctor.is_file():
+        return {
+            "ok": False,
+            "output": f"hub_doctor.sh not found at {doctor}",
+        }
+    try:
+        result = subprocess.run(
+            ["/bin/bash", str(doctor)],
+            capture_output=True, text=True, timeout=5,
+            cwd=str(ROOT),
+        )
+        combined = result.stdout
+        if result.stderr:
+            combined += "\n--- STDERR ---\n" + result.stderr
+        return {
+            "ok": result.returncode == 0,
+            "output": _redact_secrets(combined),
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "ok": False,
+            "output": "hub_doctor.sh timed out after 5 seconds.",
+        }
+    except (subprocess.SubprocessError, OSError) as e:
+        return {
+            "ok": False,
+            "output": f"hub_doctor.sh failed: {type(e).__name__}: {e}",
+        }
+
+
 @app.post("/api/hub/stop")
 def api_hub_stop() -> dict:
     """

@@ -1836,6 +1836,27 @@ function _runControlPanelAction(action) {
         case 'open-logs':
             if (!_cpScrollToH2('Latest Log')) _cpStatus('Logs section not found.');
             return;
+        case 'show-diagnostics': {
+            // v6.6: run hub_doctor.sh via the diagnostics endpoint and
+            // render the (redacted) output in #cmd-output. Does NOT
+            // stop/start the Hub. Does NOT post. Read-only.
+            _cpStatus('Running Hub diagnostics…');
+            const out = document.getElementById('cmd-output');
+            if (out) out.textContent = '';
+            fetch('/api/hub/diagnostics')
+                .then(r => r.json())
+                .then(d => {
+                    if (out) out.textContent = d.output || '(no output)';
+                    _cpStatus(d.ok
+                        ? 'Hub diagnostics complete.'
+                        : 'Hub diagnostics returned issues — see Command Output.');
+                    _cpScrollToH2('Command Output');
+                })
+                .catch(err => {
+                    _cpStatus('Diagnostics fetch failed: ' + err);
+                });
+            return;
+        }
         case 'stop-hub': {
             // v6.5: stop the Hub server. Confirm because this makes the
             // current page unresponsive — every subsequent click and
