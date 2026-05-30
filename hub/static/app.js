@@ -1043,6 +1043,12 @@ function _writePersistedInboxSelected(name) {
 // fighting the user's scroll position.
 let _inboxAutoScrollDone = false;
 
+// v5.29: keyboard navigation. _inboxFocusedIdx is an index into the
+// CURRENT filtered items array; -1 means no focus. Visual: `focused`
+// class on the matching <li>. Set on click and on ↑/↓; cleared on
+// Esc; consumed by Enter to load the focused report.
+let _inboxFocusedIdx = -1;
+
 function _autoScrollInboxOnce() {
     if (_inboxAutoScrollDone) return;
     const list = document.getElementById('inbox-list');
@@ -1186,7 +1192,7 @@ function renderInboxList() {
         el.innerHTML = '<li class="muted">No reports match the current filter.</li>';
         return;
     }
-    el.innerHTML = filtered.map(it => {
+    el.innerHTML = filtered.map((it, i) => {
         // v5.19: per-day counts pulled from /api/reports (default to 0
         // for backward compatibility with any cached pre-v5.19 response).
         const approvals = it.approvals || 0;
@@ -1203,6 +1209,7 @@ function renderInboxList() {
         const cls = [];
         if (it.name === _inboxSelected) cls.push('selected');
         if (isToday) cls.push('today');
+        if (i === _inboxFocusedIdx) cls.push('focused');  // v5.29
         const todaySuffix = isToday
             ? ' <span class="row-today">· today</span>'
             : '';
@@ -1349,7 +1356,75 @@ document.addEventListener('click', (ev) => {
     const li = ev.target.closest('#inbox-list li[data-report]');
     if (!li) return;
     const name = li.dataset.report;
-    if (name && name !== _inboxSelected) loadInboxReport(name);
+    if (!name) return;
+    // v5.29: sync the focus index so subsequent ↑/↓ feel continuous.
+    const items = _filteredInboxItems();
+    _inboxFocusedIdx = items.findIndex(it => it.name === name);
+    if (name !== _inboxSelected) loadInboxReport(name);
+});
+
+// v5.29: keyboard navigation for the inbox.
+//   ArrowDown / ArrowUp → move focus within the filtered list
+//   Enter               → load the focused report
+//   Escape              → clear focus and blur the list
+//   '/'                 → global hotkey to jump to the inbox search
+//                         input (skipped when already typing in any
+//                         other input/textarea)
+function _isTypingInAnInput(target) {
+    if (!target) return false;
+    const tag = (target.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || target.isContentEditable;
+}
+function _isInboxKeyboardActive() {
+    const section = document.getElementById('report-inbox-section');
+    return !!(section && document.activeElement
+              && section.contains(document.activeElement));
+}
+function _scrollFocusedInboxRowIntoView() {
+    const li = document.querySelector('#inbox-list li.focused');
+    if (li) li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+document.addEventListener('keydown', (ev) => {
+    // Global hotkey first: '/' anywhere on the page (unless typing
+    // into another input) jumps focus to the inbox search input.
+    if (ev.key === '/' && !_isTypingInAnInput(ev.target)) {
+        const search = document.getElementById('inbox-search');
+        if (search) {
+            ev.preventDefault();
+            search.focus();
+            search.select();
+        }
+        return;
+    }
+    if (!_isInboxKeyboardActive()) return;
+    const items = _filteredInboxItems();
+    if (items.length === 0 && ev.key !== 'Escape') return;
+
+    if (ev.key === 'ArrowDown') {
+        ev.preventDefault();
+        _inboxFocusedIdx = Math.min(
+            (_inboxFocusedIdx < 0 ? -1 : _inboxFocusedIdx) + 1,
+            items.length - 1,
+        );
+        renderInboxList();
+        _scrollFocusedInboxRowIntoView();
+    } else if (ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        _inboxFocusedIdx = Math.max(_inboxFocusedIdx - 1, 0);
+        renderInboxList();
+        _scrollFocusedInboxRowIntoView();
+    } else if (ev.key === 'Enter') {
+        if (_inboxFocusedIdx < 0 || _inboxFocusedIdx >= items.length) return;
+        ev.preventDefault();
+        const target = items[_inboxFocusedIdx];
+        if (target) loadInboxReport(target.name);
+    } else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        _inboxFocusedIdx = -1;
+        renderInboxList();
+        const list = document.getElementById('inbox-list');
+        if (list && list === document.activeElement) list.blur();
+    }
 });
 
 // Filter input bindings (v5.18). Re-render the list on each change;
