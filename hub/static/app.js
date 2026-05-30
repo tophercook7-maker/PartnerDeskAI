@@ -1437,7 +1437,17 @@ document.addEventListener('keydown', (ev) => {
     const items = _filteredInboxItems();
     if (items.length === 0 && ev.key !== 'Escape') return;
 
-    if (ev.key === 'ArrowDown') {
+    // v5.31: 'j'/'k' alias ArrowDown/ArrowUp (Vim/Gmail style). j and k
+    // are real typing characters, so they're ignored when the user is
+    // typing in any input — otherwise they'd hijack search keystrokes.
+    // Arrow keys don't need the same guard because they have no meaning
+    // in single-line inputs.
+    const isDown = ev.key === 'ArrowDown'
+        || (ev.key === 'j' && !_isTypingInAnInput(ev.target));
+    const isUp = ev.key === 'ArrowUp'
+        || (ev.key === 'k' && !_isTypingInAnInput(ev.target));
+
+    if (isDown) {
         ev.preventDefault();
         _inboxFocusedIdx = Math.min(
             (_inboxFocusedIdx < 0 ? -1 : _inboxFocusedIdx) + 1,
@@ -1445,7 +1455,7 @@ document.addEventListener('keydown', (ev) => {
         );
         renderInboxList();
         _scrollFocusedInboxRowIntoView();
-    } else if (ev.key === 'ArrowUp') {
+    } else if (isUp) {
         ev.preventDefault();
         _inboxFocusedIdx = Math.max(_inboxFocusedIdx - 1, 0);
         renderInboxList();
