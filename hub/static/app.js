@@ -1022,6 +1022,47 @@ let _inboxSearch = '';
 let _inboxWindow = 'all';
 let _inboxHideEmpty = false;  // v5.20
 
+// v5.21: persist the three inbox filters across page reloads. Validated
+// per-field on read so a stale or malformed value just falls back to
+// the default. Wrapped in try/catch because localStorage throws in
+// private-browsing mode and when storage quotas are hit.
+const _INBOX_FILTERS_KEY = 'partnerdesk.inboxFilters';
+const _INBOX_WINDOW_VALUES = ['all', '7', '30', '90'];
+
+function _readPersistedInboxFilters() {
+    try {
+        const raw = localStorage.getItem(_INBOX_FILTERS_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return null;
+        const out = {};
+        if (typeof parsed.search === 'string') out.search = parsed.search;
+        if (_INBOX_WINDOW_VALUES.includes(parsed.window)) out.window = parsed.window;
+        if (typeof parsed.hideEmpty === 'boolean') out.hideEmpty = parsed.hideEmpty;
+        return out;
+    } catch (e) { return null; }
+}
+
+function _writePersistedInboxFilters() {
+    try {
+        localStorage.setItem(_INBOX_FILTERS_KEY, JSON.stringify({
+            search:    _inboxSearch,
+            window:    _inboxWindow,
+            hideEmpty: _inboxHideEmpty,
+        }));
+    } catch (e) { /* storage blocked — filters still work in-memory */ }
+}
+
+// Hydrate module state from persistence at load. DOM elements get
+// synced further down where the input/select/checkbox handlers bind.
+(function _hydrateInboxFilters() {
+    const saved = _readPersistedInboxFilters();
+    if (!saved) return;
+    if ('search'    in saved) _inboxSearch    = saved.search;
+    if ('window'    in saved) _inboxWindow    = saved.window;
+    if ('hideEmpty' in saved) _inboxHideEmpty = saved.hideEmpty;
+})();
+
 function _filteredInboxItems() {
     let out = _inboxItems;
     const q = _inboxSearch.trim().toLowerCase();
@@ -1222,22 +1263,28 @@ document.addEventListener('click', (ev) => {
 // count display.
 const _inboxSearchEl = document.getElementById('inbox-search');
 if (_inboxSearchEl) {
+    _inboxSearchEl.value = _inboxSearch;          // v5.21 hydrate UI
     _inboxSearchEl.addEventListener('input', () => {
         _inboxSearch = _inboxSearchEl.value || '';
+        _writePersistedInboxFilters();
         renderInboxList();
     });
 }
 const _inboxWindowEl = document.getElementById('inbox-window');
 if (_inboxWindowEl) {
+    _inboxWindowEl.value = _inboxWindow;          // v5.21 hydrate UI
     _inboxWindowEl.addEventListener('change', () => {
         _inboxWindow = _inboxWindowEl.value || 'all';
+        _writePersistedInboxFilters();
         renderInboxList();
     });
 }
 const _inboxHideEmptyEl = document.getElementById('inbox-hide-empty');
 if (_inboxHideEmptyEl) {
+    _inboxHideEmptyEl.checked = _inboxHideEmpty;  // v5.21 hydrate UI
     _inboxHideEmptyEl.addEventListener('change', () => {
         _inboxHideEmpty = _inboxHideEmptyEl.checked;
+        _writePersistedInboxFilters();
         renderInboxList();
     });
 }
