@@ -1011,6 +1011,9 @@ if (_reportsSelect) {
 
 let _inboxItems = [];
 let _inboxSelected = null;  // currently displayed report filename
+let _inboxContent  = '';    // cached raw markdown of the displayed report
+                             // (v5.17 — backs the download button without
+                             // a refetch on click)
 
 function _formatInboxSize(bytes) {
     if (bytes < 1024) return `${bytes} B`;
@@ -1112,12 +1115,39 @@ async function loadInboxReport(filename) {
         if (!r.ok) throw new Error('http ' + r.status);
         const d = await r.json();
         _inboxSelected = filename;
+        _inboxContent  = d.content || '';
         renderInboxList();
-        preview.innerHTML = _renderInboxMarkdown(d.content || '');
+        // v5.17: small toolbar with a Download button above the rendered
+        // markdown. Click is handled by the delegator below, reading the
+        // cached _inboxContent so we don't refetch on download.
+        preview.innerHTML =
+            `<div class="inbox-preview-toolbar">` +
+              `<button type="button" id="inbox-download-btn" ` +
+              `title="Download ${_escape(filename)}">⬇ Download .md</button>` +
+            `</div>` +
+            _renderInboxMarkdown(_inboxContent);
     } catch (err) {
         preview.innerHTML = '<div class="muted">Could not load report.</div>';
     }
 }
+
+// Download button delegator (v5.17). Lives once at module load; new
+// renders inherit it without rebinding. Builds a Blob from the cached
+// content and triggers a browser download. No re-fetch — the user
+// already paid the network cost when they clicked the report.
+document.addEventListener('click', (ev) => {
+    if (!ev.target.closest('#inbox-download-btn')) return;
+    if (!_inboxSelected || !_inboxContent) return;
+    const blob = new Blob([_inboxContent], { type: 'text/markdown' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = _inboxSelected;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+});
 
 // Click delegation for the inbox list. Lives on document.addEventListener
 // so newly-rendered rows automatically inherit it without per-render
