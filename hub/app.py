@@ -27,7 +27,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -41,6 +41,8 @@ HUB_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "automation"))
 import approval_manager  # noqa: E402
 import connection_state  # noqa: E402
+import env_writer  # noqa: E402
+import linkedin_oauth  # noqa: E402
 import social_posters  # noqa: E402
 import status as status_mod  # noqa: E402
 
@@ -634,6 +636,187 @@ def api_verify_connection(body: VerifyRequest) -> dict:
         key, ok=bool(result.get("ok")), message=result.get("message", "")
     )
     return result
+
+
+# --- LinkedIn OAuth connect flow (v6.1) ----------------------------------
+# Two endpoints + tiny in-memory state store. The Hub button navigates
+# the browser to /api/oauth/linkedin/start which 302s to LinkedIn; the
+# user authenticates; LinkedIn redirects back to /api/oauth/linkedin/
+# callback?code=…&state=… ; the callback exchanges the code for a
+# token, writes the token into .env (via env_writer's atomic update),
+# then triggers a verify. NEVER logs / returns the token value.
+
+import secrets as _py_secrets  # stdlib — used only for the CSRF state token
+
+# state token -> expiry timestamp. Cleared on use; expired entries
+# are pruned opportunistically on each /start call. In-memory only —
+# survives only as long as the Hub process. That's fine: the OAuth
+# round-trip is seconds long.
+_LINKEDIN_OAUTH_STATES: dict[str, datetime] = {}
+_LINKEDIN_OAUTH_STATE_TTL_MINS = 10
+
+
+def _prune_expired_oauth_states() -> None:
+    now = datetime.now()
+    expired = [s for s, exp in _LINKEDIN_OAUTH_STATES.items() if exp < now]
+    for s in expired:
+        _LINKEDIN_OAUTH_STATES.pop(s, None)
+
+
+@app.get("/api/oauth/linkedin/start")
+def api_oauth_linkedin_start():
+    """
+    Step 1 of the LinkedIn OAuth flow. Generates a fresh CSRF state
+    token, stores it server-side with a 10-minute expiry, and
+    redirects the browser to LinkedIn's authorization URL.
+
+    No secrets in the response.
+    """
+    _prune_expired_oauth_states()
+    try:
+        state = _py_secrets.token_urlsafe(32)
+        url = linkedin_oauth.build_authorization_url(state)
+    except linkedin_oauth.LinkedInOAuthError as e:
+        # Surface a helpful error (which only names the missing keys —
+        # never values).
+        raise HTTPException(status_code=400, detail=str(e))
+    from datetime import timedelta as _td
+    _LINKEDIN_OAUTH_STATES[state] = (
+        datetime.now() + _td(minutes=_LINKEDIN_OAUTH_STATE_TTL_MINS)
+    )
+    return RedirectResponse(url=url, status_code=302)
+
+
+def _oauth_result_page(title: str, body_html: str, ok: bool) -> HTMLResponse:
+    """Tiny self-contained result page (no token values rendered)."""
+    color = "#2a6ec1" if ok else "#b34a4a"
+    html = (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        f"<title>{title}</title></head><body style='font-family: -apple-system, sans-serif; "
+        "max-width: 540px; margin: 3rem auto; padding: 1.5rem; line-height: 1.5;'>"
+        f"<h1 style='color:{color}; margin-top:0'>{title}</h1>"
+        f"{body_html}"
+        "<p><a href='/'>← Back to PartnerDesk Hub</a></p>"
+        "</body></html>"
+    )
+    return HTMLResponse(content=html, status_code=200 if ok else 400)
+
+
+@app.get("/api/oauth/linkedin/callback")
+def api_oauth_linkedin_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+):
+    """
+    Step 2: LinkedIn redirects here with ?code=… and ?state=… on
+    success, or ?error=… on user denial. We:
+      1. Verify state matches one we issued (CSRF protection).
+      2. POST the code to LinkedIn's token endpoint via
+         linkedin_oauth.exchange_code_for_token.
+      3. Atomically write LINKEDIN_ACCESS_TOKEN to .env via env_writer.
+      4. Reload the process env so the new token is live in this Hub.
+      5. Call connection_state.record_verification with the result of
+         verify_linkedin_connection().
+    Returns a small HTML page with success/failure — token value is
+    NEVER rendered or logged.
+    """
+    # User denied or LinkedIn errored.
+    if error:
+        return _oauth_result_page(
+            "LinkedIn authorization declined",
+            f"<p>LinkedIn returned: <code>{error}</code>"
+            + (f" — {error_description}" if error_description else "")
+            + "</p><p>No changes were made to your .env or connection state.</p>",
+            ok=False,
+        )
+
+    if not code or not state:
+        return _oauth_result_page(
+            "LinkedIn callback missing parameters",
+            "<p>Expected <code>code</code> and <code>state</code> query parameters.</p>"
+            "<p>No changes were made.</p>",
+            ok=False,
+        )
+
+    expiry = _LINKEDIN_OAUTH_STATES.pop(state, None)
+    if expiry is None or expiry < datetime.now():
+        return _oauth_result_page(
+            "LinkedIn callback rejected (state mismatch)",
+            "<p>The CSRF state token didn't match an in-flight request, or it expired. "
+            "This can happen if the authorization took longer than 10 minutes, or if "
+            "the callback URL was opened from an old browser tab.</p>"
+            "<p>No changes were made. Try clicking Connect LinkedIn again.</p>",
+            ok=False,
+        )
+
+    # Exchange the code for a token (POSTs the client_secret in the body —
+    # never in a URL). Errors surface as exceptions that we catch here.
+    try:
+        token_resp = linkedin_oauth.exchange_code_for_token(code)
+    except linkedin_oauth.LinkedInOAuthError as e:
+        return _oauth_result_page(
+            "LinkedIn token exchange failed",
+            f"<p>{_escape_html(str(e))}</p>"
+            "<p>No changes were made to your .env.</p>",
+            ok=False,
+        )
+
+    access_token = token_resp.get("access_token", "")
+    token_len = len(access_token)
+
+    # Atomic .env write. update_env preserves file mode + makes a .bak
+    # snapshot. The return value contains structural info ONLY —
+    # never the token value.
+    try:
+        write_result = env_writer.update_env(
+            ROOT / ".env",
+            {"LINKEDIN_ACCESS_TOKEN": access_token},
+        )
+    except (FileNotFoundError, ValueError, OSError) as e:
+        return _oauth_result_page(
+            "Token received but .env write failed",
+            f"<p>{_escape_html(str(e))}</p>"
+            "<p>Try again, or manually add LINKEDIN_ACCESS_TOKEN to .env.</p>",
+            ok=False,
+        )
+
+    # Refresh process env so the new token is visible to the verify probe.
+    os.environ["LINKEDIN_ACCESS_TOKEN"] = access_token
+    # Clear the local variable so it's not lingering in memory longer
+    # than necessary. (Best-effort — Python doesn't guarantee erasure.)
+    del access_token
+
+    # Trigger verify; record the outcome. Won't fully pass until
+    # LINKEDIN_AUTHOR_URN is also set — see the success message body.
+    verify_result = social_posters.verify_linkedin_connection()
+    connection_state.record_verification(
+        "linkedin",
+        ok=bool(verify_result.get("ok")),
+        message=verify_result.get("message", ""),
+    )
+
+    op = "replaced" if "LINKEDIN_ACCESS_TOKEN" in write_result["replaced"] else "added"
+    body = (
+        f"<p><strong>Access token {op}</strong> in <code>.env</code> "
+        f"(length: {token_len} chars). A backup of the previous .env was saved "
+        "to <code>.env.bak</code>.</p>"
+        f"<p><strong>Verify probe:</strong> {_escape_html(verify_result.get('message', ''))}</p>"
+    )
+    if not verify_result.get("ok"):
+        body += (
+            "<p>This is expected if <code>LINKEDIN_AUTHOR_URN</code> is not yet "
+            "set. Add it to <code>.env</code> (your member URN, e.g. "
+            "<code>urn:li:person:XXXX</code>) and click Verify Connections "
+            "in the Hub.</p>"
+        )
+    return _oauth_result_page("LinkedIn connected", body, ok=True)
+
+
+def _escape_html(s: str) -> str:
+    """Minimal HTML escape for the OAuth result page body."""
+    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 @app.get("/api/connections")

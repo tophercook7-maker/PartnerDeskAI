@@ -1823,6 +1823,22 @@ function _runControlPanelAction(action) {
             );
             return;
         }
+        case 'connect-linkedin': {
+            // v6.1: kicks off the OAuth flow. Confirm first because we
+            // navigate away from the Hub to LinkedIn and we will write
+            // the returned token into .env on this machine.
+            if (!confirm(
+                'This will redirect you to LinkedIn to authorize ' +
+                'PartnerDeskAI. On success, your access token will be ' +
+                'stored in .env on this machine (a .env.bak snapshot ' +
+                'is also written). The token is never sent anywhere ' +
+                'except LinkedIn and this Hub. Continue?'
+            )) return;
+            // navigate the whole window — the server replies with a 302
+            // to LinkedIn, then LinkedIn redirects back to our callback.
+            window.location.href = '/api/oauth/linkedin/start';
+            return;
+        }
         case 'open-connection-help':
             _cpScrollToH2('Connections');
             _cpStatusHTML(
