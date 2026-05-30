@@ -33,8 +33,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 
-ROOT = Path(__file__).resolve().parent.parent
-HUB_DIR = Path(__file__).resolve().parent
+# Dynamic repo-root derivation: hub/app.py lives at <repo>/hub/app.py,
+# so parents[1] is the repo root regardless of where the repo is on
+# disk. Use ROOT / "<filename>" everywhere instead of hardcoded paths
+# so the project remains portable across moves/renames.
+ROOT = Path(__file__).resolve().parents[1]
+HUB_DIR = Path(__file__).resolve().parents[0]
 
 # Make automation/ importable so we can reuse status._gather_status()
 # and approval_manager.get_post() (read-only single-row helper).
@@ -710,8 +714,41 @@ def api_oauth_linkedin_callback(
     error_description: str | None = None,
 ):
     """
-    Step 2: LinkedIn redirects here with ?code=… and ?state=… on
-    success, or ?error=… on user denial. We:
+    Step 2 entry point. Delegates to _oauth_callback_impl inside a
+    backstop try/except so any unhandled exception becomes a friendly
+    HTML error page rather than a 500. The friendly page includes the
+    Hub's resolved ROOT and the .env path it tried, which is the data
+    you need to debug the most common class of bugs (wrong repo root
+    after a project move).
+    """
+    try:
+        return _oauth_callback_impl(code, state, error, error_description)
+    except Exception as e:
+        return _oauth_result_page(
+            "OAuth callback hit an unexpected error",
+            f"<p>Error type: <code>{type(e).__name__}</code></p>"
+            f"<p>Error message: {_escape_html(str(e))}</p>"
+            f"<p>Repo root this Hub is running with: "
+            f"<code>{_escape_html(str(ROOT))}</code></p>"
+            f"<p>.env path expected: <code>{_escape_html(str(ROOT / '.env'))}</code></p>"
+            "<p>Check the Hub's server logs for the full traceback. "
+            "If the repo root above doesn't match where your project "
+            "actually lives, restart the Hub from the new location: "
+            "<code>pkill -f 'uvicorn hub.app' && bash automation/open_hub.sh</code>.</p>",
+            ok=False,
+        )
+
+
+def _oauth_callback_impl(
+    code: str | None,
+    state: str | None,
+    error: str | None,
+    error_description: str | None,
+):
+    """
+    Actual OAuth callback body. Returns an HTMLResponse for every
+    branch. Any uncaught exception bubbles up to the wrapper above.
+    Steps:
       1. Verify state matches one we issued (CSRF protection).
       2. POST the code to LinkedIn's token endpoint via
          linkedin_oauth.exchange_code_for_token.
@@ -719,8 +756,7 @@ def api_oauth_linkedin_callback(
       4. Reload the process env so the new token is live in this Hub.
       5. Call connection_state.record_verification with the result of
          verify_linkedin_connection().
-    Returns a small HTML page with success/failure — token value is
-    NEVER rendered or logged.
+    Token value is NEVER rendered or logged.
     """
     # User denied or LinkedIn errored.
     if error:
@@ -787,15 +823,33 @@ def api_oauth_linkedin_callback(
 
     # Atomic .env write — bundle the token AND URN (if any) into ONE
     # update so .env.bak captures the pre-OAuth state once, not twice.
-    # env_writer preserves file mode and never logs values.
+    # env_writer preserves file mode and never logs values, and refuses
+    # to create .env from scratch (raises FileNotFoundError) so we
+    # never silently scaffold a wrong file.
+    env_path = ROOT / ".env"
     updates = {"LINKEDIN_ACCESS_TOKEN": access_token, **urn_writes}
     try:
-        write_result = env_writer.update_env(ROOT / ".env", updates)
-    except (FileNotFoundError, ValueError, OSError) as e:
+        write_result = env_writer.update_env(env_path, updates)
+    except FileNotFoundError as e:
         return _oauth_result_page(
-            "Token received but .env write failed",
-            f"<p>{_escape_html(str(e))}</p>"
-            "<p>Try again, or manually add LINKEDIN_ACCESS_TOKEN to .env.</p>",
+            ".env not found",
+            f"<p>The OAuth callback tried to update <code>{_escape_html(str(env_path))}</code> "
+            "but no .env file exists at that location.</p>"
+            "<p>Run the setup wizard from the terminal to create it:</p>"
+            "<pre>python3 automation/setup_env.py</pre>"
+            f"<p>Or copy the example: <pre>cp {_escape_html(str(ROOT))}/.env.example {_escape_html(str(env_path))}</pre></p>"
+            "<p>Then click Connect LinkedIn again. The token was received "
+            "from LinkedIn but NOT written anywhere on disk.</p>",
+            ok=False,
+        )
+    except (ValueError, OSError) as e:
+        return _oauth_result_page(
+            ".env write failed",
+            f"<p>Tried to write: <code>{_escape_html(str(env_path))}</code></p>"
+            f"<p>Error: {_escape_html(str(e))}</p>"
+            "<p>The token was received from LinkedIn but NOT written. "
+            "You can manually add <code>LINKEDIN_ACCESS_TOKEN</code> to "
+            "<code>.env</code> and click Verify Connections.</p>",
             ok=False,
         )
 
@@ -818,8 +872,10 @@ def api_oauth_linkedin_callback(
     op_token = ("replaced"
                 if "LINKEDIN_ACCESS_TOKEN" in write_result["replaced"] else "added")
     body = (
-        f"<p><strong>Access token {op_token}</strong> in <code>.env</code> "
-        f"(length: {token_len} chars). Backup saved to <code>.env.bak</code>.</p>"
+        f"<p><strong>Access token {op_token}</strong> in "
+        f"<code>{_escape_html(str(env_path))}</code> "
+        f"(length: {token_len} chars). Backup saved to "
+        f"<code>{_escape_html(str(env_path))}.bak</code>.</p>"
         f"<p><strong>Author URN:</strong> {_escape_html(urn_msg)}</p>"
         f"<p><strong>Verify probe:</strong> {_escape_html(verify_result.get('message', ''))}</p>"
     )
