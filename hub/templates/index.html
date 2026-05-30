@@ -128,6 +128,29 @@
             background: rgba(220, 53, 69, 0.18); color: #ffb3b3;
         }
 
+        /* --- Control Panel (v5.34) --------------------------------- */
+        #control-panel-section { padding: 1rem 1.25rem; }
+        .cp-grid {
+            display: grid; gap: 0.9rem;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        }
+        .cp-group {
+            border: 1px solid #e5e5e5; border-radius: 6px;
+            padding: 0.85rem 0.9rem 0.7rem;
+            background: #fafafa;
+        }
+        .cp-group h3 {
+            margin: 0 0 0.55rem; font-size: 0.92rem; color: #2a6ec1;
+        }
+        .cp-btn {
+            display: block; width: 100%;
+            margin-bottom: 0.4rem;
+            text-align: left;
+            padding: 0.5rem 0.7rem;
+            font-size: 0.88rem;
+        }
+        .cp-btn:last-child { margin-bottom: 0; }
+
         /* --- System Activity feed (v5.3) --------------------------- */
         #activity-section { padding: 1rem 1.25rem; }
         .activity-feed { list-style: none; padding: 0; margin: 0; }
@@ -741,6 +764,34 @@
         <h2>Mission Control</h2>
         <div id="mission-control">
             <div class="muted">Loading…</div>
+        </div>
+    </section>
+
+    <section id="control-panel-section">
+        <h2>Control Panel</h2>
+        <div class="cp-grid">
+            <div class="cp-group">
+                <h3>Hub / System</h3>
+                <button type="button" data-cp-action="refresh-hub" class="cp-btn primary">Refresh Hub</button>
+                <button type="button" data-cp-action="run-daily-ops" class="cp-btn danger">Run Daily Ops</button>
+                <button type="button" data-cp-action="refresh-summary" class="cp-btn">Refresh Summary / Snapshot</button>
+                <button type="button" data-cp-action="open-latest-report" class="cp-btn">Open Latest Report</button>
+                <button type="button" data-cp-action="open-logs" class="cp-btn">Open Logs</button>
+            </div>
+            <div class="cp-group">
+                <h3>Parker Promo</h3>
+                <button type="button" data-cp-action="generate-drafts" class="cp-btn danger">Generate Drafts</button>
+                <button type="button" data-cp-action="review-drafts" class="cp-btn">Review Drafts</button>
+                <button type="button" data-cp-action="ready-to-post" class="cp-btn">Ready to Post</button>
+                <button type="button" data-cp-action="approve-visible" class="cp-btn primary">Approve Visible</button>
+                <button type="button" data-cp-action="reject-visible" class="cp-btn danger">Reject Visible</button>
+            </div>
+            <div class="cp-group">
+                <h3>Connections</h3>
+                <button type="button" data-cp-action="verify-all-connections" class="cp-btn">Verify All Connections</button>
+                <button type="button" data-cp-action="open-connection-help" class="cp-btn">Open Connection Wizard Help</button>
+                <button type="button" data-cp-action="show-missing-setup" class="cp-btn">Show Missing Setup</button>
+            </div>
         </div>
     </section>
 

@@ -1731,6 +1731,153 @@ async function loadConnections() {
 }
 
 
+// --- Control Panel (v5.34) ----------------------------------------------
+// One section, 13 buttons, three groups. Most actions delegate to
+// existing buttons elsewhere in the page (DRY — keeps the source of
+// truth for confirm dialogs / API calls in one place). The rest are
+// small custom handlers: scroll-to-section, set-a-filter, or write
+// guidance text into #cmd-status.
+
+function _cpStatus(msg) {
+    const el = document.getElementById('cmd-status');
+    if (el) el.textContent = msg;
+}
+function _cpStatusHTML(html) {
+    const el = document.getElementById('cmd-status');
+    if (el) el.innerHTML = html;
+}
+function _cpScrollToH2(text) {
+    for (const h of document.querySelectorAll('section h2')) {
+        if (h.textContent.trim() === text) {
+            h.closest('section')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            return true;
+        }
+    }
+    return false;
+}
+function _cpClickById(id) {
+    const btn = document.getElementById(id);
+    if (btn) { btn.click(); return true; }
+    return false;
+}
+
+function _runControlPanelAction(action) {
+    switch (action) {
+        // --- Hub / System ---
+        case 'refresh-hub':
+            _cpClickById('btn-refresh');
+            return;
+        case 'run-daily-ops':
+            // #btn-run has its own confirm (calls OpenAI). Delegate.
+            _cpClickById('btn-run');
+            return;
+        case 'refresh-summary':
+            _cpClickById('btn-skip');
+            return;
+        case 'open-latest-report': {
+            // Inbox is sorted newest-first → first row is the latest.
+            // Clicking it triggers the v5.27 selection path which loads
+            // the markdown into the preview.
+            _cpScrollToH2('Report Inbox');
+            const li = document.querySelector('#inbox-list li[data-report]');
+            if (li) li.click();
+            else _cpStatus('No reports yet. The cron writes one each morning.');
+            return;
+        }
+        case 'open-logs':
+            if (!_cpScrollToH2('Latest Log')) _cpStatus('Logs section not found.');
+            return;
+
+        // --- Parker Promo ---
+        case 'generate-drafts':
+            // No standalone "generate-only" endpoint exists. Daily Ops
+            // runs daily_runner (generation) as its first step, so we
+            // delegate. #btn-run carries the OpenAI-call confirm.
+            _cpClickById('btn-run');
+            return;
+        case 'review-drafts': {
+            // Mirror the v5.1 Mission Control "review-drafts" behavior:
+            // set status filter to 'draft' and scroll to Recent Parker Work.
+            const statusEl = document.getElementById('filter-status');
+            if (statusEl) {
+                statusEl.value = 'draft';
+                statusEl.dispatchEvent(new Event('change'));
+            }
+            _cpScrollToH2('Recent Parker Work');
+            return;
+        }
+        case 'ready-to-post':
+            _cpScrollToH2('Ready to Post');
+            return;
+        case 'approve-visible':
+            // #approve-visible already has a confirm + bulk API call.
+            _cpClickById('approve-visible');
+            return;
+        case 'reject-visible':
+            _cpClickById('reject-visible');
+            return;
+
+        // --- Connections ---
+        case 'verify-all-connections': {
+            // Mission Control has a data-mc-action="verify-connections"
+            // button rendered by renderMissionControl. If present, click
+            // it (which fires the existing verify flow with confirm).
+            const mc = document.querySelector(
+                '[data-mc-action="verify-connections"]',
+            );
+            if (mc) { mc.click(); _cpScrollToH2('Connections'); }
+            else _cpStatus(
+                'Verify Connections button not available yet. ' +
+                'Try again after the Hub finishes loading.',
+            );
+            return;
+        }
+        case 'open-connection-help':
+            _cpScrollToH2('Connections');
+            _cpStatusHTML(
+                'Run <kbd>python3 automation/connect_wizard.py</kbd> in the ' +
+                'terminal for an interactive OAuth setup walkthrough. ' +
+                'For a one-shot status report: ' +
+                '<kbd>python3 automation/connect_wizard.py status</kbd>. ' +
+                'For a read-only verify probe: ' +
+                '<kbd>python3 automation/connect_wizard.py verify</kbd>.',
+            );
+            return;
+        case 'show-missing-setup': {
+            const conns = _connectionsByPlatform || {};
+            const lines = [];
+            for (const [platform, c] of Object.entries(conns)) {
+                if (c && c.status === 'not_configured') {
+                    const missing = (c.missing || []).join(', ');
+                    lines.push(`• ${platform}: ${missing || '(unspecified)'}`);
+                }
+            }
+            _cpScrollToH2('Connections');
+            if (lines.length === 0) {
+                _cpStatus(
+                    'All connections are configured. ' +
+                    '(Some may still need a verify probe — use Verify All Connections.)',
+                );
+            } else {
+                _cpStatusHTML(
+                    '<strong>Missing env keys per platform:</strong><br>' +
+                    lines.map(l => _escape(l)).join('<br>') +
+                    '<br><br>Edit <kbd>.env</kbd> in the project root and add ' +
+                    'each missing key, then click Refresh Hub.',
+                );
+            }
+            return;
+        }
+    }
+}
+
+document.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-cp-action]');
+    if (!btn) return;
+    _runControlPanelAction(btn.dataset.cpAction);
+});
+
+
 // --- Ready to Post queue -------------------------------------------------
 
 // Approved posts come down with content so the Copy button can hand the
