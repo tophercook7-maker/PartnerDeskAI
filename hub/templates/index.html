@@ -283,6 +283,9 @@
             display: block; font-size: 0.72rem;
             opacity: 0.7; margin-top: 0.1rem;
         }
+        /* v5.23: dim the counts meta on days with zero approvals AND
+           zero publishes, so busy days visually lead the eye. */
+        .inbox-list li .meta.quiet { opacity: 0.45; }
         .inbox-preview {
             border: 1px solid #e5e5e5; border-radius: 6px;
             padding: 1rem 1.15rem;

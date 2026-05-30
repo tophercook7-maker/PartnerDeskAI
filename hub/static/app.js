@@ -1132,10 +1132,13 @@ function renderInboxList() {
         const publishes = it.publishes || 0;
         const apN = `${approvals} approval${approvals === 1 ? '' : 's'}`;
         const puN = `${publishes} published`;
+        // v5.23: dim the counts line when both totals are zero, so busy
+        // days visually pop without filtering.
+        const quiet = (approvals === 0 && publishes === 0) ? ' quiet' : '';
         return (
             `<li class="${sel ? 'selected' : ''}" data-report="${_escape(it.name)}">` +
               `<strong>${_escape(it.date)}</strong>` +
-              `<span class="meta">${apN} · ${puN}</span>` +
+              `<span class="meta${quiet}">${apN} · ${puN}</span>` +
               `<span class="meta">${_formatInboxSize(it.size)} · ${_escape(it.mtime)}</span>` +
             `</li>`
         );
