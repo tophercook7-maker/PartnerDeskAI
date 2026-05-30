@@ -49,6 +49,17 @@ bash automation/create_desktop_app.sh
 
 Creates a proper macOS `.app` bundle (`PartnerDesk Hub.app`) on the Desktop. Unlike the `.command` launcher above, double-clicking the `.app` does NOT flash a Terminal window — it launches the Hub natively, shows the right name in Spotlight and the Dock, and can be dragged to the Dock for one-click access. Pure shell + bundle structure, no new dependencies.
 
+The launcher captures startup output to `/tmp/partnerdesk-hub-launch.log` and shows a native macOS alert if the server fails to come up within 10 seconds (avoids the silent "browser opens to a dead page" failure mode). `open_hub.sh` actively probes for a python3 that has `uvicorn`+`fastapi` installed — so the .app works even though macOS launchd strips PATH down to a minimal set that doesn't include framework Python.
+
+### First-launch macOS permission
+
+The project lives under `~/Documents/`, which macOS Privacy & Security protects via TCC. The first time you `open` the `.app`, you may see:
+
+- **A macOS permission prompt** asking whether `PartnerDesk Hub` may access your Documents folder → click **Allow**, then double-click the .app again. Done.
+- **Or, no prompt at all** — the alert from the .app shows the launch log with `Operation not permitted`. In that case, open System Settings → Privacy & Security → **Files and Folders**, find `PartnerDesk Hub` (you may need to click `+` and add it from the Desktop), and toggle on **Documents Folder**. Or, alternatively, move the repo outside `~/Documents/` (e.g. to `~/Projects/PartnerDeskAI`) and re-run `bash automation/create_desktop_app.sh` so the new path is embedded.
+
+The wrapper exits 0 even on failure (so macOS doesn't show its generic "unexpectedly quit" dialog on top of ours), and the full log is at `/tmp/partnerdesk-hub-launch.log`.
+
 ## PartnerDesk Hub
 
 ```bash
