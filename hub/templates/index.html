@@ -239,6 +239,12 @@
             background: #fff;
         }
         #inbox-count { font-size: 0.8rem; }
+        .inbox-toggle {
+            display: flex; align-items: center; gap: 0.35rem;
+            font-size: 0.82rem; color: #444;
+            cursor: pointer; white-space: nowrap;
+        }
+        .inbox-toggle input[type="checkbox"] { cursor: pointer; }
         .inbox-layout {
             display: grid;
             grid-template-columns: minmax(200px, 260px) 1fr;
@@ -693,6 +699,10 @@
                 <option value="30">Last 30 days</option>
                 <option value="90">Last 90 days</option>
             </select>
+            <label class="inbox-toggle">
+                <input type="checkbox" id="inbox-hide-empty" />
+                Hide empty days
+            </label>
             <span id="inbox-count" class="muted">…</span>
         </div>
         <div class="inbox-layout">

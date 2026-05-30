@@ -1020,6 +1020,7 @@ let _inboxContent  = '';    // cached raw markdown of the displayed report
 // current visit, not a long-term preference).
 let _inboxSearch = '';
 let _inboxWindow = 'all';
+let _inboxHideEmpty = false;  // v5.20
 
 function _filteredInboxItems() {
     let out = _inboxItems;
@@ -1036,6 +1037,10 @@ function _filteredInboxItems() {
             const cutoffStr = cutoff.toISOString().slice(0, 10);
             out = out.filter(it => (it.date || '') >= cutoffStr);
         }
+    }
+    if (_inboxHideEmpty) {
+        // v5.20: drop days with zero approvals AND zero publishes.
+        out = out.filter(it => (it.approvals || 0) > 0 || (it.publishes || 0) > 0);
     }
     return out;
 }
@@ -1226,6 +1231,13 @@ const _inboxWindowEl = document.getElementById('inbox-window');
 if (_inboxWindowEl) {
     _inboxWindowEl.addEventListener('change', () => {
         _inboxWindow = _inboxWindowEl.value || 'all';
+        renderInboxList();
+    });
+}
+const _inboxHideEmptyEl = document.getElementById('inbox-hide-empty');
+if (_inboxHideEmptyEl) {
+    _inboxHideEmptyEl.addEventListener('change', () => {
+        _inboxHideEmpty = _inboxHideEmptyEl.checked;
         renderInboxList();
     });
 }
