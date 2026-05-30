@@ -18,6 +18,7 @@ The Hub only reads files and POSTs to those scripts.
 
 import os
 import re
+import signal as _signal
 import sqlite3
 import subprocess
 import sys
@@ -1320,3 +1321,111 @@ def run_refresh() -> dict:
     return _run(
         [sys.executable, str(ROOT / "automation" / "daily_ops.py"), "--skip-generate"]
     )
+
+
+@app.post("/api/hub/stop")
+def api_hub_stop() -> dict:
+    """
+    Send SIGTERM to the running Hub process (v6.5). The PID is read
+    from logs/hub.pid which open_hub.sh wrote at startup. The response
+    is returned BEFORE uvicorn actually exits — the client will lose
+    connectivity within a second of receiving the response.
+
+    Safety layers (defense against PID reuse):
+        1. Only signals the PID in logs/hub.pid — never an arbitrary
+           PID passed in the request.
+        2. Verifies the target process is alive via kill(pid, 0).
+        3. Inspects /usr/bin/ps to confirm the command line includes
+           both "uvicorn" and "hub.app". If anything else is at that
+           PID (e.g., the PID got recycled by the kernel), refuses.
+        4. Sends SIGTERM (not SIGKILL) so uvicorn shuts down
+           gracefully — same signal nohup-detached child receives.
+    """
+    pid_file = ROOT / "logs" / "hub.pid"
+    if not pid_file.is_file():
+        return {
+            "ok": False,
+            "message": (
+                "logs/hub.pid not found. The Hub may have been started "
+                "without open_hub.sh, or it was already stopped. To "
+                "stop a manually-started server, kill its PID from the "
+                "terminal."
+            ),
+        }
+
+    try:
+        pid = int(pid_file.read_text().strip())
+    except (OSError, ValueError) as e:
+        return {"ok": False, "message": f"Cannot read PID from logs/hub.pid: {e}"}
+
+    # Liveness check — kill(pid, 0) raises if not alive.
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return {
+            "ok": False,
+            "message": f"PID {pid} from logs/hub.pid is not running (already stopped). "
+                       "You can delete logs/hub.pid manually if it's stale.",
+        }
+    except PermissionError:
+        return {
+            "ok": False,
+            "message": f"Cannot signal PID {pid} — permission denied. The Hub may "
+                       "be running as a different user.",
+        }
+
+    # PID-reuse defense: confirm the command at this PID actually
+    # looks like our Hub. We need TWO checks because a bash script
+    # whose body MENTIONS "uvicorn hub.app" would otherwise pass the
+    # second check alone (the strings are in the bash process's
+    # full command line). ps comm= gives just the executable name —
+    # bash != python so the executable-name check rejects bash even
+    # if its arguments happen to contain Hub-shaped strings.
+    try:
+        comm_result = subprocess.run(
+            ["/bin/ps", "-p", str(pid), "-o", "comm="],
+            capture_output=True, text=True, timeout=2,
+        )
+        cmd_result = subprocess.run(
+            ["/bin/ps", "-p", str(pid), "-o", "command="],
+            capture_output=True, text=True, timeout=2,
+        )
+        comm = comm_result.stdout.strip()
+        cmd  = cmd_result.stdout.strip()
+    except (subprocess.SubprocessError, OSError) as e:
+        return {"ok": False, "message": f"Cannot inspect PID {pid}: {e}"}
+
+    # The executable must be a Python interpreter (covers framework
+    # Python's Python.app shim, /usr/bin/python3, homebrew python3.x,
+    # etc.). Case-insensitive because macOS framework Python is
+    # "Python" with a capital P.
+    comm_basename = comm.rsplit("/", 1)[-1].lower()
+    is_python = comm_basename.startswith("python")
+    has_hub_args = ("uvicorn" in cmd) and ("hub.app" in cmd)
+
+    if not (is_python and has_hub_args):
+        return {
+            "ok": False,
+            "message": (
+                f"PID {pid} does not look like our Hub "
+                f"(comm={comm!r}, command snippet={cmd[:80]!r}). "
+                "Refusing to signal in case the PID has been reused. "
+                "Both an exec name starting with 'python' AND "
+                "'uvicorn'+'hub.app' in args are required."
+            ),
+        }
+
+    # All checks pass — send SIGTERM. Uvicorn handles SIGTERM
+    # gracefully and exits cleanly within ~100ms.
+    try:
+        os.kill(pid, _signal.SIGTERM)
+    except OSError as e:
+        return {"ok": False, "message": f"Failed to signal PID {pid}: {e}"}
+
+    return {
+        "ok": True,
+        "pid": pid,
+        "message": f"SIGTERM sent to PID {pid}. The Hub will shut down "
+                   "within a second. Restart with the Desktop icon "
+                   "or `bash automation/open_hub.sh`.",
+    }

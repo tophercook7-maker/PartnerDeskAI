@@ -1836,6 +1836,40 @@ function _runControlPanelAction(action) {
         case 'open-logs':
             if (!_cpScrollToH2('Latest Log')) _cpStatus('Logs section not found.');
             return;
+        case 'stop-hub': {
+            // v6.5: stop the Hub server. Confirm because this makes the
+            // current page unresponsive — every subsequent click and
+            // refresh will fail until the server is restarted.
+            if (!confirm(
+                'Stop the Hub server?\n\n' +
+                'After it stops:\n' +
+                ' • this page will become unresponsive\n' +
+                ' • the Desktop icon, bash automation/open_hub.sh, or ' +
+                '   `python3 -m uvicorn hub.app:app --port 8787` will ' +
+                '   bring it back up\n\n' +
+                'Continue?'
+            )) return;
+            _cpStatus('Stopping Hub…');
+            fetch('/api/hub/stop', { method: 'POST' })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.ok) {
+                        _cpStatus(d.message + ' (this tab is now stale.)');
+                    } else {
+                        _cpStatus('Stop failed: ' + (d.message || '(no message)'));
+                    }
+                })
+                .catch(err => {
+                    // If the server died before sending the response,
+                    // we get a fetch error here — that's actually
+                    // success from the user's perspective.
+                    _cpStatus(
+                        'Connection lost — Hub probably stopped successfully. ' +
+                        'This page is now stale.',
+                    );
+                });
+            return;
+        }
 
         // --- Parker Promo ---
         case 'generate-drafts':
