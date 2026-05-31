@@ -2443,6 +2443,7 @@ if (_leadsListEl) {
                 const d = await r.json();
                 if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
                 await loadLeads();
+                _flashLeadToast(leadId, 'Follow-up cleared');
             } catch (err) {
                 alert('Clear follow-up failed: ' + err.message);
             }
@@ -2469,6 +2470,11 @@ if (_leadsListEl) {
                 const d = await r.json();
                 if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
                 await loadLeads();
+                // v7.8: surface what actually happened. An empty Save
+                // is rare (Clear is the canonical clear path) but
+                // truthful feedback beats a misleading "set to ''".
+                _flashLeadToast(leadId,
+                    date ? `Follow-up set to ${date}` : 'Follow-up cleared');
             } catch (err) {
                 alert('Save follow-up failed: ' + err.message);
             }
