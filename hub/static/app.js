@@ -258,7 +258,9 @@ function applyRecentFilters() {
 
     if (filtered.length === 0) {
         document.getElementById('recent-posts').innerHTML =
-            '<li class="muted">No matching Parker work.</li>';
+            // v7.15: align with the other filter-empty strings
+            // ('No leads match the filter.', 'No reports match the current filter.')
+            '<li class="muted">No Parker work matches the filter.</li>';
         return;
     }
     renderRecentPosts(filtered);
