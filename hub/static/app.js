@@ -1002,9 +1002,14 @@ function renderReports(data) {
     if (!data) {
         headlineEl.textContent = 'Could not load reports.';
         headlineEl.classList.add('muted');
-        topicsEl.innerHTML    = '<li class="muted">—</li>';
-        platformsEl.innerHTML = '<li class="muted">—</li>';
-        combosEl.innerHTML    = '<li class="muted">—</li>';
+        // v7.13: was a bare "—" that read like "loading" or "broken".
+        // This branch is the *error* state (fetch failed) — not the
+        // empty-window state, which renders "No data in this window."
+        // via _renderReportList([]). Copy here matches the error tone.
+        const unavail = '<li class="muted">Data unavailable.</li>';
+        topicsEl.innerHTML    = unavail;
+        platformsEl.innerHTML = unavail;
+        combosEl.innerHTML    = unavail;
         return;
     }
     const n    = data.total || 0;
