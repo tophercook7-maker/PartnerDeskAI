@@ -671,6 +671,14 @@
         .lead-followup-due {
             color: #2a6ec1; font-weight: 500;
         }
+        /* v7.1: visual urgency cue when follow-up date is in the past. */
+        .lead-followup-overdue {
+            color: #b34a4a; font-weight: 600;
+        }
+        #leads-sort {
+            padding: 0.35rem 0.5rem; border: 1px solid #ccc;
+            border-radius: 4px; font-size: 0.85rem; background: #fff;
+        }
         .lead-last-message {
             font-size: 0.78rem; margin-top: 0.4rem; color: #555;
         }
@@ -1135,6 +1143,10 @@
             <input type="search" id="leads-filter"
                    placeholder="Filter by name, company, status…"
                    aria-label="Filter leads" />
+            <select id="leads-sort" aria-label="Sort leads">
+                <option value="updated" selected>Newest updated</option>
+                <option value="follow-up">Follow-up due first</option>
+            </select>
             <span id="leads-count" class="muted"></span>
         </div>
         <form id="leads-add-form" class="leads-form" hidden

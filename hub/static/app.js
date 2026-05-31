@@ -1928,15 +1928,63 @@ let _leads = [];
 let _leadsFilter = '';
 let _editingLeadId = null;  // id of the lead currently in edit mode
 
+// v7.1: urgency-aware sort. Mode is 'updated' (default — newest first) or
+// 'follow-up' (overdue → due today → future → no-date). Persisted in
+// localStorage so a user who lives in the queue view doesn't have to
+// re-pick it on every page load.
+const _LEADS_SORT_KEY = 'partnerdesk.leadsSort';
+let _leadsSort = (() => {
+    try {
+        const v = localStorage.getItem(_LEADS_SORT_KEY);
+        return v === 'follow-up' ? 'follow-up' : 'updated';
+    } catch (e) { return 'updated'; }
+})();
+
+function _todayStr() {
+    // Local-date YYYY-MM-DD; matches the format follow_up_date is stored in.
+    const d = new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+// 0 = overdue, 1 = due today, 2 = future, 3 = no follow-up date set.
+function _followUpBucket(l, today) {
+    const fu = l.follow_up_date;
+    if (!fu) return 3;
+    if (fu < today) return 0;
+    if (fu === today) return 1;
+    return 2;
+}
+
 function _filteredLeads() {
     const q = _leadsFilter.trim().toLowerCase();
-    if (!q) return _leads;
-    return _leads.filter(l => {
+    const matched = !q ? _leads.slice() : _leads.filter(l => {
         const blob = [l.name, l.company, l.handle, l.source, l.status, l.notes]
             .map(s => (s || '').toLowerCase())
             .join(' ');
         return blob.includes(q);
     });
+    if (_leadsSort === 'follow-up') {
+        const today = _todayStr();
+        // Bucket first; within a dated bucket sort ascending by date
+        // (oldest overdue = most urgent, nearest future = next up).
+        // The no-date bucket falls back to updated_at desc.
+        matched.sort((a, b) => {
+            const ba = _followUpBucket(a, today);
+            const bb = _followUpBucket(b, today);
+            if (ba !== bb) return ba - bb;
+            if (ba === 3) {
+                return (b.updated_at || '').localeCompare(a.updated_at || '');
+            }
+            return (a.follow_up_date || '').localeCompare(b.follow_up_date || '');
+        });
+    } else {
+        matched.sort((a, b) =>
+            (b.updated_at || '').localeCompare(a.updated_at || '')
+        );
+    }
+    return matched;
 }
 
 function _renderLeadView(l) {
@@ -1954,9 +2002,18 @@ function _renderLeadView(l) {
     // v7.0: follow-up queue metadata. Only render lines that have data.
     const contactedHtml = l.contacted_at
         ? `<div class="lead-followup-line">Contacted: ${_escape(l.contacted_at)}</div>` : '';
-    const followUpHtml = l.follow_up_date
-        ? `<div class="lead-followup-line lead-followup-due">` +
-          `Follow up: ${_escape(l.follow_up_date)}</div>` : '';
+    let followUpHtml = '';
+    if (l.follow_up_date) {
+        const today = _todayStr();
+        const overdue = l.follow_up_date < today;
+        const isToday = l.follow_up_date === today;
+        const suffix = overdue ? ' (overdue)' : (isToday ? ' (today)' : '');
+        const cls = overdue
+            ? 'lead-followup-line lead-followup-overdue'
+            : 'lead-followup-line lead-followup-due';
+        followUpHtml = `<div class="${cls}">Follow up: ` +
+            `${_escape(l.follow_up_date)}${suffix}</div>`;
+    }
     const lastMessageHtml = l.last_message
         ? `<details class="lead-last-message"><summary>Last message draft</summary>` +
           `<pre>${_escape(l.last_message)}</pre></details>` : '';
@@ -2056,6 +2113,18 @@ const _leadsFilterEl = document.getElementById('leads-filter');
 if (_leadsFilterEl) {
     _leadsFilterEl.addEventListener('input', () => {
         _leadsFilter = _leadsFilterEl.value || '';
+        renderLeads();
+    });
+}
+
+// v7.1: sort selector. Initial value reflects the persisted choice so
+// the <select> matches what the list is actually doing on first paint.
+const _leadsSortEl = document.getElementById('leads-sort');
+if (_leadsSortEl) {
+    _leadsSortEl.value = _leadsSort;
+    _leadsSortEl.addEventListener('change', () => {
+        _leadsSort = _leadsSortEl.value === 'follow-up' ? 'follow-up' : 'updated';
+        try { localStorage.setItem(_LEADS_SORT_KEY, _leadsSort); } catch (e) {}
         renderLeads();
     });
 }
