@@ -2421,6 +2421,9 @@ if (_leadsListEl) {
                 const d = await r.json();
                 if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
                 await loadLeads();
+                // v7.7: same helper used by the v7.5 snooze indicator —
+                // consistent feedback for any per-card status change.
+                _flashLeadToast(leadId, `Follow-up set to ${date}`);
             } catch (err) {
                 alert('Set follow-up failed: ' + err.message);
             }
