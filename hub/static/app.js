@@ -2179,7 +2179,12 @@ function renderLeads() {
         return;
     }
     if (filtered.length === 0) {
-        el.innerHTML = '<div class="muted">No leads match the filter.</div>';
+        // v7.10: when the due-this-week chip is the active filter,
+        // an empty list is good news, not a "nothing matches" failure.
+        const msg = _leadsDueFilter
+            ? 'Nothing due this week — nice.'
+            : 'No leads match the filter.';
+        el.innerHTML = `<div class="muted">${msg}</div>`;
         return;
     }
     el.innerHTML = filtered.map(l =>
