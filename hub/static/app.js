@@ -2010,6 +2010,25 @@ function _filteredLeads() {
     return matched;
 }
 
+// v7.4: outreach-cadence presets for the follow-up form. One click
+// sets the date and saves immediately — the date input + Save is left
+// in place for custom dates.
+const _FOLLOWUP_PRESETS = [
+    { label: 'Tomorrow', days: 1 },
+    { label: '+1 week',  days: 7 },
+    { label: '+2 weeks', days: 14 },
+    { label: '+1 month', days: 30 },
+];
+function _renderFollowUpPresets(leadId) {
+    return _FOLLOWUP_PRESETS.map(p =>
+        `<button type="button" class="lead-followup-preset" ` +
+            `data-action="lead-followup-preset" ` +
+            `data-lead-id="${_escape(leadId)}" ` +
+            `data-days="${p.days}" ` +
+            `title="Set follow-up to ${_addDays(_todayStr(), p.days)}">${p.label}</button>`
+    ).join('');
+}
+
 function _renderLeadView(l) {
     const status = (l.status || 'cold').toLowerCase();
     const handleHtml = l.handle
@@ -2061,10 +2080,14 @@ function _renderLeadView(l) {
               `data-lead-id="${_escape(l.id)}">Delete</button>` +
           `</div>` +
           // Hidden inline date-picker that "Follow Up" toggles.
+          // v7.4: preset buttons (one click → set date + save) for the
+          // common outreach cadences. The date input + Save still works
+          // for custom dates.
           `<form class="lead-followup-form" hidden data-lead-id="${_escape(l.id)}">` +
             `<input type="date" name="follow_up_date" ` +
               `value="${_escape(l.follow_up_date || '')}" aria-label="Follow-up date">` +
             `<button type="submit" class="primary">Save date</button>` +
+            _renderFollowUpPresets(l.id) +
             `<button type="button" data-action="lead-followup-clear">Clear</button>` +
           `</form>` +
         `</div>`
@@ -2307,6 +2330,29 @@ if (_leadsListEl) {
                     const input = form.querySelector('input[name="follow_up_date"]');
                     if (input) input.focus();
                 }
+            }
+            return;
+        }
+        if (action === 'lead-followup-preset') {
+            // One-click set: compute date locally, POST to /follow-up,
+            // then re-render. Server validates the YYYY-MM-DD format.
+            const days = parseInt(btn.dataset.days, 10);
+            if (!Number.isFinite(days)) return;
+            const date = _addDays(_todayStr(), days);
+            try {
+                const r = await fetch(
+                    `/api/leads/${encodeURIComponent(leadId)}/follow-up`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ follow_up_date: date }),
+                    },
+                );
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadLeads();
+            } catch (err) {
+                alert('Set follow-up failed: ' + err.message);
             }
             return;
         }
