@@ -1951,19 +1951,42 @@ function _renderLeadView(l) {
         ? `<div class="lead-notes">${_escape(l.notes)}</div>` : '';
     const companyHtml = l.company
         ? `<div class="lead-company">${_escape(l.company)}</div>` : '';
+    // v7.0: follow-up queue metadata. Only render lines that have data.
+    const contactedHtml = l.contacted_at
+        ? `<div class="lead-followup-line">Contacted: ${_escape(l.contacted_at)}</div>` : '';
+    const followUpHtml = l.follow_up_date
+        ? `<div class="lead-followup-line lead-followup-due">` +
+          `Follow up: ${_escape(l.follow_up_date)}</div>` : '';
+    const lastMessageHtml = l.last_message
+        ? `<details class="lead-last-message"><summary>Last message draft</summary>` +
+          `<pre>${_escape(l.last_message)}</pre></details>` : '';
     return (
         `<div class="lead-card" data-lead-id="${_escape(l.id)}">` +
           `<h3>${_escape(l.name)}` +
             `<span class="lead-status-badge lead-status-${_escape(status)}">${_escape(status)}</span>` +
           `</h3>` +
           companyHtml + handleHtml + sourceHtml + notesHtml +
+          contactedHtml + followUpHtml + lastMessageHtml +
           `<div class="lead-meta">Updated ${_escape(l.updated_at || '')}</div>` +
           `<div class="lead-actions">` +
+            `<button type="button" class="row-action primary" data-action="lead-message" ` +
+              `data-lead-id="${_escape(l.id)}">Write Message</button>` +
+            `<button type="button" class="row-action" data-action="lead-contacted" ` +
+              `data-lead-id="${_escape(l.id)}">Mark Contacted</button>` +
+            `<button type="button" class="row-action" data-action="lead-followup-toggle" ` +
+              `data-lead-id="${_escape(l.id)}">Follow Up</button>` +
             `<button type="button" class="row-action" data-action="lead-edit" ` +
               `data-lead-id="${_escape(l.id)}">Edit</button>` +
             `<button type="button" class="row-action danger" data-action="lead-delete" ` +
               `data-lead-id="${_escape(l.id)}">Delete</button>` +
           `</div>` +
+          // Hidden inline date-picker that "Follow Up" toggles.
+          `<form class="lead-followup-form" hidden data-lead-id="${_escape(l.id)}">` +
+            `<input type="date" name="follow_up_date" ` +
+              `value="${_escape(l.follow_up_date || '')}" aria-label="Follow-up date">` +
+            `<button type="submit" class="primary">Save date</button>` +
+            `<button type="button" data-action="lead-followup-clear">Clear</button>` +
+          `</form>` +
         `</div>`
     );
 }
@@ -2113,9 +2136,96 @@ if (_leadsListEl) {
             }
             return;
         }
+        // v7.0 follow-up queue actions
+        if (action === 'lead-message') {
+            try {
+                const r = await fetch(
+                    `/api/leads/${encodeURIComponent(leadId)}/message-draft`,
+                    { method: 'POST' },
+                );
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                _showLeadMessageInOutput(d.message);
+                await loadLeads();  // last_message is now populated
+            } catch (err) {
+                alert('Message draft failed: ' + err.message);
+            }
+            return;
+        }
+        if (action === 'lead-contacted') {
+            if (!confirm('Mark this lead as contacted?')) return;
+            try {
+                const r = await fetch(
+                    `/api/leads/${encodeURIComponent(leadId)}/contacted`,
+                    { method: 'POST' },
+                );
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadLeads();
+            } catch (err) {
+                alert('Mark contacted failed: ' + err.message);
+            }
+            return;
+        }
+        if (action === 'lead-followup-toggle') {
+            // Show the inline date input on the same card.
+            const form = document.querySelector(
+                `.lead-followup-form[data-lead-id="${leadId}"]`
+            );
+            if (form) {
+                form.hidden = !form.hidden;
+                if (!form.hidden) {
+                    const input = form.querySelector('input[name="follow_up_date"]');
+                    if (input) input.focus();
+                }
+            }
+            return;
+        }
+        if (action === 'lead-followup-clear') {
+            // Send empty date string to clear the field.
+            try {
+                const r = await fetch(
+                    `/api/leads/${encodeURIComponent(leadId)}/follow-up`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ follow_up_date: '' }),
+                    },
+                );
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadLeads();
+            } catch (err) {
+                alert('Clear follow-up failed: ' + err.message);
+            }
+            return;
+        }
     });
     // PUT (edit save) — caught via the form's submit event, not click.
     _leadsListEl.addEventListener('submit', async (e) => {
+        // v7.0: follow-up date form submit
+        const fuForm = e.target.closest('form.lead-followup-form');
+        if (fuForm) {
+            e.preventDefault();
+            const leadId = fuForm.dataset.leadId;
+            const date = fuForm.querySelector('input[name="follow_up_date"]').value;
+            try {
+                const r = await fetch(
+                    `/api/leads/${encodeURIComponent(leadId)}/follow-up`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ follow_up_date: date }),
+                    },
+                );
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadLeads();
+            } catch (err) {
+                alert('Save follow-up failed: ' + err.message);
+            }
+            return;
+        }
         const form = e.target.closest('form[data-action="lead-save-form"]');
         if (!form) return;
         e.preventDefault();
@@ -2135,6 +2245,48 @@ if (_leadsListEl) {
             alert('Save failed: ' + err.message);
         }
     });
+}
+
+// v7.0: surface the lead's draft message in #cmd-output with a Copy
+// button. The user copy-pastes into LinkedIn manually — we never send
+// any message anywhere automatically.
+function _showLeadMessageInOutput(message) {
+    const cmdStatus = document.getElementById('cmd-status');
+    const out = document.getElementById('cmd-output');
+    if (!out) return;
+    out.textContent = '';
+    // Build a small toolbar + the message preformatted.
+    const wrap = document.createElement('div');
+    wrap.className = 'lead-message-wrap';
+    const toolbar = document.createElement('div');
+    toolbar.className = 'lead-message-toolbar';
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'primary';
+    copyBtn.textContent = 'Copy message';
+    copyBtn.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(message);
+            copyBtn.textContent = 'Copied ✓';
+            setTimeout(() => { copyBtn.textContent = 'Copy message'; }, 2000);
+        } catch (err) {
+            copyBtn.textContent = 'Copy failed — select + ⌘C';
+        }
+    });
+    const note = document.createElement('span');
+    note.className = 'muted';
+    note.style.marginLeft = '0.6rem';
+    note.textContent = 'Paste into LinkedIn manually — Hub never sends messages automatically.';
+    toolbar.appendChild(copyBtn);
+    toolbar.appendChild(note);
+    const pre = document.createElement('pre');
+    pre.className = 'lead-message-pre';
+    pre.textContent = message;
+    wrap.appendChild(toolbar);
+    wrap.appendChild(pre);
+    out.appendChild(wrap);
+    if (cmdStatus) cmdStatus.textContent = 'Message draft ready (see Command Output).';
+    _cpScrollToH2('Command Output');
 }
 
 

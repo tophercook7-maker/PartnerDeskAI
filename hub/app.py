@@ -1101,6 +1101,61 @@ def api_leads_delete(lead_id: str) -> dict:
     return {"ok": True, "id": lead_id}
 
 
+# --- v7.0: Lead follow-up queue endpoints --------------------------------
+# Three POST actions that operate on a specific lead. All purely local —
+# no LinkedIn messaging, no OpenAI, no browser automation. message-draft
+# returns a fixed-template string the user is expected to copy + paste
+# into LinkedIn manually.
+
+class FollowUpUpdate(BaseModel):
+    follow_up_date: str | None = None
+
+
+@app.post("/api/leads/{lead_id}/contacted")
+def api_leads_mark_contacted(lead_id: str) -> dict:
+    """
+    Mark a lead as contacted (stamp contacted_at = now) and auto-promote
+    cold → warm. Returns the updated lead row.
+    """
+    try:
+        return leads_mod.mark_contacted(lead_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/leads/{lead_id}/follow-up")
+def api_leads_set_follow_up(lead_id: str, body: FollowUpUpdate) -> dict:
+    """Set the lead's follow_up_date (YYYY-MM-DD or empty to clear)."""
+    try:
+        return leads_mod.set_follow_up(lead_id, body.follow_up_date or "")
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not write: {e}")
+
+
+@app.post("/api/leads/{lead_id}/message-draft")
+def api_leads_message_draft(lead_id: str) -> dict:
+    """
+    Produce a fixed-template outreach message (NO OpenAI), store it
+    in the lead's last_message, return {message, lead}.
+
+    The HUB does NOT send this anywhere. The user copies + pastes into
+    LinkedIn manually. This endpoint cannot trigger any outbound
+    message to LinkedIn or any other service.
+    """
+    try:
+        return leads_mod.draft_message(lead_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/connections")
 def api_connections() -> dict:
     """

@@ -664,6 +664,48 @@
         .lead-status-hot     { background: #f8d7da; color: #721c24; }
         .lead-status-closed  { background: #d4edda; color: #155724; }
         .lead-status-dropped { background: #e3e8ee; color: #888; }
+        /* v7.0 follow-up queue UI */
+        .lead-followup-line {
+            font-size: 0.78rem; color: #444; margin-top: 0.2rem;
+        }
+        .lead-followup-due {
+            color: #2a6ec1; font-weight: 500;
+        }
+        .lead-last-message {
+            font-size: 0.78rem; margin-top: 0.4rem; color: #555;
+        }
+        .lead-last-message summary {
+            cursor: pointer; color: #2a6ec1;
+        }
+        .lead-last-message pre {
+            white-space: pre-wrap; word-wrap: break-word;
+            background: #f5f9ff; padding: 0.4rem 0.55rem;
+            border-radius: 4px; font-size: 0.8rem;
+            margin: 0.3rem 0 0;
+            font-family: inherit;
+        }
+        .lead-followup-form {
+            display: flex; gap: 0.4rem; margin-top: 0.4rem;
+            align-items: center; flex-wrap: wrap;
+        }
+        .lead-followup-form input[type="date"] {
+            padding: 0.3rem 0.5rem; border: 1px solid #ccc;
+            border-radius: 4px; font-size: 0.85rem;
+        }
+        .lead-message-wrap {
+            border: 1px solid #cfe1ff; border-radius: 6px;
+            background: #f5f9ff; padding: 0.7rem 0.85rem;
+        }
+        .lead-message-toolbar {
+            display: flex; align-items: center; flex-wrap: wrap;
+            margin-bottom: 0.5rem;
+        }
+        .lead-message-pre {
+            margin: 0; padding: 0.6rem 0.8rem; background: #fff;
+            border: 1px solid #e5e5e5; border-radius: 4px;
+            white-space: pre-wrap; word-wrap: break-word;
+            font-family: inherit; font-size: 0.92rem; line-height: 1.5;
+        }
         /* --- v6.7 Meta Readiness Center ----------------------------- */
         #meta-readiness-section { padding: 1rem 1.25rem; }
         .meta-readiness-grid {
