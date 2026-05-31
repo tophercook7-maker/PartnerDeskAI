@@ -2010,6 +2010,26 @@ function _filteredLeads() {
     return matched;
 }
 
+// v7.5: short-lived in-card toast. Used by Mark Contacted to surface
+// the v7.3 server-side auto-snooze ("Follow-up cleared (was X)") so
+// the behavior is discoverable. Generic enough to reuse for other
+// per-lead status messages without renaming.
+function _flashLeadToast(leadId, message) {
+    const card = document.querySelector(
+        `.lead-card[data-lead-id="${leadId}"]`
+    );
+    if (!card) return;
+    // Drop any prior toast on this card so back-to-back actions don't
+    // stack messages.
+    card.querySelectorAll('.lead-toast').forEach(t => t.remove());
+    const toast = document.createElement('div');
+    toast.className = 'lead-toast';
+    toast.textContent = message;
+    card.prepend(toast);
+    setTimeout(() => { toast.classList.add('fade-out'); }, 2500);
+    setTimeout(() => { toast.remove(); }, 3200);
+}
+
 // v7.4: outreach-cadence presets for the follow-up form. One click
 // sets the date and saves immediately — the date input + Save is left
 // in place for custom dates.
@@ -2306,6 +2326,10 @@ if (_leadsListEl) {
         }
         if (action === 'lead-contacted') {
             if (!confirm('Mark this lead as contacted?')) return;
+            // v7.5: capture the prior follow_up_date so we can detect
+            // the v7.3 server-side auto-snooze and surface it as a toast.
+            const prevLead = _leads.find(l => l.id === leadId);
+            const prevFollowUp = prevLead ? prevLead.follow_up_date : null;
             try {
                 const r = await fetch(
                     `/api/leads/${encodeURIComponent(leadId)}/contacted`,
@@ -2314,6 +2338,13 @@ if (_leadsListEl) {
                 const d = await r.json();
                 if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
                 await loadLeads();
+                if (prevFollowUp) {
+                    const updated = _leads.find(l => l.id === leadId);
+                    if (updated && !updated.follow_up_date) {
+                        _flashLeadToast(leadId,
+                            `Follow-up cleared (was ${prevFollowUp})`);
+                    }
+                }
             } catch (err) {
                 alert('Mark contacted failed: ' + err.message);
             }

@@ -711,6 +711,17 @@
             padding: 0.3rem 0.5rem; border: 1px solid #ccc;
             border-radius: 4px; font-size: 0.85rem;
         }
+        /* v7.5: short-lived per-card toast, used by Mark Contacted to
+           surface the v7.3 auto-snooze. Amber palette matches the
+           "due this week" chip so users associate it with the queue. */
+        .lead-toast {
+            background: #fff6e0; color: #6b4d1f;
+            border: 1px solid #d8b97a;
+            padding: 0.4rem 0.65rem; border-radius: 4px;
+            margin-bottom: 0.5rem; font-size: 0.82rem;
+            transition: opacity 0.6s ease-out;
+        }
+        .lead-toast.fade-out { opacity: 0; }
         /* v7.4: outreach-cadence preset buttons. Small + de-emphasized
            so they don't compete with the primary Save Date button. */
         .lead-followup-preset {
