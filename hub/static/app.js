@@ -2014,20 +2014,32 @@ function _filteredLeads() {
 // the v7.3 server-side auto-snooze ("Follow-up cleared (was X)") so
 // the behavior is discoverable. Generic enough to reuse for other
 // per-lead status messages without renaming.
-function _flashLeadToast(leadId, message) {
-    const card = document.querySelector(
-        `.lead-card[data-lead-id="${leadId}"]`
-    );
-    if (!card) return;
-    // Drop any prior toast on this card so back-to-back actions don't
-    // stack messages.
-    card.querySelectorAll('.lead-toast').forEach(t => t.remove());
+//
+// v7.11 extensions:
+//   - leadId may be null/missing → toast attaches to #leads-list (the
+//     section-level fallback for Add Lead errors where no card exists).
+//   - type === 'error' → red palette + longer fade (5.0s / 5.8s) so the
+//     user has time to read what failed. Replaces 8 blocking alert()s.
+function _flashLeadToast(leadId, message, type) {
+    let parent = leadId
+        ? document.querySelector(`.lead-card[data-lead-id="${leadId}"]`)
+        : null;
+    if (!parent) parent = document.getElementById('leads-list');
+    if (!parent) return;
+    // Drop any prior toast in this scope so back-to-back actions don't
+    // stack messages. Per-card and section-level toasts are scoped
+    // separately because they have different parents.
+    parent.querySelectorAll(':scope > .lead-toast').forEach(t => t.remove());
     const toast = document.createElement('div');
-    toast.className = 'lead-toast';
+    toast.className = type === 'error'
+        ? 'lead-toast lead-toast-error'
+        : 'lead-toast';
     toast.textContent = message;
-    card.prepend(toast);
-    setTimeout(() => { toast.classList.add('fade-out'); }, 2500);
-    setTimeout(() => { toast.remove(); }, 3200);
+    parent.prepend(toast);
+    const fadeAt   = type === 'error' ? 5000 : 2500;
+    const removeAt = type === 'error' ? 5800 : 3200;
+    setTimeout(() => { toast.classList.add('fade-out'); }, fadeAt);
+    setTimeout(() => { toast.remove(); }, removeAt);
 }
 
 // v7.4: outreach-cadence presets for the follow-up form. One click
@@ -2295,7 +2307,7 @@ if (_leadsAddForm) {
             _leadsAddForm.hidden = true;
             await loadLeads();
         } catch (err) {
-            alert('Add failed: ' + err.message);
+            _flashLeadToast(null, 'Add failed: ' + err.message, 'error');
         }
     });
     _leadsAddForm.addEventListener('click', (e) => {
@@ -2337,7 +2349,7 @@ if (_leadsListEl) {
                 }
                 await loadLeads();
             } catch (err) {
-                alert('Delete failed: ' + err.message);
+                _flashLeadToast(leadId, 'Delete failed: ' + err.message, 'error');
             }
             return;
         }
@@ -2357,7 +2369,7 @@ if (_leadsListEl) {
                 // region — toast confirms the click where it happened.
                 _flashLeadToast(leadId, 'Message draft ready');
             } catch (err) {
-                alert('Message draft failed: ' + err.message);
+                _flashLeadToast(leadId, 'Message draft failed: ' + err.message, 'error');
             }
             return;
         }
@@ -2383,7 +2395,7 @@ if (_leadsListEl) {
                     }
                 }
             } catch (err) {
-                alert('Mark contacted failed: ' + err.message);
+                _flashLeadToast(leadId, 'Mark contacted failed: ' + err.message, 'error');
             }
             return;
         }
@@ -2434,7 +2446,7 @@ if (_leadsListEl) {
                 // consistent feedback for any per-card status change.
                 _flashLeadToast(leadId, `Follow-up set to ${date}`);
             } catch (err) {
-                alert('Set follow-up failed: ' + err.message);
+                _flashLeadToast(leadId, 'Set follow-up failed: ' + err.message, 'error');
             }
             return;
         }
@@ -2454,7 +2466,7 @@ if (_leadsListEl) {
                 await loadLeads();
                 _flashLeadToast(leadId, 'Follow-up cleared');
             } catch (err) {
-                alert('Clear follow-up failed: ' + err.message);
+                _flashLeadToast(leadId, 'Clear follow-up failed: ' + err.message, 'error');
             }
             return;
         }
@@ -2485,7 +2497,7 @@ if (_leadsListEl) {
                 _flashLeadToast(leadId,
                     date ? `Follow-up set to ${date}` : 'Follow-up cleared');
             } catch (err) {
-                alert('Save follow-up failed: ' + err.message);
+                _flashLeadToast(leadId, 'Save follow-up failed: ' + err.message, 'error');
             }
             return;
         }
@@ -2505,7 +2517,7 @@ if (_leadsListEl) {
             _editingLeadId = null;
             await loadLeads();
         } catch (err) {
-            alert('Save failed: ' + err.message);
+            _flashLeadToast(leadId, 'Save failed: ' + err.message, 'error');
         }
     });
 }

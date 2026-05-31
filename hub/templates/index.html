@@ -722,6 +722,12 @@
             transition: opacity 0.6s ease-out;
         }
         .lead-toast.fade-out { opacity: 0; }
+        /* v7.11: error variant of the toast — red palette so it reads
+           as a failure, not a confirmation. Used in place of alert(). */
+        .lead-toast-error {
+            background: #fde2e2; color: #8a1c1c;
+            border-color: #d88a8a;
+        }
         /* v7.4: outreach-cadence preset buttons. Small + de-emphasized
            so they don't compete with the primary Save Date button. */
         .lead-followup-preset {
