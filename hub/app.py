@@ -1490,13 +1490,21 @@ def api_activity() -> dict:
 def api_partners() -> dict:
     """
     Lightweight partner roster for the Hub's Partner Rooms section.
-    Parker's metrics are pulled live from the posts table; Logan and
-    Olivia ship as zero-valued placeholders for now. Read-only — no DB
-    writes, no OpenAI calls.
+    Parker's metrics come from the posts table; Logan's come from the
+    v6.9 leads tracker; Olivia is still a zero-valued placeholder.
+    Read-only — no DB writes, no OpenAI calls.
     """
     # Direct status_counts() so we get every status (including 'posted')
     # without touching status._gather_status's documented JSON shape.
     counts = approval_manager.status_counts() if DB_PATH.is_file() else {}
+    # v7.12: Logan's metrics from the leads tracker. load() is
+    # defensive — returns [] on missing/corrupt file — so no guard
+    # needed. outreach_queue = anything not closed or dropped.
+    all_leads = leads_mod.load()
+    active_leads = [
+        l for l in all_leads
+        if l.get("status") not in ("closed", "dropped")
+    ]
 
     return {
         "partners": [
@@ -1517,8 +1525,8 @@ def api_partners() -> dict:
                 "status": "standby",
                 "role":   "Lead generation",
                 "metrics": {
-                    "prospects_tracked": 0,
-                    "outreach_queue":    0,
+                    "prospects_tracked": len(all_leads),
+                    "outreach_queue":    len(active_leads),
                 },
             },
             {
