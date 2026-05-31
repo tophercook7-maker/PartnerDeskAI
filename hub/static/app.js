@@ -1918,6 +1918,226 @@ async function loadMetaReadiness() {
 }
 
 
+// --- v6.9: LinkedIn Leads (outbound CRM-lite) ---------------------------
+//
+// Pure client-side cache + filter. Writes (add/update/delete) go
+// through 3 small API endpoints; the response replaces the local cache
+// and re-renders. No optimistic UI — keeps the data flow simple.
+
+let _leads = [];
+let _leadsFilter = '';
+let _editingLeadId = null;  // id of the lead currently in edit mode
+
+function _filteredLeads() {
+    const q = _leadsFilter.trim().toLowerCase();
+    if (!q) return _leads;
+    return _leads.filter(l => {
+        const blob = [l.name, l.company, l.handle, l.source, l.status, l.notes]
+            .map(s => (s || '').toLowerCase())
+            .join(' ');
+        return blob.includes(q);
+    });
+}
+
+function _renderLeadView(l) {
+    const status = (l.status || 'cold').toLowerCase();
+    const handleHtml = l.handle
+        ? `<div class="lead-handle"><a href="${_escape(l.handle)}" ` +
+          `target="_blank" rel="noopener noreferrer">${_escape(l.handle)}</a></div>`
+        : '';
+    const sourceHtml = l.source
+        ? `<div class="lead-source">Source: ${_escape(l.source)}</div>` : '';
+    const notesHtml = l.notes
+        ? `<div class="lead-notes">${_escape(l.notes)}</div>` : '';
+    const companyHtml = l.company
+        ? `<div class="lead-company">${_escape(l.company)}</div>` : '';
+    return (
+        `<div class="lead-card" data-lead-id="${_escape(l.id)}">` +
+          `<h3>${_escape(l.name)}` +
+            `<span class="lead-status-badge lead-status-${_escape(status)}">${_escape(status)}</span>` +
+          `</h3>` +
+          companyHtml + handleHtml + sourceHtml + notesHtml +
+          `<div class="lead-meta">Updated ${_escape(l.updated_at || '')}</div>` +
+          `<div class="lead-actions">` +
+            `<button type="button" class="row-action" data-action="lead-edit" ` +
+              `data-lead-id="${_escape(l.id)}">Edit</button>` +
+            `<button type="button" class="row-action danger" data-action="lead-delete" ` +
+              `data-lead-id="${_escape(l.id)}">Delete</button>` +
+          `</div>` +
+        `</div>`
+    );
+}
+
+function _renderLeadEditForm(l) {
+    // Mirror the add-form shape; pre-populated with this lead's values.
+    const statusOpts = ['cold', 'warm', 'hot', 'closed', 'dropped'].map(s =>
+        `<option value="${s}"${l.status === s ? ' selected' : ''}>${s}</option>`
+    ).join('');
+    return (
+        `<form class="leads-form" data-lead-id="${_escape(l.id)}" data-action="lead-save-form">` +
+          `<input class="leads-input" name="name"    value="${_escape(l.name || '')}" required>` +
+          `<input class="leads-input" name="company" value="${_escape(l.company || '')}" placeholder="Company">` +
+          `<input class="leads-input" name="handle"  value="${_escape(l.handle  || '')}" placeholder="LinkedIn URL or handle">` +
+          `<input class="leads-input" name="source"  value="${_escape(l.source  || '')}" placeholder="Source">` +
+          `<select class="leads-input" name="status">${statusOpts}</select>` +
+          `<textarea class="leads-input" name="notes" rows="2"`+
+            ` placeholder="Notes">${_escape(l.notes || '')}</textarea>` +
+          `<div class="leads-form-actions">` +
+            `<button type="submit" class="primary">Save changes</button>` +
+            `<button type="button" data-action="lead-edit-cancel">Cancel</button>` +
+          `</div>` +
+        `</form>`
+    );
+}
+
+function renderLeads() {
+    const el = document.getElementById('leads-list');
+    const counter = document.getElementById('leads-count');
+    if (!el) return;
+    const filtered = _filteredLeads();
+    if (counter) {
+        const total = _leads.length;
+        counter.textContent = filtered.length === total
+            ? `${total} lead${total === 1 ? '' : 's'}`
+            : `Showing ${filtered.length} of ${total}`;
+    }
+    if (_leads.length === 0) {
+        el.innerHTML = '<div class="muted">No leads yet. Click "+ Add Lead" to add one.</div>';
+        return;
+    }
+    if (filtered.length === 0) {
+        el.innerHTML = '<div class="muted">No leads match the filter.</div>';
+        return;
+    }
+    el.innerHTML = filtered.map(l =>
+        l.id === _editingLeadId ? _renderLeadEditForm(l) : _renderLeadView(l)
+    ).join('');
+}
+
+async function loadLeads() {
+    try {
+        const r = await fetch('/api/leads');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _leads = d.items || [];
+        renderLeads();
+    } catch (err) {
+        _leads = [];
+        const el = document.getElementById('leads-list');
+        if (el) el.innerHTML = '<div class="muted">Could not load leads.</div>';
+    }
+}
+
+// Filter input → re-render (no fetch).
+const _leadsFilterEl = document.getElementById('leads-filter');
+if (_leadsFilterEl) {
+    _leadsFilterEl.addEventListener('input', () => {
+        _leadsFilter = _leadsFilterEl.value || '';
+        renderLeads();
+    });
+}
+
+// "+ Add Lead" toggles the add form.
+const _leadsAddToggle = document.getElementById('leads-add-toggle');
+const _leadsAddForm = document.getElementById('leads-add-form');
+if (_leadsAddToggle && _leadsAddForm) {
+    _leadsAddToggle.addEventListener('click', () => {
+        const hidden = _leadsAddForm.hidden;
+        _leadsAddForm.hidden = !hidden;
+        if (hidden) {
+            _leadsAddForm.querySelector('input[name="name"]').focus();
+        }
+    });
+}
+
+// Add form submit.
+if (_leadsAddForm) {
+    _leadsAddForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(_leadsAddForm).entries());
+        try {
+            const r = await fetch('/api/leads', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            _leadsAddForm.reset();
+            _leadsAddForm.hidden = true;
+            await loadLeads();
+        } catch (err) {
+            alert('Add failed: ' + err.message);
+        }
+    });
+    _leadsAddForm.addEventListener('click', (e) => {
+        if (e.target.dataset.action === 'cancel-add') {
+            _leadsAddForm.hidden = true;
+        }
+    });
+}
+
+// Edit/Delete/Save delegators on the lead list.
+const _leadsListEl = document.getElementById('leads-list');
+if (_leadsListEl) {
+    _leadsListEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+        const action = btn.dataset.action;
+        const leadId = btn.dataset.leadId;
+
+        if (action === 'lead-edit') {
+            _editingLeadId = leadId;
+            renderLeads();
+            return;
+        }
+        if (action === 'lead-edit-cancel') {
+            _editingLeadId = null;
+            renderLeads();
+            return;
+        }
+        if (action === 'lead-delete') {
+            const lead = _leads.find(l => l.id === leadId);
+            const label = lead ? lead.name : leadId;
+            if (!confirm(`Delete lead "${label}"? This cannot be undone.`)) return;
+            try {
+                const r = await fetch(`/api/leads/${encodeURIComponent(leadId)}`,
+                                      { method: 'DELETE' });
+                if (!r.ok) {
+                    const d = await r.json().catch(() => ({}));
+                    throw new Error(d.detail || 'http ' + r.status);
+                }
+                await loadLeads();
+            } catch (err) {
+                alert('Delete failed: ' + err.message);
+            }
+            return;
+        }
+    });
+    // PUT (edit save) — caught via the form's submit event, not click.
+    _leadsListEl.addEventListener('submit', async (e) => {
+        const form = e.target.closest('form[data-action="lead-save-form"]');
+        if (!form) return;
+        e.preventDefault();
+        const leadId = form.dataset.leadId;
+        const data = Object.fromEntries(new FormData(form).entries());
+        try {
+            const r = await fetch(`/api/leads/${encodeURIComponent(leadId)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            _editingLeadId = null;
+            await loadLeads();
+        } catch (err) {
+            alert('Save failed: ' + err.message);
+        }
+    });
+}
+
+
 // --- Control Panel (v5.34) ----------------------------------------------
 // One section, 13 buttons, three groups. Most actions delegate to
 // existing buttons elsewhere in the page (DRY — keeps the source of
@@ -2078,6 +2298,12 @@ function _runControlPanelAction(action) {
             // v6.7: scroll to the Meta Readiness Center section.
             if (!_cpScrollToH2('Meta Readiness Center')) {
                 _cpStatus('Meta Readiness section not found.');
+            }
+            return;
+        case 'leads':
+            // v6.9: scroll to the LinkedIn Leads section.
+            if (!_cpScrollToH2('LinkedIn Leads')) {
+                _cpStatus('LinkedIn Leads section not found.');
             }
             return;
         case 'connect-linkedin': {
@@ -2393,7 +2619,7 @@ async function refreshAll() {
             loadStatus(), loadSummary(), loadLogs(),
             loadHistory(), loadReady(),
             loadActivity(), loadReports(), loadInbox(),
-            loadMetaReadiness(),
+            loadMetaReadiness(), loadLeads(),
         ]);
         // Mission Control reads cached payloads from the loaders above,
         // so it runs last to ensure every cache is populated.

@@ -47,6 +47,7 @@ sys.path.insert(0, str(ROOT / "automation"))
 import approval_manager  # noqa: E402
 import connection_state  # noqa: E402
 import env_writer  # noqa: E402
+import leads as leads_mod  # noqa: E402
 import linkedin_oauth  # noqa: E402
 import meta_app_state  # noqa: E402
 import social_posters  # noqa: E402
@@ -1036,6 +1037,68 @@ def api_meta_notes(body: MetaNotesUpdate) -> dict:
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"Could not write: {e}")
     return {"ok": True, "platform": body.platform, **result}
+
+
+# --- v6.9: LinkedIn Lead Tracker (outbound CRM-lite) ---------------------
+#
+# Pure local storage in data/leads.json. No LinkedIn API. No outbound
+# calls. All write paths go through leads_mod which whitelists fields
+# and clamps lengths.
+
+class LeadIn(BaseModel):
+    """Accepts partial input — leads_mod._clean_lead enforces what's
+    required and clamps/validates each field. Marking everything
+    optional here lets PUT requests omit fields they don't change."""
+    name:    str | None = None
+    company: str | None = None
+    handle:  str | None = None
+    source:  str | None = None
+    status:  str | None = None
+    notes:   str | None = None
+
+
+@app.get("/api/leads")
+def api_leads_list() -> dict:
+    """All leads, newest-first by updated_at."""
+    items = leads_mod.load()
+    items.sort(key=lambda l: l.get("updated_at") or "", reverse=True)
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/leads")
+def api_leads_add(body: LeadIn) -> dict:
+    """Add a new lead. Returns the saved row."""
+    try:
+        return leads_mod.add(body.model_dump(exclude_none=True))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not write: {e}")
+
+
+@app.put("/api/leads/{lead_id}")
+def api_leads_update(lead_id: str, body: LeadIn) -> dict:
+    """Update an existing lead. 404 if id not found."""
+    try:
+        return leads_mod.update(lead_id, body.model_dump(exclude_none=True))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not write: {e}")
+
+
+@app.delete("/api/leads/{lead_id}")
+def api_leads_delete(lead_id: str) -> dict:
+    """Delete one lead. 404 if id not found."""
+    try:
+        removed = leads_mod.delete(lead_id)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not write: {e}")
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
+    return {"ok": True, "id": lead_id}
 
 
 @app.get("/api/connections")

@@ -585,6 +585,85 @@
         .connection-meta-pending {
             color: #2a6ec1; font-style: italic;
         }
+        /* --- v6.9 LinkedIn Leads ------------------------------------ */
+        #leads-section { padding: 1rem 1.25rem; }
+        .leads-toolbar {
+            display: flex; gap: 0.6rem; align-items: center;
+            flex-wrap: wrap; margin-bottom: 0.6rem;
+        }
+        #leads-filter {
+            flex: 1; min-width: 14em;
+            padding: 0.4rem 0.6rem; border: 1px solid #ccc;
+            border-radius: 4px; font-size: 0.88rem;
+        }
+        #leads-count { font-size: 0.82rem; }
+        .leads-form {
+            display: grid; gap: 0.5rem;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            padding: 0.85rem; border: 1px solid #cfe1ff;
+            border-radius: 6px; background: #f5f9ff;
+            margin-bottom: 0.8rem;
+        }
+        .leads-input {
+            padding: 0.45rem 0.6rem; border: 1px solid #d0d0d0;
+            border-radius: 4px; font-size: 0.88rem;
+            font-family: inherit;
+        }
+        .leads-input:focus {
+            outline: none; border-color: #2a6ec1;
+            box-shadow: 0 0 0 1px #2a6ec1;
+        }
+        textarea.leads-input { grid-column: 1 / -1; resize: vertical; }
+        .leads-form-actions {
+            grid-column: 1 / -1;
+            display: flex; gap: 0.5rem;
+        }
+        .leads-list {
+            display: grid; gap: 0.65rem;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        }
+        .lead-card {
+            border: 1px solid #e5e5e5; border-radius: 6px;
+            padding: 0.7rem 0.85rem; background: #fafafa;
+            font-size: 0.88rem;
+        }
+        .lead-card h3 {
+            margin: 0 0 0.3rem; font-size: 0.98rem;
+            display: flex; justify-content: space-between; align-items: baseline;
+            gap: 0.4rem;
+        }
+        .lead-card .lead-company {
+            font-size: 0.82rem; color: #666; margin-top: -0.1rem;
+        }
+        .lead-card .lead-handle {
+            font-size: 0.78rem; margin-top: 0.2rem;
+        }
+        .lead-card .lead-handle a { color: #2a6ec1; word-break: break-all; }
+        .lead-card .lead-source {
+            font-size: 0.78rem; color: #666; margin-top: 0.2rem;
+            font-style: italic;
+        }
+        .lead-card .lead-notes {
+            font-size: 0.83rem; color: #333; margin-top: 0.4rem;
+            white-space: pre-wrap;
+        }
+        .lead-card .lead-meta {
+            font-size: 0.74rem; color: #888; margin-top: 0.4rem;
+        }
+        .lead-card .lead-actions {
+            display: flex; gap: 0.4rem; margin-top: 0.5rem;
+        }
+        .lead-status-badge {
+            font-size: 0.74rem; font-weight: 500;
+            padding: 0.1rem 0.45rem; border-radius: 3px;
+            text-transform: uppercase; letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+        .lead-status-cold    { background: #e3e8ee; color: #555; }
+        .lead-status-warm    { background: #fff3cd; color: #856404; }
+        .lead-status-hot     { background: #f8d7da; color: #721c24; }
+        .lead-status-closed  { background: #d4edda; color: #155724; }
+        .lead-status-dropped { background: #e3e8ee; color: #888; }
         /* --- v6.7 Meta Readiness Center ----------------------------- */
         #meta-readiness-section { padding: 1rem 1.25rem; }
         .meta-readiness-grid {
@@ -906,6 +985,7 @@
                 <button type="button" data-cp-action="verify-all-connections" class="cp-btn">Verify All Connections</button>
                 <button type="button" data-cp-action="connect-linkedin" class="cp-btn primary">Connect LinkedIn</button>
                 <button type="button" data-cp-action="meta-readiness" class="cp-btn">Meta Readiness</button>
+                <button type="button" data-cp-action="leads" class="cp-btn">LinkedIn Leads</button>
                 <button type="button" data-cp-action="setup-env" class="cp-btn">Setup .env</button>
                 <button type="button" data-cp-action="open-connection-help" class="cp-btn">Open Connection Wizard Help</button>
                 <button type="button" data-cp-action="show-missing-setup" class="cp-btn">Show Missing Setup</button>
@@ -999,6 +1079,45 @@
         <ul id="connections-list" class="recent-list">
             <li class="muted">Loading…</li>
         </ul>
+    </section>
+
+    <section id="leads-section">
+        <h2>LinkedIn Leads</h2>
+        <div class="muted" style="margin-bottom: 0.6rem">
+            Outbound prospect tracker. Local-only — never sent to LinkedIn
+            or any other service. Stored in <code>data/leads.json</code>
+            (gitignored).
+        </div>
+        <div class="leads-toolbar">
+            <button type="button" id="leads-add-toggle" class="primary">+ Add Lead</button>
+            <input type="search" id="leads-filter"
+                   placeholder="Filter by name, company, status…"
+                   aria-label="Filter leads" />
+            <span id="leads-count" class="muted"></span>
+        </div>
+        <form id="leads-add-form" class="leads-form" hidden
+              aria-label="Add a new lead">
+            <input class="leads-input" name="name"    placeholder="Name (required)" required>
+            <input class="leads-input" name="company" placeholder="Company">
+            <input class="leads-input" name="handle"  placeholder="LinkedIn URL or handle">
+            <input class="leads-input" name="source"  placeholder="Source (e.g. comment on 2026-05-28 post)">
+            <select class="leads-input" name="status">
+                <option value="cold">cold</option>
+                <option value="warm">warm</option>
+                <option value="hot">hot</option>
+                <option value="closed">closed</option>
+                <option value="dropped">dropped</option>
+            </select>
+            <textarea class="leads-input" name="notes" rows="2"
+                      placeholder="Notes (optional)"></textarea>
+            <div class="leads-form-actions">
+                <button type="submit" class="primary">Save lead</button>
+                <button type="button" data-action="cancel-add">Cancel</button>
+            </div>
+        </form>
+        <div id="leads-list" class="leads-list">
+            <div class="muted">Loading…</div>
+        </div>
     </section>
 
     <section id="meta-readiness-section">
