@@ -1486,13 +1486,25 @@ def api_activity() -> dict:
     return {"items": items}
 
 
+def _count_partner_files(directory: Path, suffix: str) -> int:
+    """Defensive file count for partner-metric directories. Returns 0
+    on missing dir. Filters by suffix to skip .gitkeep, .DS_Store, etc."""
+    if not directory.is_dir():
+        return 0
+    return sum(
+        1 for p in directory.iterdir()
+        if p.is_file() and p.name.endswith(suffix)
+    )
+
+
 @app.get("/api/partners")
 def api_partners() -> dict:
     """
     Lightweight partner roster for the Hub's Partner Rooms section.
-    Parker's metrics come from the posts table; Logan's come from the
-    v6.9 leads tracker; Olivia is still a zero-valued placeholder.
-    Read-only — no DB writes, no OpenAI calls.
+    Parker's metrics come from the posts table; Logan's from the v6.9
+    leads tracker; Olivia's from the daily-ops output directories
+    (summaries/*.md and status_history/*.json). Read-only — no DB
+    writes, no OpenAI calls, no filesystem mutations.
     """
     # Direct status_counts() so we get every status (including 'posted')
     # without touching status._gather_status's documented JSON shape.
@@ -1505,6 +1517,14 @@ def api_partners() -> dict:
         l for l in all_leads
         if l.get("status") not in ("closed", "dropped")
     ]
+    # v7.14: Olivia's metrics from the daily-ops output dirs. Both are
+    # populated by automation/daily_ops.py:
+    #   morning_summary.py  → summaries/YYYY-MM-DD.md
+    #   status_snapshot.py  → status_history/YYYY-MM-DD.json
+    # If a cron run misses, the count just doesn't tick — which is the
+    # truthful signal.
+    summaries_count = _count_partner_files(ROOT / "summaries", ".md")
+    snapshots_count = _count_partner_files(ROOT / "status_history", ".json")
 
     return {
         "partners": [
@@ -1535,8 +1555,8 @@ def api_partners() -> dict:
                 "status": "standby",
                 "role":   "Operations / admin",
                 "metrics": {
-                    "summaries_generated": 0,
-                    "snapshots_archived":  0,
+                    "summaries_generated": summaries_count,
+                    "snapshots_archived":  snapshots_count,
                 },
             },
         ],
