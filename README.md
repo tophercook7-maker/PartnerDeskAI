@@ -112,6 +112,17 @@ v7.14 wires the **Olivia Office partner card** to real data. `summaries_generate
 
 v7.15 normalizes the last filter-empty outlier: `'No matching Parker work.'` → `'No Parker work matches the filter.'`, matching the structure of `'No leads match the filter.'` and `'No reports match the current filter.'` The rest of the v7-walkthrough's empty-state findings turned out to be coherent on closer inspection (e.g. `'No data in this window.'` matches the section's own "Window:" selector label, and the duplicated "configured" strings live in different sections).
 
+v7.16 — **Logan Outreach Pipeline (multi-template messaging)**. Replaces the single fixed v7.0 outreach template with a stage-aware registry of four:
+
+| Key | Label | Default for status |
+|---|---|---|
+| `intro` | Intro | cold |
+| `check_in` | Check-in | warm |
+| `value_add` | Value-add | (warm, by user choice) |
+| `close_ask` | Close ask | hot |
+
+The Write Message button now sits next to a per-card `<select>` — `Auto` (server picks the default for the lead's status) or any of the four templates explicitly. The API: `POST /api/leads/{id}/message-draft` now accepts an optional `{"template": "<key>"}` body and returns `{message, lead, template}` so the v7.9 toast can confirm which template ran (e.g., "Draft ready: Intro"). A new `GET /api/leads/templates` exposes the registry so the frontend picker stays in sync with `automation/leads.py` without hardcoding labels. Still NO OpenAI, NO outbound LinkedIn messaging, NO scraping — pure local string substitution, copy-paste workflow unchanged.
+
 The Hub includes a live System Activity feed showing recent generation, review, verification, refresh, and publishing events. The feed is assembled read-only from existing sources (`posts`, `post_history`, the connection-state cache) — no new schema, no polling loop. System Activity shows date-aware timestamps when events span multiple days. Activity feed type filters let you scope the timeline to a single event type (Generation, Approval, Connection, Publish, Refresh, System). The chip row and day dividers stick to the top of the viewport while scrolling so the active filter and current day stay visible. Filter selection persists across page reloads via `localStorage` (`partnerdesk.activityFilter`). The feed surfaces a distinct `publish` event for each post whose status flips to `posted` (backed by a new nullable `posts.posted_at` column populated by `mark_status`). The active chip shows a `×` shortcut to clear the filter and return to All. `system` events surface from `logs/*.log` modification times (read-only `stat()`; log contents are never opened or parsed). A `refresh` event surfaces from `data/connection_status.json` mtime to mark the most recent trust-state refresh.
 
 The Hub also includes a **Report Center** panel that surfaces `GET /api/history/analytics` with a window selector (7 / 30 / 90 / 365 days) and proportional bars per row for top topics, top platforms, and top topic × platform combos. Read-only; no schema change, no new endpoint.

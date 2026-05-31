@@ -248,24 +248,97 @@ def set_follow_up(lead_id: str, follow_up_date: str) -> dict:
     return update(lead_id, existing)
 
 
-def draft_message(lead_id: str) -> dict:
+# --- v7.16: Multi-template outreach -------------------------------------
+#
+# Four stage-aware templates. Each is a literal Python format string with
+# {name} and {company} placeholders — NO OpenAI, NO scraping, NO
+# personalization beyond the lead's own fields. The user copy-pastes
+# the result into LinkedIn manually; nothing here sends anything.
+#
+# Adding/editing a template:
+#   - Bump the version in the docstring above and keep wording stable
+#     after that so the same lead doesn't get drift-y drafts day to day.
+#   - The for_status field is a HINT for default selection only; the
+#     user can override per-draft.
+
+MESSAGE_TEMPLATES = {
+    "intro": {
+        "label":      "Intro",
+        "for_status": "cold",
+        "body": (
+            "Hey {name}, I saw your work with {company}. "
+            "I help small businesses clean up their online presence with "
+            "simple websites, digital business cards, and AI-powered systems. "
+            "If you ever want a quick second set of eyes on your website or "
+            "online setup, I’d be happy to take a look."
+        ),
+    },
+    "check_in": {
+        "label":      "Check-in",
+        "for_status": "warm",
+        "body": (
+            "Hey {name}, just circling back on my note from a while ago. "
+            "No pressure — let me know if a quick chat about {company}’s "
+            "online setup would be useful sometime."
+        ),
+    },
+    "value_add": {
+        "label":      "Value-add",
+        "for_status": "warm",
+        "body": (
+            "Hey {name}, one thought for {company}: a simple one-page site "
+            "or a digital business card can really lift discoverability for "
+            "a local business. Happy to share a quick example if it’s useful."
+        ),
+    },
+    "close_ask": {
+        "label":      "Close ask",
+        "for_status": "hot",
+        "body": (
+            "Hey {name}, sounds like there might be a fit for {company}. "
+            "Would a quick 15-minute call this week work to talk through "
+            "what a simple online setup could look like?"
+        ),
+    },
+}
+
+DEFAULT_TEMPLATE_BY_STATUS = {
+    "cold":    "intro",
+    "warm":    "check_in",
+    "hot":     "close_ask",
+    # closed/dropped fall through to 'intro' as a safe default — the user
+    # shouldn't normally draft for those statuses but we won't 500.
+    "closed":  "intro",
+    "dropped": "intro",
+}
+
+
+def draft_message(lead_id: str, template_key: str | None = None) -> dict:
     """
     Produce a templated outreach message for the lead, store it in
-    last_message, and return {message, lead}. NO OpenAI. Pure local
-    string substitution. Caller is responsible for any actual sending
-    (which we don't do — the user copy-pastes manually).
+    last_message, and return {message, lead, template}.
+
+    If template_key is None, pick based on lead status via
+    DEFAULT_TEMPLATE_BY_STATUS. If template_key is given but unknown,
+    raise ValueError (the API surfaces this as HTTP 400).
+
+    NO OpenAI. Pure local string substitution. Caller is responsible
+    for any actual sending (which we don't do — the user copy-pastes
+    manually).
     """
     existing = _find(lead_id)
-    name = (existing.get("name") or "there").strip() or "there"
-    company = (existing.get("company") or "").strip() or "your business"
-    # Literal template per spec — keep wording stable so the same
-    # lead doesn't get visibly-different drafts on different days.
-    message = (
-        f"Hey {name}, I saw your work with {company}. "
-        "I help small businesses clean up their online presence with "
-        "simple websites, digital business cards, and AI-powered systems. "
-        "If you ever want a quick second set of eyes on your website or "
-        "online setup, I’d be happy to take a look."
+    if template_key is None:
+        status = (existing.get("status") or "cold").lower()
+        template_key = DEFAULT_TEMPLATE_BY_STATUS.get(status, "intro")
+    if template_key not in MESSAGE_TEMPLATES:
+        raise ValueError(
+            f"unknown template: {template_key!r}; "
+            f"expected one of {sorted(MESSAGE_TEMPLATES)}"
+        )
+    name    = (existing.get("name")    or "there").strip() or "there"
+    company = (existing.get("company") or "").strip()      or "your business"
+    message = MESSAGE_TEMPLATES[template_key]["body"].format(
+        name=name, company=company,
     )
     updated = update(lead_id, {"last_message": message})
-    return {"message": message, "lead": updated}
+    return {"message": message, "lead": updated, "template": template_key}

@@ -1111,6 +1111,12 @@ class FollowUpUpdate(BaseModel):
     follow_up_date: str | None = None
 
 
+class MessageDraftIn(BaseModel):
+    # v7.16: optional template selector. None → server picks based on
+    # lead status. Unknown key → 400.
+    template: str | None = None
+
+
 @app.post("/api/leads/{lead_id}/contacted")
 def api_leads_mark_contacted(lead_id: str) -> dict:
     """
@@ -1139,21 +1145,42 @@ def api_leads_set_follow_up(lead_id: str, body: FollowUpUpdate) -> dict:
 
 
 @app.post("/api/leads/{lead_id}/message-draft")
-def api_leads_message_draft(lead_id: str) -> dict:
+def api_leads_message_draft(
+    lead_id: str,
+    body: MessageDraftIn | None = None,
+) -> dict:
     """
-    Produce a fixed-template outreach message (NO OpenAI), store it
-    in the lead's last_message, return {message, lead}.
+    Produce a stage-aware templated outreach message (NO OpenAI),
+    store it in the lead's last_message, and return {message, lead,
+    template}. If body.template is None, the server picks based on
+    lead status (cold→intro, warm→check_in, hot→close_ask).
 
-    The HUB does NOT send this anywhere. The user copies + pastes into
+    The Hub does NOT send this anywhere. The user copies + pastes into
     LinkedIn manually. This endpoint cannot trigger any outbound
     message to LinkedIn or any other service.
     """
+    template = body.template if body else None
     try:
-        return leads_mod.draft_message(lead_id)
+        return leads_mod.draft_message(lead_id, template)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
     except (ValueError, OSError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/leads/templates")
+def api_leads_templates() -> dict:
+    """
+    Expose the outreach template registry to the frontend so the
+    picker stays in sync with leads.py without hardcoding labels
+    on the client.
+    """
+    return {
+        "templates": [
+            {"key": k, "label": v["label"], "for_status": v["for_status"]}
+            for k, v in leads_mod.MESSAGE_TEMPLATES.items()
+        ],
+    }
 
 
 @app.get("/api/connections")

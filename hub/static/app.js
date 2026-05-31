@@ -2017,6 +2017,39 @@ function _filteredLeads() {
     return matched;
 }
 
+// v7.16: outreach template registry, fetched once at init from
+// /api/leads/templates. Empty until loadMessageTemplates() resolves —
+// the per-card <select> just shows "Auto" only in that window.
+let _messageTemplates = [];
+
+async function loadMessageTemplates() {
+    try {
+        const r = await fetch('/api/leads/templates');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _messageTemplates = d.templates || [];
+    } catch (e) {
+        _messageTemplates = [];
+    }
+}
+
+function _templateLabel(key) {
+    const t = _messageTemplates.find(x => x.key === key);
+    return t ? t.label : key;
+}
+
+function _renderTemplateSelect(leadId) {
+    const opts = _messageTemplates.map(t =>
+        `<option value="${_escape(t.key)}">${_escape(t.label)}</option>`
+    ).join('');
+    return (
+        `<select class="lead-template-select" ` +
+            `data-lead-id="${_escape(leadId)}" aria-label="Message template">` +
+            `<option value="">Auto</option>${opts}` +
+        `</select>`
+    );
+}
+
 // v7.5: short-lived in-card toast. Used by Mark Contacted to surface
 // the v7.3 server-side auto-snooze ("Follow-up cleared (was X)") so
 // the behavior is discoverable. Generic enough to reuse for other
@@ -2108,6 +2141,9 @@ function _renderLeadView(l) {
           contactedHtml + followUpHtml + lastMessageHtml +
           `<div class="lead-meta">Updated ${_escape(l.updated_at || '')}</div>` +
           `<div class="lead-actions">` +
+            // v7.16: template select sits LEFT of Write Message so the
+            // reading order matches "pick template → generate".
+            _renderTemplateSelect(l.id) +
             `<button type="button" class="row-action primary" data-action="lead-message" ` +
               `data-lead-id="${_escape(l.id)}">Write Message</button>` +
             `<button type="button" class="row-action" data-action="lead-contacted" ` +
@@ -2362,19 +2398,29 @@ if (_leadsListEl) {
         }
         // v7.0 follow-up queue actions
         if (action === 'lead-message') {
+            // v7.16: read the per-card template select. Empty value =>
+            // server picks based on lead status; explicit key overrides.
+            const sel = document.querySelector(
+                `.lead-template-select[data-lead-id="${leadId}"]`
+            );
+            const template = sel ? sel.value : '';
             try {
                 const r = await fetch(
                     `/api/leads/${encodeURIComponent(leadId)}/message-draft`,
-                    { method: 'POST' },
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(template ? { template } : {}),
+                    },
                 );
                 const d = await r.json();
                 if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
                 _showLeadMessageInOutput(d.message);
                 await loadLeads();  // last_message is now populated
-                // v7.9: card-level confirmation. The draft also lands
-                // in the Command Output panel, but that's a different
-                // region — toast confirms the click where it happened.
-                _flashLeadToast(leadId, 'Message draft ready');
+                // v7.9/v7.16: toast names the template that ran so the
+                // user can confirm Auto picked what they expected.
+                const usedLabel = _templateLabel(d.template || '');
+                _flashLeadToast(leadId, `Draft ready: ${usedLabel}`);
             } catch (err) {
                 _flashLeadToast(leadId, 'Message draft failed: ' + err.message, 'error');
             }
@@ -3048,7 +3094,11 @@ async function refreshAll() {
         //   - loadPartners: creates Parker's #parker-pending / #parker-next
         //   - loadConnections: fills _connectionsByPlatform so renderReady
         //                       knows which publish buttons to gray out.
-        await Promise.all([loadPartners(), loadConnections()]);
+        //   - loadMessageTemplates (v7.16): fills _messageTemplates so
+        //                       per-lead cards render the picker correctly.
+        await Promise.all([
+            loadPartners(), loadConnections(), loadMessageTemplates(),
+        ]);
         await Promise.all([
             loadStatus(), loadSummary(), loadLogs(),
             loadHistory(), loadReady(),
