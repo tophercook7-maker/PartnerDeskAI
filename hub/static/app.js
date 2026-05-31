@@ -2347,6 +2347,10 @@ if (_leadsListEl) {
                 if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
                 _showLeadMessageInOutput(d.message);
                 await loadLeads();  // last_message is now populated
+                // v7.9: card-level confirmation. The draft also lands
+                // in the Command Output panel, but that's a different
+                // region — toast confirms the click where it happened.
+                _flashLeadToast(leadId, 'Message draft ready');
             } catch (err) {
                 alert('Message draft failed: ' + err.message);
             }
