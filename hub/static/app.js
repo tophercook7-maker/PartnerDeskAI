@@ -1957,14 +1957,37 @@ function _followUpBucket(l, today) {
     return 2;
 }
 
+// v7.2: "due this week" = follow_up_date ∈ [today, today+6]. Overdue is
+// intentionally excluded: it already has its own red visual on the card
+// and the "Follow-up due first" sort surfaces it at the top. The chip
+// covers the *planning* window — what does the next 7 days look like.
+function _addDays(yyyymmdd, days) {
+    const [y, m, d] = yyyymmdd.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + days);
+    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+    const dd = String(dt.getDate()).padStart(2, '0');
+    return `${dt.getFullYear()}-${mm}-${dd}`;
+}
+function _isDueThisWeek(l, today, horizon) {
+    const fu = l.follow_up_date;
+    return !!(fu && fu >= today && fu <= horizon);
+}
+let _leadsDueFilter = false;  // not persisted — action-driven, not preference
+
 function _filteredLeads() {
     const q = _leadsFilter.trim().toLowerCase();
-    const matched = !q ? _leads.slice() : _leads.filter(l => {
+    let matched = !q ? _leads.slice() : _leads.filter(l => {
         const blob = [l.name, l.company, l.handle, l.source, l.status, l.notes]
             .map(s => (s || '').toLowerCase())
             .join(' ');
         return blob.includes(q);
     });
+    if (_leadsDueFilter) {
+        const today = _todayStr();
+        const horizon = _addDays(today, 6);
+        matched = matched.filter(l => _isDueThisWeek(l, today, horizon));
+    }
     if (_leadsSort === 'follow-up') {
         const today = _todayStr();
         // Bucket first; within a dated bucket sort ascending by date
@@ -2070,10 +2093,36 @@ function _renderLeadEditForm(l) {
     );
 }
 
+// v7.2: update the "due this week" chip. Count is computed against the
+// full _leads pool (not the filtered list) so the chip is a stable
+// signal even when the user is mid-search.
+function _updateLeadsDueChip() {
+    const chip = document.getElementById('leads-due-chip');
+    if (!chip) return;
+    const today = _todayStr();
+    const horizon = _addDays(today, 6);
+    const n = _leads.filter(l => _isDueThisWeek(l, today, horizon)).length;
+    if (n === 0) {
+        chip.hidden = true;
+        // If the filter was on but nothing qualifies any more, clear it
+        // so the user doesn't end up looking at an empty list with no
+        // visible reason why.
+        if (_leadsDueFilter) {
+            _leadsDueFilter = false;
+            chip.setAttribute('aria-pressed', 'false');
+        }
+        return;
+    }
+    chip.hidden = false;
+    chip.textContent = `${n} due this week`;
+    chip.setAttribute('aria-pressed', _leadsDueFilter ? 'true' : 'false');
+}
+
 function renderLeads() {
     const el = document.getElementById('leads-list');
     const counter = document.getElementById('leads-count');
     if (!el) return;
+    _updateLeadsDueChip();
     const filtered = _filteredLeads();
     if (counter) {
         const total = _leads.length;
@@ -2125,6 +2174,17 @@ if (_leadsSortEl) {
     _leadsSortEl.addEventListener('change', () => {
         _leadsSort = _leadsSortEl.value === 'follow-up' ? 'follow-up' : 'updated';
         try { localStorage.setItem(_LEADS_SORT_KEY, _leadsSort); } catch (e) {}
+        renderLeads();
+    });
+}
+
+// v7.2: due-this-week chip toggles a filter restricting the list to
+// leads with follow_up_date in the next 7 days. Not persisted across
+// reloads — it's an action filter, not a preference.
+const _leadsDueChipEl = document.getElementById('leads-due-chip');
+if (_leadsDueChipEl) {
+    _leadsDueChipEl.addEventListener('click', () => {
+        _leadsDueFilter = !_leadsDueFilter;
         renderLeads();
     });
 }

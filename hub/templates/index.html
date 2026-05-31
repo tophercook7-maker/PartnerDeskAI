@@ -679,6 +679,17 @@
             padding: 0.35rem 0.5rem; border: 1px solid #ccc;
             border-radius: 4px; font-size: 0.85rem; background: #fff;
         }
+        /* v7.2: due-this-week filter chip in the leads toolbar. Hidden
+           when the count is zero so the toolbar stays uncluttered. */
+        .leads-due-chip {
+            padding: 0.3rem 0.7rem; border: 1px solid #b48a3a;
+            border-radius: 999px; background: #fff6e0; color: #8a6320;
+            font-size: 0.8rem; cursor: pointer; font-family: inherit;
+        }
+        .leads-due-chip:hover { background: #ffeaba; }
+        .leads-due-chip[aria-pressed="true"] {
+            background: #c87f20; color: #fff; border-color: #c87f20;
+        }
         .lead-last-message {
             font-size: 0.78rem; margin-top: 0.4rem; color: #555;
         }
@@ -1148,6 +1159,9 @@
                 <option value="follow-up">Follow-up due first</option>
             </select>
             <span id="leads-count" class="muted"></span>
+            <button type="button" id="leads-due-chip" class="leads-due-chip" hidden
+                    aria-pressed="false"
+                    title="Show only leads with follow-up due in the next 7 days"></button>
         </div>
         <form id="leads-add-form" class="leads-form" hidden
               aria-label="Add a new lead">
