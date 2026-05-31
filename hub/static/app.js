@@ -2040,12 +2040,13 @@ const _FOLLOWUP_PRESETS = [
     { label: '+1 month', days: 30 },
 ];
 function _renderFollowUpPresets(leadId) {
-    return _FOLLOWUP_PRESETS.map(p =>
+    // v7.6: title also shows the number hotkey (1-4 → preset index).
+    return _FOLLOWUP_PRESETS.map((p, i) =>
         `<button type="button" class="lead-followup-preset" ` +
             `data-action="lead-followup-preset" ` +
             `data-lead-id="${_escape(leadId)}" ` +
             `data-days="${p.days}" ` +
-            `title="Set follow-up to ${_addDays(_todayStr(), p.days)}">${p.label}</button>`
+            `title="Set follow-up to ${_addDays(_todayStr(), p.days)} (press ${i + 1})">${p.label}</button>`
     ).join('');
 }
 
@@ -2232,6 +2233,33 @@ if (_leadsDueChipEl) {
     });
 }
 
+// v7.6: number-key hotkeys for the follow-up form. Pressing 1-4 fires
+// the corresponding preset (Tomorrow / +1 week / +2 weeks / +1 month)
+// when focus is inside a visible follow-up form. The date input,
+// textareas, and other inputs are explicitly excluded so manual typing
+// (e.g., a custom date) still works normally. Document-level listener
+// because the form DOM gets re-rendered on every loadLeads() and we
+// don't want to re-bind on every render.
+function _onFollowUpHotkey(e) {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const idx = { '1': 0, '2': 1, '3': 2, '4': 3 }[e.key];
+    if (idx === undefined) return;
+    const active = document.activeElement;
+    if (!active) return;
+    const form = active.closest && active.closest('.lead-followup-form');
+    if (!form || form.hidden) return;
+    // Don't hijack typing into any input/textarea/select inside the form.
+    if (active.matches('input, textarea, select')) return;
+    const btn = form.querySelectorAll(
+        '[data-action="lead-followup-preset"]'
+    )[idx];
+    if (btn) {
+        e.preventDefault();
+        btn.click();
+    }
+}
+document.addEventListener('keydown', _onFollowUpHotkey);
+
 // "+ Add Lead" toggles the add form.
 const _leadsAddToggle = document.getElementById('leads-add-toggle');
 const _leadsAddForm = document.getElementById('leads-add-form');
@@ -2358,8 +2386,19 @@ if (_leadsListEl) {
             if (form) {
                 form.hidden = !form.hidden;
                 if (!form.hidden) {
-                    const input = form.querySelector('input[name="follow_up_date"]');
-                    if (input) input.focus();
+                    // v7.6: focus the first preset button (not the date
+                    // input) so the 1-4 number hotkeys are immediately
+                    // usable. Users who want a custom date can
+                    // Shift+Tab to the date input or click it directly.
+                    const firstPreset = form.querySelector(
+                        '[data-action="lead-followup-preset"]'
+                    );
+                    if (firstPreset) {
+                        firstPreset.focus();
+                    } else {
+                        const input = form.querySelector('input[name="follow_up_date"]');
+                        if (input) input.focus();
+                    }
                 }
             }
             return;
