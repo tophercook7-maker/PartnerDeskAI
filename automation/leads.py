@@ -210,11 +210,19 @@ def mark_contacted(lead_id: str) -> dict:
     Stamp contacted_at = now AND, if the lead is still 'cold',
     auto-promote it to 'warm'. Returns the updated row. Raises
     KeyError if not found.
+
+    v7.3 auto-snooze: if the lead's follow_up_date is set and is
+    today-or-earlier, clear it — the reminder has been satisfied by
+    this contact. Future-dated follow-ups are preserved; the user set
+    those intentionally and today's contact doesn't satisfy them.
     """
     existing = _find(lead_id)
     raw = {"contacted_at": _now()}
     if existing.get("status") == "cold":
         raw["status"] = "warm"
+    fu = existing.get("follow_up_date")
+    if fu and fu <= datetime.now().strftime("%Y-%m-%d"):
+        raw["follow_up_date"] = None
     return update(lead_id, raw)
 
 
