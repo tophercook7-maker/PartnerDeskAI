@@ -810,6 +810,80 @@ async function loadSummary() {
     document.getElementById('summary').textContent = d.content;
 }
 
+// v7.31: Olivia past-summary archive. Read-only list of summaries/*.md
+// dates with click-to-open inline. Pure stat → fetch; no caching beyond
+// the active selection.
+let _summariesSelected = null;
+
+async function loadSummariesList() {
+    const listEl = document.getElementById('summaries-list');
+    const countEl = document.getElementById('summaries-count');
+    if (!listEl) return;
+    try {
+        const r = await fetch('/api/summaries');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        const items = d.items || [];
+        if (countEl) countEl.textContent = items.length
+            ? `${items.length} archived` : 'none yet';
+        if (items.length === 0) {
+            listEl.innerHTML = '<li class="muted">No past summaries yet.</li>';
+            return;
+        }
+        listEl.innerHTML = items.map(it => {
+            const pressed = (_summariesSelected === it.date) ? 'true' : 'false';
+            return `<li><button type="button" data-action="summaries-open" ` +
+                `data-date="${_escape(it.date)}" aria-pressed="${pressed}">` +
+                `${_escape(it.date)}</button></li>`;
+        }).join('');
+    } catch (err) {
+        listEl.innerHTML = '<li class="muted">Could not load past summaries.</li>';
+    }
+}
+
+async function _openSummary(date) {
+    const viewer = document.getElementById('summaries-viewer');
+    const dateEl = document.getElementById('summaries-viewer-date');
+    const contentEl = document.getElementById('summaries-viewer-content');
+    if (!viewer || !dateEl || !contentEl) return;
+    try {
+        const r = await fetch(`/api/summaries/${encodeURIComponent(date)}`);
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+        dateEl.textContent = `summaries/${d.date}.md`;
+        contentEl.textContent = d.content;
+        viewer.hidden = false;
+        _summariesSelected = date;
+        // Refresh the list to flip aria-pressed on the active row.
+        loadSummariesList();
+        viewer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (err) {
+        dateEl.textContent = `Error loading ${date}`;
+        contentEl.textContent = String(err && err.message || err);
+        viewer.hidden = false;
+    }
+}
+
+// Click delegator on the archive list.
+const _summariesListEl = document.getElementById('summaries-list');
+if (_summariesListEl) {
+    _summariesListEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-action="summaries-open"]');
+        if (!btn) return;
+        _openSummary(btn.dataset.date);
+    });
+}
+// Viewer close button — hide the panel and clear the selection.
+const _summariesViewerCloseEl = document.getElementById('summaries-viewer-close');
+if (_summariesViewerCloseEl) {
+    _summariesViewerCloseEl.addEventListener('click', () => {
+        const viewer = document.getElementById('summaries-viewer');
+        if (viewer) viewer.hidden = true;
+        _summariesSelected = null;
+        loadSummariesList();  // un-press the active row
+    });
+}
+
 function renderApprovedHistory(items) {
     const el = document.getElementById('approved-history');
     if (!items || items.length === 0) {
@@ -3961,7 +4035,8 @@ async function refreshAll() {
         ['loadInbox',         loadInbox],
         ['loadMetaReadiness', loadMetaReadiness],
         ['loadLeads',         loadLeads],
-        ['loadScoutLeads',    loadScoutLeads],  // v7.28
+        ['loadScoutLeads',    loadScoutLeads],     // v7.28
+        ['loadSummariesList', loadSummariesList],  // v7.31
     ];
     const results1 = await Promise.all(batch1.map(([n, f]) => _runLoaderSafely(n, f)));
     const results2 = await Promise.all(batch2.map(([n, f]) => _runLoaderSafely(n, f)));

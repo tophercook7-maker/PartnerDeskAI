@@ -576,6 +576,45 @@ def api_summary() -> dict:
     }
 
 
+# --- v7.31: Olivia summary archive (read-only). The /summaries/{date}
+# regex prevents path traversal; the dir-iterate path can only see
+# files whose stem already matched the same pattern.
+
+_SUMMARY_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+@app.get("/api/summaries")
+def api_summaries_list() -> dict:
+    """List past summaries by date, newest first. Skips non-date files
+    like .gitkeep. Pure stat() — never opens the file bodies."""
+    sdir = ROOT / "summaries"
+    if not sdir.is_dir():
+        return {"items": [], "count": 0}
+    items = []
+    for p in sdir.iterdir():
+        if not p.is_file() or p.suffix != ".md":
+            continue
+        if not _SUMMARY_DATE_RE.match(p.stem):
+            continue
+        items.append({"date": p.stem, "size_bytes": p.stat().st_size})
+    items.sort(key=lambda it: it["date"], reverse=True)
+    return {"items": items, "count": len(items)}
+
+
+@app.get("/api/summaries/{date}")
+def api_summaries_get(date: str) -> dict:
+    """Read one summary by date. Date must be exactly YYYY-MM-DD —
+    rejects any path traversal attempt."""
+    if not _SUMMARY_DATE_RE.match(date):
+        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+    path = ROOT / "summaries" / f"{date}.md"
+    if not path.is_file():
+        raise HTTPException(
+            status_code=404, detail=f"no summary for {date}"
+        )
+    return {"date": date, "content": path.read_text(encoding="utf-8")}
+
+
 @app.get("/api/logs/latest")
 def api_logs_latest() -> dict:
     """Latest log file's last 80 lines."""

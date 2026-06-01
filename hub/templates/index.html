@@ -1192,6 +1192,39 @@
             color: #999; font-size: 0.78rem;
             margin: 0 0.3rem 0 0.05rem;
         }
+        /* v7.31: Olivia past-summary archive. Inline below today's. */
+        .summaries-h3 {
+            margin-top: 1.4rem; margin-bottom: 0.3rem;
+            font-size: 1rem; color: #444;
+            display: flex; align-items: baseline; gap: 0.5rem;
+        }
+        .summaries-list {
+            list-style: none; padding: 0; margin: 0;
+            display: flex; flex-wrap: wrap; gap: 0.35rem;
+        }
+        .summaries-list li button {
+            padding: 0.25rem 0.55rem; border: 1px solid #cbd5e1;
+            border-radius: 4px; background: #f1f5f9; color: #1f2937;
+            font-family: inherit; font-size: 0.8rem; cursor: pointer;
+        }
+        .summaries-list li button:hover {
+            background: #e2e8f0; border-color: #94a3b8;
+        }
+        .summaries-list li button[aria-pressed="true"] {
+            background: #1f2937; color: #fff; border-color: #1f2937;
+        }
+        .summaries-viewer {
+            margin-top: 0.7rem; border: 1px solid #d8dde4;
+            border-radius: 6px; padding: 0.6rem 0.75rem; background: #fafbfc;
+        }
+        .summaries-viewer-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 0.4rem;
+        }
+        .summaries-viewer pre {
+            margin: 0; white-space: pre-wrap; word-wrap: break-word;
+            font-size: 0.82rem;
+        }
     </style>
 </head>
 <body>
@@ -1531,6 +1564,23 @@ e.g. https://www.linkedin.com/in/christian-kovac/
         <h2>Today's Summary</h2>
         <div class="muted" id="summary-meta">…</div>
         <pre id="summary">…</pre>
+
+        <!-- v7.31: Olivia summary archive. Lists past summaries by
+             date; click one to load its content in-place below. -->
+        <h3 class="summaries-h3">Past Summaries
+            <span id="summaries-count" class="muted"></span>
+        </h3>
+        <ul id="summaries-list" class="summaries-list">
+            <li class="muted">Loading…</li>
+        </ul>
+        <div id="summaries-viewer" hidden class="summaries-viewer">
+            <div class="summaries-viewer-header">
+                <strong id="summaries-viewer-date">—</strong>
+                <button type="button" id="summaries-viewer-close"
+                        class="row-action">Close</button>
+            </div>
+            <pre id="summaries-viewer-content"></pre>
+        </div>
     </section>
 
     <section>

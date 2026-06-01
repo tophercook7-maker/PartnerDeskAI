@@ -112,6 +112,8 @@ v7.14 wires the **Olivia Office partner card** to real data. `summaries_generate
 
 v7.15 normalizes the last filter-empty outlier: `'No matching Parker work.'` → `'No Parker work matches the filter.'`, matching the structure of `'No leads match the filter.'` and `'No reports match the current filter.'` The rest of the v7-walkthrough's empty-state findings turned out to be coherent on closer inspection (e.g. `'No data in this window.'` matches the section's own "Window:" selector label, and the duplicated "configured" strings live in different sections).
 
+v7.31 — **Olivia summary archive**. A "Past Summaries" block under the existing Today's Summary section. Lists every `summaries/*.md` filename whose stem matches `^\d{4}-\d{2}-\d{2}$`, newest first. Click a date → fetches the content via `GET /api/summaries/{date}` and shows it in an inline viewer with a Close button. Two new read-only endpoints: `GET /api/summaries` (list) and `GET /api/summaries/{date}` (one). Date input is regex-gated server-side to block path traversal — `/api/summaries/../etc/passwd` and friends return 404/400, verified live. Pure stat/read; no schema change, no OpenAI, no DB write. Olivia's v7.30 "Open Today's Summary" button still lands the user in the same section — the archive sits right below the today panel.
+
 v7.30 — **Make Olivia honest**. Same treatment as Logan got in v7.29:
 
 1. `/api/partners` returns Olivia with `status: "active"` (was `"standby"`). She was always active — `daily_ops.py` has been writing her `summaries/*.md` + `status_history/*.json` every morning since v0.1 — the status label was the only thing lagging the truth.
