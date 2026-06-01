@@ -728,6 +728,15 @@
             background: #fde2e2; color: #8a1c1c;
             border-color: #d88a8a;
         }
+        /* v7.26: "Clear filters" escape hatch. Subdued link styling so
+           it doesn't compete with the primary toolbar controls. */
+        .leads-clear-filters {
+            padding: 0.25rem 0.5rem; border: none;
+            background: transparent; color: #2a6ec1;
+            font-size: 0.78rem; cursor: pointer;
+            font-family: inherit; text-decoration: underline;
+        }
+        .leads-clear-filters:hover { color: #1c4f8f; }
         /* v7.24: 6-card lead dashboard. Flex-wrap so cards reflow on
            narrow viewports without horizontal scroll. */
         .leads-dashboard {
@@ -1305,6 +1314,10 @@
             <button type="button" id="leads-due-chip" class="leads-due-chip" hidden
                     aria-pressed="false"
                     title="Show only leads with follow-up due in the next 7 days"></button>
+            <button type="button" id="leads-clear-filters" class="leads-clear-filters"
+                    hidden title="Clear text search, the due-this-week chip, and any active dashboard filter">
+                Clear filters
+            </button>
         </div>
         <form id="leads-add-form" class="leads-form" hidden
               aria-label="Add a new lead">

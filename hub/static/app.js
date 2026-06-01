@@ -2280,6 +2280,7 @@ function renderLeads() {
     const counter = document.getElementById('leads-count');
     if (!el) return;
     _updateLeadsDueChip();
+    _updateClearFiltersBtn();  // v7.26
     const filtered = _filteredLeads();
     if (counter) {
         const total = _leads.length;
@@ -2303,6 +2304,37 @@ function renderLeads() {
     el.innerHTML = filtered.map(l =>
         l.id === _editingLeadId ? _renderLeadEditForm(l) : _renderLeadView(l)
     ).join('');
+}
+
+// v7.26: "Clear filters" escape hatch — visible iff any of the three
+// stackable filters is active (text input, v7.2 due chip, v7.25
+// dashboard filter). Click resets all three, updates the DOM controls
+// that hold their state, and re-renders dashboard + board + list.
+function _anyLeadsFilterActive() {
+    return !!(
+        (_leadsFilter && _leadsFilter.trim()) ||
+        _leadsDueFilter ||
+        _dashboardFilter
+    );
+}
+function _updateClearFiltersBtn() {
+    const btn = document.getElementById('leads-clear-filters');
+    if (!btn) return;
+    btn.hidden = !_anyLeadsFilterActive();
+}
+function _clearAllLeadsFilters() {
+    _leadsFilter = '';
+    _leadsDueFilter = false;
+    _dashboardFilter = null;
+    // Sync DOM controls so the user sees the reset reflected, not just
+    // the list re-rendering with hidden filter state.
+    const f = document.getElementById('leads-filter');
+    if (f) f.value = '';
+    const chip = document.getElementById('leads-due-chip');
+    if (chip) chip.setAttribute('aria-pressed', 'false');
+    renderLeadsDashboard();
+    renderLeadsBoard();
+    renderLeads();
 }
 
 // v7.25: dashboard click-to-filter. _dashboardFilter holds the key of
@@ -2649,6 +2681,12 @@ if (_leadsAddForm) {
 // body (LeadIn fields all optional), so we send just {status: x}.
 // Server's _clean_lead validates against ALLOWED_STATUSES; an unknown
 // status returns 400 and surfaces in a red error toast.
+// v7.26: clear-filters button click — reset all three filters at once.
+const _leadsClearFiltersEl = document.getElementById('leads-clear-filters');
+if (_leadsClearFiltersEl) {
+    _leadsClearFiltersEl.addEventListener('click', _clearAllLeadsFilters);
+}
+
 // v7.25: dashboard click delegator. Toggles _dashboardFilter on the
 // matching card, then re-renders dashboard + board + list so all three
 // surfaces stay consistent without another fetch.
