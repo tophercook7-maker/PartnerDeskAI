@@ -113,6 +113,11 @@ def _clean_lead(raw: dict, existing: dict | None = None) -> dict:
         "contacted_at":   _pick("contacted_at"),
         "follow_up_date": _pick("follow_up_date"),
         "last_message":   (str(_pick("last_message") or "")[:MAX_NOTES_LEN]) or None,
+        # v7.18: which template was last used for this lead, so the
+        # picker can default to it next time. Validated lazily — if the
+        # key drifts away from the registry, the frontend just falls
+        # back to Auto.
+        "last_template_key": _pick("last_template_key"),
     }
 
 
@@ -134,9 +139,10 @@ def load() -> list[dict]:
         return []
     for item in items:
         if isinstance(item, dict):
-            item.setdefault("contacted_at",   None)
-            item.setdefault("follow_up_date", None)
-            item.setdefault("last_message",   None)
+            item.setdefault("contacted_at",      None)
+            item.setdefault("follow_up_date",    None)
+            item.setdefault("last_message",      None)
+            item.setdefault("last_template_key", None)  # v7.18
     return items
 
 
@@ -340,5 +346,10 @@ def draft_message(lead_id: str, template_key: str | None = None) -> dict:
     message = MESSAGE_TEMPLATES[template_key]["body"].format(
         name=name, company=company,
     )
-    updated = update(lead_id, {"last_message": message})
+    # v7.18: also remember which template was used so the next render
+    # can default the picker to it.
+    updated = update(lead_id, {
+        "last_message":      message,
+        "last_template_key": template_key,
+    })
     return {"message": message, "lead": updated, "template": template_key}

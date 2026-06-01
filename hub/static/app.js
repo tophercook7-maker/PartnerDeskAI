@@ -2049,6 +2049,13 @@ function _renderTemplatePreview(body, lead) {
 
 function _renderTemplateSelect(leadId) {
     const lead = _leads.find(l => l.id === leadId);
+    // v7.18: default to the lead's last_template_key if it points at
+    // a still-registered template. If the key has drifted (template
+    // renamed/removed), fall through to '' which renders Auto.
+    const lastKey = lead && lead.last_template_key;
+    const defaultKey = (lastKey && _messageTemplates.some(t => t.key === lastKey))
+        ? lastKey : '';
+    const sel = (v) => v === defaultKey ? ' selected' : '';
     const opts = _messageTemplates.map(t => {
         // Native title= tooltip on each <option>. Browser support is
         // patchy for in-dropdown tooltips (Firefox: yes, Chromium:
@@ -2057,13 +2064,21 @@ function _renderTemplateSelect(leadId) {
         // tooltip, which matches v7.16 behavior.
         const preview = _renderTemplatePreview(t.body, lead);
         return `<option value="${_escape(t.key)}" ` +
-            `title="${_escape(preview)}">${_escape(t.label)}</option>`;
+            `title="${_escape(preview)}"${sel(t.key)}>${_escape(t.label)}</option>`;
     }).join('');
+    // v7.18: also seed the select's own title= so hover-on-closed
+    // matches the default selection without waiting for a `change`.
+    const initialTitle = defaultKey
+        ? _renderTemplatePreview(
+            (_messageTemplates.find(t => t.key === defaultKey) || {}).body,
+            lead,
+        )
+        : 'Auto: server picks template based on lead status';
     return (
         `<select class="lead-template-select" ` +
             `data-lead-id="${_escape(leadId)}" aria-label="Message template" ` +
-            `title="Auto: server picks template based on lead status">` +
-            `<option value="">Auto</option>${opts}` +
+            `title="${_escape(initialTitle)}">` +
+            `<option value=""${sel('')}>Auto</option>${opts}` +
         `</select>`
     );
 }
