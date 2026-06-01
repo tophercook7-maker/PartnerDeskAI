@@ -112,6 +112,29 @@ v7.14 wires the **Olivia Office partner card** to real data. `summaries_generate
 
 v7.15 normalizes the last filter-empty outlier: `'No matching Parker work.'` → `'No Parker work matches the filter.'`, matching the structure of `'No leads match the filter.'` and `'No reports match the current filter.'` The rest of the v7-walkthrough's empty-state findings turned out to be coherent on closer inspection (e.g. `'No data in this window.'` matches the section's own "Window:" selector label, and the duplicated "configured" strings live in different sections).
 
+## v8.0 — Hub Simplification Pass
+
+Pure reorganization, no new features. Goal: a first-time user should understand the page in under 30 seconds.
+
+**New top-level shape**: `Top bar` → `Today` panel → `▶ Parker` → `▶ Logan` → `▶ Olivia` → `▶ System` (with 5 sub-collapsibles) → `Command Output`. All five partner / system sections collapsed by default.
+
+**Top bar (sticky)**: Refresh Hub, Run Daily Ops, Verify All Connections. The rest of the old Control Panel buttons moved into context — Generate / Review / Approve Visible / Reject Visible live inside ▼ Parker; Connect LinkedIn / Setup .env / Wizard Help / Show Missing Setup live inside ▼ System › Connections; Show Diagnostics / Refresh Summary / Open Latest Report / Open Logs / Stop Hub live inside ▼ System › Diagnostics & Logs.
+
+**Today panel**: four clickable cards that summarize what matters right now:
+
+| Card | Source | Click target |
+|---|---|---|
+| Leads needing attention | overdue + due today via v7.24 dashboard math | Opens ▼ Logan |
+| Ready to publish | `_readyPosts.length` | Opens ▼ Parker + scroll to Ready list |
+| Hub health | `/api/status.health.status` (✓ PASS or ✗ FAIL) | Opens ▼ System › Diagnostics |
+| Today's summary | today's date as a shortcut | Opens ▼ Olivia + scroll to summary |
+
+**Section summaries show live metrics**: each collapsed partner header includes a one-line metric string (e.g. `Parker · Content + publishing · 37 pending · 13 approved · 2 posted`) so the user can read partner state without expanding.
+
+**Everything still works**: every existing element id, endpoint, render function, event delegator — preserved. The old `#mission-control` and `#partner-rooms` divs are kept (hidden) so the legacy render paths still execute; their data is duplicated to the new surfaces via new `renderTodayPanel()` and `_updatePartnerSummaries()` helpers. No schema change, no API change, no OpenAI, no posting.
+
+### v7.x changelog (pre-v8.0)
+
 v7.31 — **Olivia summary archive**. A "Past Summaries" block under the existing Today's Summary section. Lists every `summaries/*.md` filename whose stem matches `^\d{4}-\d{2}-\d{2}$`, newest first. Click a date → fetches the content via `GET /api/summaries/{date}` and shows it in an inline viewer with a Close button. Two new read-only endpoints: `GET /api/summaries` (list) and `GET /api/summaries/{date}` (one). Date input is regex-gated server-side to block path traversal — `/api/summaries/../etc/passwd` and friends return 404/400, verified live. Pure stat/read; no schema change, no OpenAI, no DB write. Olivia's v7.30 "Open Today's Summary" button still lands the user in the same section — the archive sits right below the today panel.
 
 v7.30 — **Make Olivia honest**. Same treatment as Logan got in v7.29:

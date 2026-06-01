@@ -110,7 +110,101 @@ function _partnerBadgeClass(status) {
     return 'offline';
 }
 
+// v8.0: new Today panel — 4 cards summarizing actionable work now.
+// Reads the same caches as renderMissionControl. The legacy mission-
+// control panel is kept hidden so its rendering logic doesn't need to
+// be torn out at the same time.
+function renderTodayPanel() {
+    const el = document.getElementById('today-panel');
+    if (!el) return;
+    if (!_lastStatus) return;  // wait for status payload
+    const readyCount = _readyPosts.length;
+    // "Leads needing attention" — overdue + due today, computed via the
+    // v7.24 dashboard helper.
+    const today = _todayStr();
+    const dash = (typeof _computeLeadsDashboard === 'function')
+        ? _computeLeadsDashboard(_leads || [], today)
+        : { overdue: 0, due: 0 };
+    const attention = (dash.overdue || 0) + (dash.due || 0);
+    const attentionSub = (dash.overdue || 0) + ' overdue · ' +
+                         (dash.due || 0) + ' due today';
+    // Hub health.
+    const health = (_lastStatus.health && _lastStatus.health.status) || '?';
+    const healthOk = health === 'PASS';
+    // Today's summary shortcut — just a button-style card; click opens Olivia.
+    el.innerHTML = (
+        `<button class="today-card tone-attention" data-today-target="leads">` +
+          `<div class="today-card-label">Leads needing attention</div>` +
+          `<div class="today-card-value">${attention}</div>` +
+          `<div class="today-card-sub">${_escape(attentionSub)}</div>` +
+          `<div class="today-card-action">Open Logan →</div>` +
+        `</button>` +
+        `<button class="today-card tone-ready" data-today-target="ready">` +
+          `<div class="today-card-label">Ready to publish</div>` +
+          `<div class="today-card-value">${readyCount}</div>` +
+          `<div class="today-card-sub">approved posts</div>` +
+          `<div class="today-card-action">Open Parker →</div>` +
+        `</button>` +
+        `<button class="today-card tone-health-${healthOk ? 'ok' : 'fail'}" ` +
+                `data-today-target="diagnostics">` +
+          `<div class="today-card-label">Hub health</div>` +
+          `<div class="today-card-value">${healthOk ? '✓ PASS' : '✗ ' + _escape(health)}</div>` +
+          `<div class="today-card-sub">all checks</div>` +
+          `<div class="today-card-action">Open Diagnostics →</div>` +
+        `</button>` +
+        `<button class="today-card tone-summary" data-today-target="summary">` +
+          `<div class="today-card-label">Today's summary</div>` +
+          `<div class="today-card-value">${_escape(today)}</div>` +
+          `<div class="today-card-sub">morning_summary.py</div>` +
+          `<div class="today-card-action">Open Olivia →</div>` +
+        `</button>`
+    );
+}
+
+// v8.0: open a <details> programmatically and scroll it into view.
+function _openDetailsAndScroll(detailsEl, innerSelector) {
+    if (!detailsEl) return;
+    detailsEl.open = true;
+    // For nested details, also open ancestors.
+    let p = detailsEl.parentElement;
+    while (p) {
+        if (p.tagName === 'DETAILS') p.open = true;
+        p = p.parentElement;
+    }
+    const target = innerSelector
+        ? detailsEl.querySelector(innerSelector) || detailsEl
+        : detailsEl;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Today panel card click delegator. Maps each card to its destination.
+const _todayPanelEl = document.getElementById('today-panel');
+if (_todayPanelEl) {
+    _todayPanelEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-today-target]');
+        if (!btn) return;
+        const t = btn.dataset.todayTarget;
+        if (t === 'leads') {
+            _openDetailsAndScroll(document.getElementById('logan-details'));
+        } else if (t === 'ready') {
+            _openDetailsAndScroll(document.getElementById('parker-details'),
+                                   '#ready-list');
+        } else if (t === 'diagnostics') {
+            _openDetailsAndScroll(document.getElementById('system-details'));
+            const sub = document.getElementById('system-diagnostics-details');
+            if (sub) sub.open = true;
+        } else if (t === 'summary') {
+            _openDetailsAndScroll(document.getElementById('olivia-details'),
+                                   '#summary-section');
+        }
+    });
+}
+
 function renderMissionControl() {
+    // v8.0: drive the new Today panel from the same caches the legacy
+    // mission-control rendering used. Legacy panel is kept hidden but
+    // we still populate it so any existing code paths reading it work.
+    renderTodayPanel();
     const el = document.getElementById('mission-control');
     if (!el) return;
     // Don't render until we have at least the status payload — otherwise
@@ -674,10 +768,32 @@ function _partnerInitials(name) {
     return name.split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
 }
 
+// v8.0: render the partner metric strings into the new collapsible
+// section summaries (e.g. "Parker · Content + publishing · 37 pending
+// · 13 approved · 2 posted"). The legacy #partner-rooms grid is still
+// populated below so we don't tear out a working render path mid-pass.
+function _updatePartnerSummaries(partners) {
+    for (const p of partners) {
+        const metricsEl = document.querySelector(
+            `[data-partner-metrics="${p.key}"]`
+        );
+        if (!metricsEl) continue;
+        const bits = Object.entries(p.metrics || {}).map(
+            ([k, v]) => `${v} ${_humanMetric(k).toLowerCase()}`
+        );
+        metricsEl.textContent = bits.length
+            ? '· ' + bits.join(' · ')
+            : '';
+    }
+}
+
 function renderPartners(partners) {
     const el = document.getElementById('partner-rooms');
+    if (partners && partners.length) {
+        _updatePartnerSummaries(partners);  // v8.0
+    }
     if (!partners || partners.length === 0) {
-        el.innerHTML = '<div class="muted">No partners.</div>';
+        if (el) el.innerHTML = '<div class="muted">No partners.</div>';
         return;
     }
     el.innerHTML = partners.map(p => {

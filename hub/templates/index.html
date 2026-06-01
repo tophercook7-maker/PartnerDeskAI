@@ -1225,6 +1225,107 @@
             margin: 0; white-space: pre-wrap; word-wrap: break-word;
             font-size: 0.82rem;
         }
+        /* ===== v8.0: Simplification pass ====================== */
+        .top-bar {
+            display: flex; gap: 0.5rem; flex-wrap: wrap;
+            padding: 0.7rem 1.25rem; background: #fff;
+            border-bottom: 1px solid #e2e8f0;
+            margin-bottom: 1rem;
+            position: sticky; top: 0; z-index: 10;
+        }
+        #today-section { padding: 0 1.25rem; }
+        .today-panel {
+            display: grid; gap: 0.6rem;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            margin-bottom: 1rem;
+        }
+        .today-card {
+            background: #fff; border: 1px solid #d8dde4;
+            border-radius: 8px; padding: 0.85rem 1rem;
+            display: flex; flex-direction: column; gap: 0.15rem;
+            cursor: pointer; font-family: inherit; text-align: left;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .today-card:hover {
+            border-color: #2a6ec1;
+            box-shadow: 0 2px 6px rgba(42, 110, 193, 0.12);
+        }
+        .today-card-label {
+            font-size: 0.75rem; color: #64748b;
+            text-transform: uppercase; letter-spacing: 0.03em;
+        }
+        .today-card-value {
+            font-size: 1.7rem; font-weight: 700; color: #1f2937;
+            line-height: 1.1;
+        }
+        .today-card-sub { font-size: 0.75rem; color: #64748b; margin-top: 0.1rem; }
+        .today-card-action { font-size: 0.78rem; color: #2a6ec1; margin-top: 0.25rem; }
+        .today-card.tone-attention .today-card-value { color: #b34a4a; }
+        .today-card.tone-attention { border-left: 3px solid #b34a4a; }
+        .today-card.tone-ready     { border-left: 3px solid #2a6ec1; }
+        .today-card.tone-health-ok { border-left: 3px solid #4aa05c; }
+        .today-card.tone-health-fail { border-left: 3px solid #b34a4a; }
+        .today-card.tone-health-fail .today-card-value { color: #b34a4a; }
+        .today-card.tone-summary   { border-left: 3px solid #ddb14a; }
+        .partner-details, .system-wrapper {
+            margin: 0 1.25rem 0.6rem;
+            background: #fff; border: 1px solid #d8dde4;
+            border-radius: 8px; overflow: hidden;
+        }
+        .partner-details > summary,
+        .system-wrapper > summary {
+            list-style: none; cursor: pointer;
+            padding: 0.7rem 1rem;
+            display: flex; align-items: center; gap: 0.7rem;
+            font-size: 0.95rem; font-weight: 600;
+            background: #f8fafc;
+            border-bottom: 1px solid transparent;
+        }
+        .partner-details > summary::-webkit-details-marker,
+        .system-wrapper > summary::-webkit-details-marker { display: none; }
+        .partner-details > summary::before,
+        .system-wrapper > summary::before {
+            content: '▶'; font-size: 0.75rem; color: #64748b;
+            display: inline-block; transition: transform 0.15s;
+        }
+        .partner-details[open] > summary::before,
+        .system-wrapper[open] > summary::before { transform: rotate(90deg); }
+        .partner-details[open] > summary,
+        .system-wrapper[open] > summary { border-bottom-color: #e2e8f0; }
+        .partner-summary-name, .system-summary-name { font-weight: 700; color: #1f2937; }
+        .partner-summary-role, .system-summary-role {
+            color: #64748b; font-weight: 400; font-size: 0.85rem;
+        }
+        .partner-summary-metrics {
+            margin-left: auto;
+            color: #475569; font-weight: 400; font-size: 0.82rem;
+        }
+        .partner-details > *:not(summary),
+        .system-wrapper > *:not(summary) { padding-left: 1rem; padding-right: 1rem; }
+        .partner-details > *:not(summary):last-child,
+        .system-wrapper > *:not(summary):last-child { padding-bottom: 1rem; }
+        .partner-details-actions {
+            display: flex; gap: 0.5rem; flex-wrap: wrap;
+            padding-top: 0.8rem; padding-bottom: 0.4rem;
+        }
+        .system-sub {
+            background: #fafbfc; border: 1px solid #e2e8f0;
+            border-radius: 6px; margin: 0.5rem 0;
+        }
+        .system-sub > summary {
+            list-style: none; cursor: pointer;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.88rem; font-weight: 600; color: #1f2937;
+        }
+        .system-sub > summary::-webkit-details-marker { display: none; }
+        .system-sub > summary::before {
+            content: '▶'; font-size: 0.7rem; color: #64748b;
+            margin-right: 0.5rem; display: inline-block;
+            transition: transform 0.15s;
+        }
+        .system-sub[open] > summary::before { transform: rotate(90deg); }
+        .system-sub > *:not(summary) { padding: 0 0.75rem; }
+        .system-sub > *:not(summary):last-child { padding-bottom: 0.75rem; }
     </style>
 </head>
 <body>
@@ -1253,341 +1354,382 @@
         </div>
     </div>
 
-    <section id="mission-control-section">
-        <h2>Mission Control</h2>
-        <div id="mission-control">
+        <!-- v8.0: Top bar — 3 always-visible primary actions. The rest of
+         the old Control Panel buttons are scattered into their
+         contextual partner / system sections below. -->
+    <div class="top-bar">
+        <button type="button" data-cp-action="refresh-hub" class="cp-btn primary">Refresh Hub</button>
+        <button type="button" data-cp-action="run-daily-ops" class="cp-btn danger">Run Daily Ops</button>
+        <button type="button" data-cp-action="verify-all-connections" class="cp-btn">Verify All Connections</button>
+    </div>
+
+    <!-- v8.0: TODAY — replaces the old Mission Control + Partner
+         Rooms panels. Four cards summarize the work that matters
+         now; clicking a card expands the relevant partner/System
+         section and scrolls to it.
+
+         Legacy #mission-control + #partner-rooms divs are kept
+         hidden so existing renderers don't choke on a missing
+         element. renderMissionControl now writes the Today cards
+         instead of the old mission-stats grid. -->
+    <section id="today-section">
+        <h2>Today</h2>
+        <div id="today-panel" class="today-panel">
             <div class="muted">Loading…</div>
         </div>
+        <div id="mission-control" hidden></div>
+        <div id="partner-rooms" hidden></div>
     </section>
 
-    <section id="control-panel-section">
-        <h2>Control Panel</h2>
-        <div class="cp-grid">
-            <div class="cp-group">
-                <h3>Hub / System</h3>
-                <button type="button" data-cp-action="refresh-hub" class="cp-btn primary">Refresh Hub</button>
-                <button type="button" data-cp-action="run-daily-ops" class="cp-btn danger">Run Daily Ops</button>
+    <!-- v8.0: PARKER — content + publishing. Collapsed by default.
+         Inside: action toolbar, Ready to Post, Recent Parker Work,
+         Approved History. -->
+    <details class="partner-details" id="parker-details">
+        <summary class="partner-summary">
+            <span class="partner-summary-name">Parker</span>
+            <span class="partner-summary-role">Content + publishing</span>
+            <span class="partner-summary-metrics" data-partner-metrics="parker">—</span>
+        </summary>
+        <div class="partner-details-actions">
+            <button type="button" data-cp-action="generate-drafts" class="cp-btn danger">Generate Drafts</button>
+            <button type="button" data-cp-action="review-drafts" class="cp-btn">Review Drafts</button>
+            <button type="button" data-cp-action="approve-visible" class="cp-btn primary">Approve Visible</button>
+            <button type="button" data-cp-action="reject-visible" class="cp-btn danger">Reject Visible</button>
+        </div>
+    <section>
+            <h2>Ready to Post
+                <button type="button" id="bulk-publish-btn" class="primary"
+                        hidden style="margin-left: 0.6rem; font-size: 0.78rem;
+                                      padding: 0.3rem 0.7rem;">
+                    Publish all verified
+                </button>
+            </h2>
+            <div id="ready-list">
+                <div class="muted">Loading…</div>
+            </div>
+        </section>
+
+    <section>
+            <h2>Recent Parker Work</h2>
+            <div class="filters">
+                <input type="search" id="filter-search"
+                       placeholder="Search topic, platform, status, or id…"
+                       autocomplete="off">
+                <select id="filter-platform" aria-label="Filter by platform">
+                    <option value="">All platforms</option>
+                    <option>Google Business Profile</option>
+                    <option>Facebook</option>
+                    <option>Instagram</option>
+                    <option>LinkedIn</option>
+                </select>
+                <select id="filter-status" aria-label="Filter by status">
+                    <option value="">All statuses</option>
+                    <option>draft</option>
+                    <option>approved</option>
+                    <option>rejected</option>
+                </select>
+            </div>
+            <div class="filter-actions">
+                <span id="filter-count" class="muted">Showing … of …</span>
+                <button id="approve-visible" class="primary">Approve all visible</button>
+                <button id="reject-visible" class="danger">Reject all visible</button>
+            </div>
+            <ul id="recent-posts" class="recent-list">
+                <li class="muted">Loading…</li>
+            </ul>
+        </section>
+
+    <section>
+            <h2>Approved History</h2>
+            <ul id="approved-history" class="recent-list">
+                <li class="muted">Loading…</li>
+            </ul>
+        </section>
+    </details>
+
+    <!-- v8.0: LOGAN — lead generation. Collapsed by default. -->
+    <details class="partner-details" id="logan-details">
+        <summary class="partner-summary">
+            <span class="partner-summary-name">Logan</span>
+            <span class="partner-summary-role">Lead generation</span>
+            <span class="partner-summary-metrics" data-partner-metrics="logan">—</span>
+        </summary>
+    <section id="leads-section">
+            <h2>LinkedIn Leads</h2>
+            <div class="muted" style="margin-bottom: 0.6rem">
+                Outbound prospect tracker. Local-only — never sent to LinkedIn
+                or any other service. Stored in <code>data/leads.json</code>
+                (gitignored).
+            </div>
+            <div class="leads-toolbar">
+                <button type="button" id="leads-add-toggle" class="primary">+ Add Lead</button>
+                <button type="button" id="leads-bulk-toggle">+ Bulk Add</button>
+                <input type="search" id="leads-filter"
+                       placeholder="Filter by name, company, status…"
+                       aria-label="Filter leads" />
+                <select id="leads-sort" aria-label="Sort leads">
+                    <option value="updated" selected>Newest updated</option>
+                    <option value="follow-up">Follow-up due first</option>
+                </select>
+                <span id="leads-count" class="muted"></span>
+                <button type="button" id="leads-due-chip" class="leads-due-chip" hidden
+                        aria-pressed="false"
+                        title="Show only leads with follow-up due in the next 7 days"></button>
+                <button type="button" id="leads-clear-filters" class="leads-clear-filters"
+                        hidden title="Clear text search, the due-this-week chip, and any active dashboard filter">
+                    Clear filters
+                </button>
+            </div>
+            <form id="leads-add-form" class="leads-form" hidden
+                  aria-label="Add a new lead">
+                <input class="leads-input" name="name"    placeholder="Name (required)" required>
+                <input class="leads-input" name="company" placeholder="Company">
+                <input class="leads-input" name="handle"  placeholder="LinkedIn URL or handle">
+                <input class="leads-input" name="source"  placeholder="Source (e.g. comment on 2026-05-28 post)">
+                <select class="leads-input" name="status">
+                    <option value="cold">cold</option>
+                    <option value="warm">warm</option>
+                    <option value="hot">hot</option>
+                    <option value="closed">closed</option>
+                    <option value="dropped">dropped</option>
+                </select>
+                <textarea class="leads-input" name="notes" rows="2"
+                          placeholder="Notes (optional)"></textarea>
+                <div class="leads-form-actions">
+                    <button type="submit" class="primary">Save lead</button>
+                    <button type="button" data-action="cancel-add">Cancel</button>
+                </div>
+            </form>
+            <!-- v7.24: 6-card summary strip above the pipeline board.
+                 Pure client-side derivation from the same _leads cache. -->
+            <div id="leads-dashboard" class="leads-dashboard" aria-label="Lead dashboard"></div>
+            <!-- v7.23: pipeline board view. Renders the same _leads cache as
+                 the list below, grouped into 5 status columns. Always visible. -->
+            <div id="leads-board" class="leads-board" aria-label="Lead pipeline board"></div>
+            <form id="leads-bulk-form" class="leads-form" hidden
+                  aria-label="Bulk add leads from paste">
+                <textarea class="leads-input" name="text" rows="6" required
+                          placeholder="Paste LinkedIn URLs or handles, one per line. Max 50.
+    e.g. https://www.linkedin.com/in/christian-kovac/
+         linkedin.com/in/jane-doe
+    # lines starting with # are skipped"></textarea>
+                <div class="leads-form-actions">
+                    <button type="submit" class="primary">Import Leads</button>
+                    <button type="button" data-action="cancel-bulk">Cancel</button>
+                </div>
+            </form>
+            <div id="leads-list" class="leads-list">
+                <div class="muted">Loading…</div>
+            </div>
+
+            <!-- v7.28: Lead Scout Queue. Manual capture of local businesses
+                 that may need web work / tap hub / AI systems. Convert
+                 qualified ones into Logan leads above. -->
+            <h3 class="scout-h3">Lead Scout Queue</h3>
+            <div class="muted" style="margin-bottom: 0.5rem; font-size: 0.85rem;">
+                Manual capture only. No scraping, no auto-outreach. Convert
+                a qualified scout lead to copy it into Logan above as a
+                cold lead.
+            </div>
+            <div class="scout-toolbar">
+                <button type="button" id="scout-add-toggle" class="primary">+ Add Scout Lead</button>
+                <span id="scout-count" class="muted"></span>
+            </div>
+            <form id="scout-add-form" class="leads-form" hidden
+                  aria-label="Add a scout lead">
+                <input class="leads-input" name="business_name"
+                       placeholder="Business Name (required)" required>
+                <input class="leads-input" name="category"
+                       placeholder="Category (e.g. plumber, salon, cafe)">
+                <input class="leads-input" name="city_state"
+                       placeholder="City / State">
+                <input class="leads-input" name="contact_email"
+                       placeholder="Contact Email">
+                <input class="leads-input" name="contact_source"
+                       placeholder="Contact Source (e.g. saw their flyer, NextDoor)">
+                <input class="leads-input" name="website_status"
+                       placeholder="Website Status (default: no website found)">
+                <textarea class="leads-input" name="evidence" rows="2"
+                          placeholder="Evidence they need help"></textarea>
+                <input class="leads-input" name="offer_angle"
+                       placeholder="Offer Angle (e.g. tap hub + landing page)">
+                <select class="leads-input" name="priority">
+                    <option value="low">low</option>
+                    <option value="medium" selected>medium</option>
+                    <option value="high">high</option>
+                </select>
+                <textarea class="leads-input" name="notes" rows="2"
+                          placeholder="Notes (optional)"></textarea>
+                <div class="leads-form-actions">
+                    <button type="submit" class="primary">Add Scout Lead</button>
+                    <button type="button" data-action="cancel-scout-add">Cancel</button>
+                </div>
+            </form>
+            <div id="scout-list" class="scout-list">
+                <div class="muted">Loading…</div>
+            </div>
+        </section>
+    </details>
+
+    <!-- v8.0: OLIVIA — operations / admin. Collapsed by default. -->
+    <details class="partner-details" id="olivia-details">
+        <summary class="partner-summary">
+            <span class="partner-summary-name">Olivia</span>
+            <span class="partner-summary-role">Operations / admin</span>
+            <span class="partner-summary-metrics" data-partner-metrics="olivia">—</span>
+        </summary>
+    <section id="summary-section">
+            <h2>Today's Summary</h2>
+            <div class="muted" id="summary-meta">…</div>
+            <pre id="summary">…</pre>
+
+            <!-- v7.31: Olivia summary archive. Lists past summaries by
+                 date; click one to load its content in-place below. -->
+            <h3 class="summaries-h3">Past Summaries
+                <span id="summaries-count" class="muted"></span>
+            </h3>
+            <ul id="summaries-list" class="summaries-list">
+                <li class="muted">Loading…</li>
+            </ul>
+            <div id="summaries-viewer" hidden class="summaries-viewer">
+                <div class="summaries-viewer-header">
+                    <strong id="summaries-viewer-date">—</strong>
+                    <button type="button" id="summaries-viewer-close"
+                            class="row-action">Close</button>
+                </div>
+                <pre id="summaries-viewer-content"></pre>
+            </div>
+        </section>
+    </details>
+
+    <!-- v8.0: SYSTEM — collapsible group with 5 sub-collapsibles.
+         Everything operational / infrastructural lives here. -->
+    <details class="system-wrapper" id="system-details">
+        <summary class="system-summary">
+            <span class="system-summary-name">System</span>
+            <span class="system-summary-role">Connections, diagnostics, reports, activity</span>
+        </summary>
+        <details class="system-sub" id="system-connections-details">
+            <summary>Connections</summary>
+            <div class="partner-details-actions">
+                <button type="button" data-cp-action="connect-linkedin" class="cp-btn primary">Connect LinkedIn</button>
+                <button type="button" data-cp-action="setup-env" class="cp-btn">Setup .env</button>
+                <button type="button" data-cp-action="open-connection-help" class="cp-btn">Connection Wizard Help</button>
+                <button type="button" data-cp-action="show-missing-setup" class="cp-btn">Show Missing Setup</button>
+            </div>
+            <ul id="connections-list" class="recent-list">
+                <li class="muted">Loading…</li>
+            </ul>
+        </details>
+        <details class="system-sub" id="system-meta-details">
+            <summary>Meta Readiness Center</summary>
+        <section id="meta-readiness-section">
+                <h2>Meta Readiness Center</h2>
+                <div class="muted" style="margin-bottom: 0.6rem">
+                    Setup state and remaining steps for Facebook + Instagram
+                    publishing. Read-only: no posting happens here. Verify
+                    buttons probe the Graph API with GET-only requests.
+                </div>
+                <div id="meta-readiness" class="meta-readiness-grid">
+                    <div class="muted">Loading…</div>
+                </div>
+            </section>
+        </details>
+        <details class="system-sub" id="system-activity-details">
+            <summary>System Activity feed</summary>
+        <section id="activity-section">
+                <h2>System Activity</h2>
+                <div id="activity-filters" class="activity-filters"
+                     aria-label="Filter activity by type"></div>
+                <ul id="activity-feed" class="activity-feed">
+                    <li class="muted">Loading…</li>
+                </ul>
+            </section>
+        </details>
+        <details class="system-sub" id="system-reports-details">
+            <summary>Report Center &amp; Inbox</summary>
+        <section id="reports-section">
+                <h2>Report Center</h2>
+                <div class="reports-controls">
+                    <label for="reports-days">Window:</label>
+                    <select id="reports-days" aria-label="Reports window">
+                        <option value="7">Last 7 days</option>
+                        <option value="30" selected>Last 30 days</option>
+                        <option value="90">Last 90 days</option>
+                        <option value="365">Last 12 months</option>
+                    </select>
+                    <span id="reports-headline" class="muted">Loading…</span>
+                </div>
+                <div class="reports-grid">
+                    <div class="reports-card">
+                        <h3>Top Topics</h3>
+                        <ul id="reports-topics" class="reports-list">
+                            <li class="muted">Loading…</li>
+                        </ul>
+                    </div>
+                    <div class="reports-card">
+                        <h3>Top Platforms</h3>
+                        <ul id="reports-platforms" class="reports-list">
+                            <li class="muted">Loading…</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="reports-card reports-card-wide">
+                    <h3>Top Topic × Platform combos</h3>
+                    <ul id="reports-combos" class="reports-list">
+                        <li class="muted">Loading…</li>
+                    </ul>
+                </div>
+            </section>
+
+        <section id="report-inbox-section">
+                <h2>Report Inbox</h2>
+                <div class="inbox-filters">
+                    <input type="search" id="inbox-search"
+                           placeholder="Filter by date…"
+                           aria-label="Filter inbox by date" />
+                    <select id="inbox-window" aria-label="Inbox window">
+                        <option value="all" selected>All time</option>
+                        <option value="7">Last 7 days</option>
+                        <option value="30">Last 30 days</option>
+                        <option value="90">Last 90 days</option>
+                    </select>
+                    <label class="inbox-toggle">
+                        <input type="checkbox" id="inbox-hide-empty" />
+                        Hide empty days
+                    </label>
+                    <button type="button" id="inbox-clear" class="inbox-clear-btn"
+                            title="Reset all inbox filters">Clear filters</button>
+                    <span id="inbox-count" class="muted">…</span>
+                </div>
+                <div class="inbox-layout">
+                    <ul id="inbox-list" class="inbox-list" tabindex="0"
+                        aria-label="Daily reports — use up/down arrows to navigate, Enter to open">
+                        <li class="muted">Loading…</li>
+                    </ul>
+                    <div id="inbox-preview" class="inbox-preview">
+                        <div class="muted">Select a report to view.</div>
+                    </div>
+                </div>
+            </section>
+        </details>
+        <details class="system-sub" id="system-diagnostics-details">
+            <summary>Diagnostics &amp; Logs</summary>
+            <div class="partner-details-actions">
+                <button type="button" data-cp-action="show-diagnostics" class="cp-btn">Show Hub Diagnostics</button>
                 <button type="button" data-cp-action="refresh-summary" class="cp-btn">Refresh Summary / Snapshot</button>
                 <button type="button" data-cp-action="open-latest-report" class="cp-btn">Open Latest Report</button>
                 <button type="button" data-cp-action="open-logs" class="cp-btn">Open Logs</button>
-                <button type="button" data-cp-action="show-diagnostics" class="cp-btn">Show Hub Diagnostics</button>
                 <button type="button" data-cp-action="stop-hub" class="cp-btn danger">Stop Hub</button>
             </div>
-            <div class="cp-group">
-                <h3>Parker Promo</h3>
-                <button type="button" data-cp-action="generate-drafts" class="cp-btn danger">Generate Drafts</button>
-                <button type="button" data-cp-action="review-drafts" class="cp-btn">Review Drafts</button>
-                <button type="button" data-cp-action="ready-to-post" class="cp-btn">Ready to Post</button>
-                <button type="button" data-cp-action="approve-visible" class="cp-btn primary">Approve Visible</button>
-                <button type="button" data-cp-action="reject-visible" class="cp-btn danger">Reject Visible</button>
-            </div>
-            <div class="cp-group">
-                <h3>Connections</h3>
-                <button type="button" data-cp-action="verify-all-connections" class="cp-btn">Verify All Connections</button>
-                <button type="button" data-cp-action="connect-linkedin" class="cp-btn primary">Connect LinkedIn</button>
-                <button type="button" data-cp-action="meta-readiness" class="cp-btn">Meta Readiness</button>
-                <button type="button" data-cp-action="leads" class="cp-btn">LinkedIn Leads</button>
-                <button type="button" data-cp-action="setup-env" class="cp-btn">Setup .env</button>
-                <button type="button" data-cp-action="open-connection-help" class="cp-btn">Open Connection Wizard Help</button>
-                <button type="button" data-cp-action="show-missing-setup" class="cp-btn">Show Missing Setup</button>
-            </div>
-        </div>
-    </section>
+        <section>
+                <h2>Latest Log</h2>
+                <div class="muted" id="log-path">…</div>
+                <pre id="log-tail">…</pre>
+            </section>
+        </details>
+    </details>
 
-    <section id="activity-section">
-        <h2>System Activity</h2>
-        <div id="activity-filters" class="activity-filters"
-             aria-label="Filter activity by type"></div>
-        <ul id="activity-feed" class="activity-feed">
-            <li class="muted">Loading…</li>
-        </ul>
-    </section>
-
-    <section id="reports-section">
-        <h2>Report Center</h2>
-        <div class="reports-controls">
-            <label for="reports-days">Window:</label>
-            <select id="reports-days" aria-label="Reports window">
-                <option value="7">Last 7 days</option>
-                <option value="30" selected>Last 30 days</option>
-                <option value="90">Last 90 days</option>
-                <option value="365">Last 12 months</option>
-            </select>
-            <span id="reports-headline" class="muted">Loading…</span>
-        </div>
-        <div class="reports-grid">
-            <div class="reports-card">
-                <h3>Top Topics</h3>
-                <ul id="reports-topics" class="reports-list">
-                    <li class="muted">Loading…</li>
-                </ul>
-            </div>
-            <div class="reports-card">
-                <h3>Top Platforms</h3>
-                <ul id="reports-platforms" class="reports-list">
-                    <li class="muted">Loading…</li>
-                </ul>
-            </div>
-        </div>
-        <div class="reports-card reports-card-wide">
-            <h3>Top Topic × Platform combos</h3>
-            <ul id="reports-combos" class="reports-list">
-                <li class="muted">Loading…</li>
-            </ul>
-        </div>
-    </section>
-
-    <section id="report-inbox-section">
-        <h2>Report Inbox</h2>
-        <div class="inbox-filters">
-            <input type="search" id="inbox-search"
-                   placeholder="Filter by date…"
-                   aria-label="Filter inbox by date" />
-            <select id="inbox-window" aria-label="Inbox window">
-                <option value="all" selected>All time</option>
-                <option value="7">Last 7 days</option>
-                <option value="30">Last 30 days</option>
-                <option value="90">Last 90 days</option>
-            </select>
-            <label class="inbox-toggle">
-                <input type="checkbox" id="inbox-hide-empty" />
-                Hide empty days
-            </label>
-            <button type="button" id="inbox-clear" class="inbox-clear-btn"
-                    title="Reset all inbox filters">Clear filters</button>
-            <span id="inbox-count" class="muted">…</span>
-        </div>
-        <div class="inbox-layout">
-            <ul id="inbox-list" class="inbox-list" tabindex="0"
-                aria-label="Daily reports — use up/down arrows to navigate, Enter to open">
-                <li class="muted">Loading…</li>
-            </ul>
-            <div id="inbox-preview" class="inbox-preview">
-                <div class="muted">Select a report to view.</div>
-            </div>
-        </div>
-    </section>
-
-    <section>
-        <h2>Partner Rooms</h2>
-        <div class="partner-rooms" id="partner-rooms">
-            <div class="muted">Loading partners…</div>
-        </div>
-    </section>
-
-    <section>
-        <h2>Connections</h2>
-        <ul id="connections-list" class="recent-list">
-            <li class="muted">Loading…</li>
-        </ul>
-    </section>
-
-    <section id="leads-section">
-        <h2>LinkedIn Leads</h2>
-        <div class="muted" style="margin-bottom: 0.6rem">
-            Outbound prospect tracker. Local-only — never sent to LinkedIn
-            or any other service. Stored in <code>data/leads.json</code>
-            (gitignored).
-        </div>
-        <div class="leads-toolbar">
-            <button type="button" id="leads-add-toggle" class="primary">+ Add Lead</button>
-            <button type="button" id="leads-bulk-toggle">+ Bulk Add</button>
-            <input type="search" id="leads-filter"
-                   placeholder="Filter by name, company, status…"
-                   aria-label="Filter leads" />
-            <select id="leads-sort" aria-label="Sort leads">
-                <option value="updated" selected>Newest updated</option>
-                <option value="follow-up">Follow-up due first</option>
-            </select>
-            <span id="leads-count" class="muted"></span>
-            <button type="button" id="leads-due-chip" class="leads-due-chip" hidden
-                    aria-pressed="false"
-                    title="Show only leads with follow-up due in the next 7 days"></button>
-            <button type="button" id="leads-clear-filters" class="leads-clear-filters"
-                    hidden title="Clear text search, the due-this-week chip, and any active dashboard filter">
-                Clear filters
-            </button>
-        </div>
-        <form id="leads-add-form" class="leads-form" hidden
-              aria-label="Add a new lead">
-            <input class="leads-input" name="name"    placeholder="Name (required)" required>
-            <input class="leads-input" name="company" placeholder="Company">
-            <input class="leads-input" name="handle"  placeholder="LinkedIn URL or handle">
-            <input class="leads-input" name="source"  placeholder="Source (e.g. comment on 2026-05-28 post)">
-            <select class="leads-input" name="status">
-                <option value="cold">cold</option>
-                <option value="warm">warm</option>
-                <option value="hot">hot</option>
-                <option value="closed">closed</option>
-                <option value="dropped">dropped</option>
-            </select>
-            <textarea class="leads-input" name="notes" rows="2"
-                      placeholder="Notes (optional)"></textarea>
-            <div class="leads-form-actions">
-                <button type="submit" class="primary">Save lead</button>
-                <button type="button" data-action="cancel-add">Cancel</button>
-            </div>
-        </form>
-        <!-- v7.24: 6-card summary strip above the pipeline board.
-             Pure client-side derivation from the same _leads cache. -->
-        <div id="leads-dashboard" class="leads-dashboard" aria-label="Lead dashboard"></div>
-        <!-- v7.23: pipeline board view. Renders the same _leads cache as
-             the list below, grouped into 5 status columns. Always visible. -->
-        <div id="leads-board" class="leads-board" aria-label="Lead pipeline board"></div>
-        <form id="leads-bulk-form" class="leads-form" hidden
-              aria-label="Bulk add leads from paste">
-            <textarea class="leads-input" name="text" rows="6" required
-                      placeholder="Paste LinkedIn URLs or handles, one per line. Max 50.
-e.g. https://www.linkedin.com/in/christian-kovac/
-     linkedin.com/in/jane-doe
-# lines starting with # are skipped"></textarea>
-            <div class="leads-form-actions">
-                <button type="submit" class="primary">Import Leads</button>
-                <button type="button" data-action="cancel-bulk">Cancel</button>
-            </div>
-        </form>
-        <div id="leads-list" class="leads-list">
-            <div class="muted">Loading…</div>
-        </div>
-
-        <!-- v7.28: Lead Scout Queue. Manual capture of local businesses
-             that may need web work / tap hub / AI systems. Convert
-             qualified ones into Logan leads above. -->
-        <h3 class="scout-h3">Lead Scout Queue</h3>
-        <div class="muted" style="margin-bottom: 0.5rem; font-size: 0.85rem;">
-            Manual capture only. No scraping, no auto-outreach. Convert
-            a qualified scout lead to copy it into Logan above as a
-            cold lead.
-        </div>
-        <div class="scout-toolbar">
-            <button type="button" id="scout-add-toggle" class="primary">+ Add Scout Lead</button>
-            <span id="scout-count" class="muted"></span>
-        </div>
-        <form id="scout-add-form" class="leads-form" hidden
-              aria-label="Add a scout lead">
-            <input class="leads-input" name="business_name"
-                   placeholder="Business Name (required)" required>
-            <input class="leads-input" name="category"
-                   placeholder="Category (e.g. plumber, salon, cafe)">
-            <input class="leads-input" name="city_state"
-                   placeholder="City / State">
-            <input class="leads-input" name="contact_email"
-                   placeholder="Contact Email">
-            <input class="leads-input" name="contact_source"
-                   placeholder="Contact Source (e.g. saw their flyer, NextDoor)">
-            <input class="leads-input" name="website_status"
-                   placeholder="Website Status (default: no website found)">
-            <textarea class="leads-input" name="evidence" rows="2"
-                      placeholder="Evidence they need help"></textarea>
-            <input class="leads-input" name="offer_angle"
-                   placeholder="Offer Angle (e.g. tap hub + landing page)">
-            <select class="leads-input" name="priority">
-                <option value="low">low</option>
-                <option value="medium" selected>medium</option>
-                <option value="high">high</option>
-            </select>
-            <textarea class="leads-input" name="notes" rows="2"
-                      placeholder="Notes (optional)"></textarea>
-            <div class="leads-form-actions">
-                <button type="submit" class="primary">Add Scout Lead</button>
-                <button type="button" data-action="cancel-scout-add">Cancel</button>
-            </div>
-        </form>
-        <div id="scout-list" class="scout-list">
-            <div class="muted">Loading…</div>
-        </div>
-    </section>
-
-    <section id="meta-readiness-section">
-        <h2>Meta Readiness Center</h2>
-        <div class="muted" style="margin-bottom: 0.6rem">
-            Setup state and remaining steps for Facebook + Instagram
-            publishing. Read-only: no posting happens here. Verify
-            buttons probe the Graph API with GET-only requests.
-        </div>
-        <div id="meta-readiness" class="meta-readiness-grid">
-            <div class="muted">Loading…</div>
-        </div>
-    </section>
-
-    <section>
-        <h2>Ready to Post
-            <button type="button" id="bulk-publish-btn" class="primary"
-                    hidden style="margin-left: 0.6rem; font-size: 0.78rem;
-                                  padding: 0.3rem 0.7rem;">
-                Publish all verified
-            </button>
-        </h2>
-        <div id="ready-list">
-            <div class="muted">Loading…</div>
-        </div>
-    </section>
-
-    <section>
-        <h2>Recent Parker Work</h2>
-        <div class="filters">
-            <input type="search" id="filter-search"
-                   placeholder="Search topic, platform, status, or id…"
-                   autocomplete="off">
-            <select id="filter-platform" aria-label="Filter by platform">
-                <option value="">All platforms</option>
-                <option>Google Business Profile</option>
-                <option>Facebook</option>
-                <option>Instagram</option>
-                <option>LinkedIn</option>
-            </select>
-            <select id="filter-status" aria-label="Filter by status">
-                <option value="">All statuses</option>
-                <option>draft</option>
-                <option>approved</option>
-                <option>rejected</option>
-            </select>
-        </div>
-        <div class="filter-actions">
-            <span id="filter-count" class="muted">Showing … of …</span>
-            <button id="approve-visible" class="primary">Approve all visible</button>
-            <button id="reject-visible" class="danger">Reject all visible</button>
-        </div>
-        <ul id="recent-posts" class="recent-list">
-            <li class="muted">Loading…</li>
-        </ul>
-    </section>
-
-    <section>
-        <h2>Approved History</h2>
-        <ul id="approved-history" class="recent-list">
-            <li class="muted">Loading…</li>
-        </ul>
-    </section>
-
-    <section id="summary-section">
-        <h2>Today's Summary</h2>
-        <div class="muted" id="summary-meta">…</div>
-        <pre id="summary">…</pre>
-
-        <!-- v7.31: Olivia summary archive. Lists past summaries by
-             date; click one to load its content in-place below. -->
-        <h3 class="summaries-h3">Past Summaries
-            <span id="summaries-count" class="muted"></span>
-        </h3>
-        <ul id="summaries-list" class="summaries-list">
-            <li class="muted">Loading…</li>
-        </ul>
-        <div id="summaries-viewer" hidden class="summaries-viewer">
-            <div class="summaries-viewer-header">
-                <strong id="summaries-viewer-date">—</strong>
-                <button type="button" id="summaries-viewer-close"
-                        class="row-action">Close</button>
-            </div>
-            <pre id="summaries-viewer-content"></pre>
-        </div>
-    </section>
-
-    <section>
-        <h2>Latest Log</h2>
-        <div class="muted" id="log-path">…</div>
-        <pre id="log-tail">…</pre>
-    </section>
 
     <section>
         <h2>Command Output</h2>
