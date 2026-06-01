@@ -112,6 +112,14 @@ v7.14 wires the **Olivia Office partner card** to real data. `summaries_generate
 
 v7.15 normalizes the last filter-empty outlier: `'No matching Parker work.'` → `'No Parker work matches the filter.'`, matching the structure of `'No leads match the filter.'` and `'No reports match the current filter.'` The rest of the v7-walkthrough's empty-state findings turned out to be coherent on closer inspection (e.g. `'No data in this window.'` matches the section's own "Window:" selector label, and the duplicated "configured" strings live in different sections).
 
+v7.29 — **Logan partner room fix**. Logan is no longer "Coming Soon". Three changes:
+
+1. `/api/partners` returns Logan with `status: "active"` (was `"standby"`), and adds a third metric `scout_queue` (count of active scout rows — anything not converted/rejected) alongside the existing `prospects_tracked` and `outreach_queue`.
+2. `renderPartners` now branches three ways instead of two: Parker keeps its Refresh + View Drafts; Logan gets a new primary `Open Logan Leads` button; Olivia stays on the Coming Soon fallback (her surface is still placeholder).
+3. Click handler delegates `logan-open` → smooth-scroll to `#leads-section` (which holds both the Logan list/board/dashboard AND the v7.28 Lead Scout Queue at the bottom).
+
+Mission Control's partner strip also updates to show Logan as Active, since it reads `p.status` from the same `/api/partners` payload.
+
 v7.28 — **Logan Lead Scout Queue**. Logan includes a Lead Scout Queue for manually capturing local businesses that may need web design, cleanup, tap hubs, or AI systems. Scout leads can be qualified and converted into regular Logan leads.
 
 Under the hood: new `automation/scout_queue.py` (mirrors the `leads.py` atomic-write + whitelist pattern), separate `data/scout_queue.json` (gitignored), six-state lifecycle (`new` / `qualified` / `contacted` / `follow_up` / `converted` / `rejected`), three-priority enum (`low` / `medium` / `high`). Five endpoints: `GET/POST/PUT/DELETE /api/scout-leads/...` plus `POST /api/scout-leads/{id}/convert` which copies the row into the existing Logan leads registry as a cold lead (with notes that carry the scout evidence + offer angle + website status) and marks the scout row `converted` with a back-reference to the new lead's id. **No scraping. No browsing the web. No outreach. No OpenAI.** Pure local capture + qualification queue; the convert helper is the only cross-data-file write.

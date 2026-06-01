@@ -1656,6 +1656,13 @@ def api_partners() -> dict:
         l for l in all_leads
         if l.get("status") not in ("closed", "dropped")
     ]
+    # v7.29: Logan also owns the scout queue (v7.28). Count only
+    # actively-scouted rows — converted/rejected are done.
+    all_scouts = scout_mod.load()
+    active_scouts = [
+        s for s in all_scouts
+        if s.get("status") not in ("converted", "rejected")
+    ]
     # v7.14: Olivia's metrics from the daily-ops output dirs. Both are
     # populated by automation/daily_ops.py:
     #   morning_summary.py  → summaries/YYYY-MM-DD.md
@@ -1680,12 +1687,15 @@ def api_partners() -> dict:
             },
             {
                 "key":    "logan",
+                # v7.29: Logan is active now that v7.6→v7.28 shipped
+                # the leads pipeline + scout queue.
                 "name":   "Logan Leads",
-                "status": "standby",
+                "status": "active",
                 "role":   "Lead generation",
                 "metrics": {
                     "prospects_tracked": len(all_leads),
                     "outreach_queue":    len(active_leads),
+                    "scout_queue":       len(active_scouts),
                 },
             },
             {

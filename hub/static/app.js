@@ -661,6 +661,7 @@ const _METRIC_LABELS = {
     posted:              'Posted',
     prospects_tracked:   'Prospects tracked',
     outreach_queue:      'Outreach queue',
+    scout_queue:         'Scout queue',        // v7.29
     summaries_generated: 'Summaries generated',
     snapshots_archived:  'Snapshots archived',
 };
@@ -703,14 +704,27 @@ function renderPartners(partners) {
               `<pre id="parker-next">…</pre></div>`
             : '';
 
-        const actionsHtml = p.key === 'parker'
-            ? `<div class="partner-actions">` +
-                `<button data-partner-action="parker-refresh">Refresh</button>` +
-                `<button data-partner-action="parker-view-drafts">View drafts</button>` +
-              `</div>`
-            : `<div class="partner-actions">` +
-                `<button disabled>Coming Soon</button>` +
-              `</div>`;
+        // v7.29: Logan now has its own actions (was hardcoded "Coming
+        // Soon" alongside Olivia). Olivia stays in the fallback since
+        // her surface is still placeholder-only.
+        let actionsHtml;
+        if (p.key === 'parker') {
+            actionsHtml =
+                `<div class="partner-actions">` +
+                    `<button data-partner-action="parker-refresh">Refresh</button>` +
+                    `<button data-partner-action="parker-view-drafts">View drafts</button>` +
+                `</div>`;
+        } else if (p.key === 'logan') {
+            actionsHtml =
+                `<div class="partner-actions">` +
+                    `<button data-partner-action="logan-open" class="primary">Open Logan Leads</button>` +
+                `</div>`;
+        } else {
+            actionsHtml =
+                `<div class="partner-actions">` +
+                    `<button disabled>Coming Soon</button>` +
+                `</div>`;
+        }
 
         return (
             `<div class="partner-room ${_escape(p.key)}">` +
@@ -743,7 +757,8 @@ async function loadPartners() {
     }
 }
 
-// Delegate Parker's room buttons. Logan/Olivia buttons are disabled.
+// Delegate Parker + Logan room buttons. Olivia still disabled
+// (v7.29 — Logan got its own scroll-to-leads-section handler).
 document.getElementById('partner-rooms').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-partner-action]');
     if (!btn) return;
@@ -752,6 +767,11 @@ document.getElementById('partner-rooms').addEventListener('click', (e) => {
         refreshAll();
     } else if (action === 'parker-view-drafts') {
         const target = document.getElementById('recent-posts');
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (action === 'logan-open') {
+        // v7.29: scroll to the LinkedIn Leads section, which now
+        // also contains the v7.28 Lead Scout Queue at the bottom.
+        const target = document.getElementById('leads-section');
         if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 });
