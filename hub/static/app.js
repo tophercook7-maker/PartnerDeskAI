@@ -2303,6 +2303,94 @@ function renderLeads() {
     ).join('');
 }
 
+// v7.23: pipeline board. Renders the same _leads cache, grouped by
+// status into 5 columns. Quick-move buttons on each card PUT a partial
+// {status: x} body to the existing /api/leads/{id} endpoint — no new
+// API surface, no schema change. The button matching the lead's
+// CURRENT status is omitted so we don't surface no-op clicks.
+const _LEADS_BOARD_COLUMNS = [
+    { key: 'cold',    label: 'Cold'    },
+    { key: 'warm',    label: 'Warm'    },
+    { key: 'hot',     label: 'Hot'     },
+    { key: 'closed',  label: 'Closed'  },
+    { key: 'dropped', label: 'Dropped' },
+];
+
+function _renderBoardCard(lead) {
+    const id = _escape(lead.id);
+    const name = _escape(lead.name || '(unnamed)');
+    const company = lead.company
+        ? `<div class="leads-board-card-meta">${_escape(lead.company)}</div>` : '';
+    // Follow-up date with overdue cue (mirrors v7.1 styling).
+    let followUp = '';
+    if (lead.follow_up_date) {
+        const today = _todayStr();
+        const overdue = lead.follow_up_date < today;
+        const isToday = lead.follow_up_date === today;
+        const suffix = overdue ? ' (overdue)' : (isToday ? ' (today)' : '');
+        const cls = overdue ? 'leads-board-card-meta leads-board-card-fu-overdue'
+                            : 'leads-board-card-meta';
+        followUp = `<div class="${cls}">Follow up: ${_escape(lead.follow_up_date)}${suffix}</div>`;
+    }
+    // Last template used (v7.18).
+    const lastTmpl = lead.last_template_key
+        ? `<div class="leads-board-card-meta">Last template: ${_escape(_templateLabel(lead.last_template_key))}</div>`
+        : '';
+    // Quick-move buttons. Spec lists Move to Warm / Hot / Closed / Drop;
+    // skip the button matching the lead's current status.
+    const moveTargets = [
+        { status: 'warm',    label: 'Move to Warm',   danger: false },
+        { status: 'hot',     label: 'Move to Hot',    danger: false },
+        { status: 'closed',  label: 'Move to Closed', danger: false },
+        { status: 'dropped', label: 'Drop',           danger: true  },
+    ];
+    const buttons = moveTargets
+        .filter(t => t.status !== (lead.status || '').toLowerCase())
+        .map(t =>
+            `<button type="button" class="leads-board-move-btn${t.danger ? ' danger' : ''}" ` +
+                `data-action="board-move" ` +
+                `data-lead-id="${id}" data-target-status="${_escape(t.status)}">` +
+                `${_escape(t.label)}` +
+            `</button>`
+        ).join('');
+    return (
+        `<div class="leads-board-card" data-lead-id="${id}">` +
+          `<div class="leads-board-card-name">${name}</div>` +
+          company + followUp + lastTmpl +
+          `<div class="leads-board-card-actions">${buttons}</div>` +
+        `</div>`
+    );
+}
+
+function renderLeadsBoard() {
+    const el = document.getElementById('leads-board');
+    if (!el) return;
+    // Group leads by status. Unknown statuses (defensive — shouldn't
+    // happen since the server validates against ALLOWED_STATUSES) get
+    // bucketed into Cold so they're still visible.
+    const groups = Object.fromEntries(_LEADS_BOARD_COLUMNS.map(c => [c.key, []]));
+    for (const lead of _leads) {
+        const s = (lead.status || 'cold').toLowerCase();
+        if (groups[s]) groups[s].push(lead);
+        else groups.cold.push(lead);
+    }
+    el.innerHTML = _LEADS_BOARD_COLUMNS.map(col => {
+        const items = groups[col.key];
+        const cardsHtml = items.length
+            ? items.map(_renderBoardCard).join('')
+            : `<div class="leads-board-cards-empty">No leads</div>`;
+        return (
+            `<div class="leads-board-column status-${col.key}">` +
+              `<div class="leads-board-column-header">` +
+                `<span>${_escape(col.label)}</span>` +
+                `<span class="leads-board-count">${items.length}</span>` +
+              `</div>` +
+              `<div class="leads-board-cards">${cardsHtml}</div>` +
+            `</div>`
+        );
+    }).join('');
+}
+
 async function loadLeads() {
     try {
         const r = await fetch('/api/leads');
@@ -2310,10 +2398,12 @@ async function loadLeads() {
         const d = await r.json();
         _leads = d.items || [];
         renderLeads();
+        renderLeadsBoard();  // v7.23
     } catch (err) {
         _leads = [];
         const el = document.getElementById('leads-list');
         if (el) el.innerHTML = '<div class="muted">Could not load leads.</div>';
+        renderLeadsBoard();  // v7.23: render empty board on fetch failure too
     }
 }
 
@@ -2466,6 +2556,43 @@ if (_leadsAddForm) {
 }
 
 // Edit/Delete/Save delegators on the lead list.
+// v7.23: board click delegator. PUT /api/leads/{id} accepts a partial
+// body (LeadIn fields all optional), so we send just {status: x}.
+// Server's _clean_lead validates against ALLOWED_STATUSES; an unknown
+// status returns 400 and surfaces in a red error toast.
+const _leadsBoardEl = document.getElementById('leads-board');
+if (_leadsBoardEl) {
+    _leadsBoardEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-action="board-move"]');
+        if (!btn) return;
+        const leadId = btn.dataset.leadId;
+        const target = btn.dataset.targetStatus;
+        if (!leadId || !target) return;
+        try {
+            const r = await fetch(
+                `/api/leads/${encodeURIComponent(leadId)}`,
+                {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: target }),
+                },
+            );
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            await loadLeads();
+            // Toast on the now-relocated card (board re-rendered in
+            // loadLeads → board-card stays at leadId selector).
+            const labelMap = { warm: 'Warm', hot: 'Hot',
+                               closed: 'Closed', dropped: 'Dropped',
+                               cold: 'Cold' };
+            const tgtLabel = labelMap[target] || target;
+            _flashLeadToast(leadId, `Moved to ${tgtLabel}`);
+        } catch (err) {
+            _flashLeadToast(leadId, 'Move failed: ' + err.message, 'error');
+        }
+    });
+}
+
 const _leadsListEl = document.getElementById('leads-list');
 // v7.17 (relocated from above the declaration to fix TDZ crash that
 // hung the whole Hub on "Loading…"): when the user changes a template

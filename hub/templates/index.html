@@ -728,6 +728,69 @@
             background: #fde2e2; color: #8a1c1c;
             border-color: #d88a8a;
         }
+        /* v7.23: lead pipeline board (5 columns by status). Sits above
+           the existing list view of the same data. */
+        .leads-board {
+            display: flex; gap: 0.6rem; flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+        .leads-board-column {
+            flex: 1 1 11rem; min-width: 11rem;
+            background: #f5f7fa; border: 1px solid #d8dde4;
+            border-radius: 6px; padding: 0.55rem 0.6rem;
+            display: flex; flex-direction: column; gap: 0.45rem;
+        }
+        .leads-board-column-header {
+            display: flex; align-items: center; gap: 0.4rem;
+            font-size: 0.85rem; font-weight: 600; color: #444;
+            padding-bottom: 0.35rem;
+            border-bottom: 1px solid #d8dde4;
+        }
+        .leads-board-count {
+            background: #e2e8f0; color: #475569;
+            padding: 0.05rem 0.45rem; border-radius: 999px;
+            font-size: 0.75rem; font-weight: 600;
+        }
+        .leads-board-cards {
+            display: flex; flex-direction: column; gap: 0.4rem;
+            min-height: 1.5rem;
+        }
+        .leads-board-cards-empty {
+            font-size: 0.78rem; color: #94a3b8; font-style: italic;
+            padding: 0.2rem 0.1rem;
+        }
+        .leads-board-card {
+            background: #fff; border: 1px solid #d8dde4; border-radius: 5px;
+            padding: 0.4rem 0.5rem; font-size: 0.82rem;
+            display: flex; flex-direction: column; gap: 0.2rem;
+        }
+        .leads-board-card-name    { font-weight: 600; color: #1f2937; }
+        .leads-board-card-meta    { color: #64748b; font-size: 0.76rem; }
+        .leads-board-card-fu-overdue { color: #b34a4a; font-weight: 600; }
+        .leads-board-card-actions {
+            display: flex; gap: 0.3rem; margin-top: 0.25rem; flex-wrap: wrap;
+        }
+        .leads-board-move-btn {
+            padding: 0.18rem 0.45rem; border: 1px solid #cbd5e1;
+            border-radius: 3px; background: #f1f5f9; color: #475569;
+            font-size: 0.72rem; cursor: pointer; font-family: inherit;
+        }
+        .leads-board-move-btn:hover {
+            background: #e2e8f0; border-color: #94a3b8;
+        }
+        .leads-board-move-btn.danger {
+            color: #8a1c1c; border-color: #d88a8a;
+        }
+        .leads-board-move-btn.danger:hover {
+            background: #fde2e2;
+        }
+        /* Per-status border tints — match the badge palette already
+           used by the list view (v6.9). */
+        .leads-board-column.status-cold    { border-top: 3px solid #94a3b8; }
+        .leads-board-column.status-warm    { border-top: 3px solid #ddb14a; }
+        .leads-board-column.status-hot     { border-top: 3px solid #b34a4a; }
+        .leads-board-column.status-closed  { border-top: 3px solid #4aa05c; }
+        .leads-board-column.status-dropped { border-top: 3px solid #b0b0b0; }
         /* v7.16: per-card outreach template select. Sits next to the
            Write Message button; same vertical size as a row-action. */
         .lead-template-select {
@@ -1218,6 +1281,9 @@
                 <button type="button" data-action="cancel-add">Cancel</button>
             </div>
         </form>
+        <!-- v7.23: pipeline board view. Renders the same _leads cache as
+             the list below, grouped into 5 status columns. Always visible. -->
+        <div id="leads-board" class="leads-board" aria-label="Lead pipeline board"></div>
         <form id="leads-bulk-form" class="leads-form" hidden
               aria-label="Bulk add leads from paste">
             <textarea class="leads-input" name="text" rows="6" required
