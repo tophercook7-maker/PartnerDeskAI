@@ -16,8 +16,9 @@ function _fmtEdited(v) {
 // existing loaders so renderMissionControl doesn't re-fetch.
 let _lastStatus = null;
 let _lastPartners = null;
+let _lastHistory = [];  // v7.21: feeds the "Ship stale" mood check
 
-function _computeMood(status, readyCount) {
+function _computeMood(status, readyCount, lastHistory) {
     // Priority matches the spec — first matching rule wins.
     if (status && status.health && status.health.status !== 'PASS') {
         return { label: 'Needs attention', cls: 'mood-red' };
@@ -25,10 +26,30 @@ function _computeMood(status, readyCount) {
     if (status && status.review && status.review.pending_drafts > 0) {
         return { label: 'Needs review', cls: 'mood-yellow' };
     }
+    // v7.21: "Ship stale" — readyCount > 0 AND nothing published in
+    // the last 24h. Catches the case the audit found: a pile of
+    // approved-but-unshipped posts under a misleading-green mood.
+    if (readyCount > 0 && _hoursSinceLastPublish(lastHistory) > 24) {
+        return { label: 'Ship stale', cls: 'mood-yellow' };
+    }
     if (readyCount > 0) {
         return { label: 'Ready to publish', cls: 'mood-green' };
     }
     return { label: 'Ready', cls: 'mood-green' };
+}
+
+// v7.21: hours since the most-recent /api/history posted_date. Returns
+// Infinity when history is empty (treated as 'never posted' → stale if
+// anything is ready). Defensive against malformed dates.
+function _hoursSinceLastPublish(history) {
+    if (!Array.isArray(history) || history.length === 0) return Infinity;
+    let mostRecent = 0;
+    for (const it of history) {
+        const t = Date.parse(it.posted_date);
+        if (!isNaN(t) && t > mostRecent) mostRecent = t;
+    }
+    if (mostRecent === 0) return Infinity;
+    return (Date.now() - mostRecent) / (1000 * 60 * 60);
 }
 
 function _statCard(label, value, opts = {}) {
@@ -103,7 +124,7 @@ function renderMissionControl() {
     const totalConns   = conns.length;
     const verified     = conns.filter(c => c.status === 'verified').length;
     const partners     = _lastPartners || [];
-    const mood         = _computeMood(_lastStatus, readyCount);
+    const mood         = _computeMood(_lastStatus, readyCount, _lastHistory);
 
     const statsHtml = (
         `<div class="mission-stats">` +
@@ -777,8 +798,10 @@ async function loadHistory() {
         const r = await fetch('/api/history?limit=20');
         if (!r.ok) throw new Error('http ' + r.status);
         const d = await r.json();
-        renderApprovedHistory(d.items || []);
+        _lastHistory = d.items || [];  // v7.21: cache for mood + later
+        renderApprovedHistory(_lastHistory);
     } catch (err) {
+        _lastHistory = [];
         document.getElementById('approved-history').innerHTML =
             '<li class="muted">Could not load history.</li>';
     }
@@ -2979,8 +3002,42 @@ document.addEventListener('click', (ev) => {
 // body to the clipboard without an extra fetch per row.
 let _readyPosts = [];
 
+// v7.21: which platforms can the bulk-publish driver actually post to?
+// Two requirements: (1) connection is verified, (2) we have a publish
+// path wired (LinkedIn + Facebook today; Instagram/GBP still manual).
+const _BULK_PUBLISH_PLATFORMS = [
+    { label: 'LinkedIn', key: 'linkedin' },
+    { label: 'Facebook', key: 'facebook' },
+];
+
+function _bulkPublishablePosts() {
+    return _readyPosts.filter(p =>
+        _BULK_PUBLISH_PLATFORMS.some(bp =>
+            bp.label === p.platform && isPlatformConnected(bp.label)
+        )
+    );
+}
+
+function _updateBulkPublishButton() {
+    const btn = document.getElementById('bulk-publish-btn');
+    if (!btn) return;
+    const eligible = _bulkPublishablePosts();
+    if (eligible.length === 0) {
+        btn.hidden = true;
+        return;
+    }
+    btn.hidden = false;
+    btn.textContent = `Publish ${eligible.length} verified`;
+    // Per-platform breakdown in the tooltip for transparency.
+    const counts = {};
+    for (const p of eligible) counts[p.platform] = (counts[p.platform] || 0) + 1;
+    btn.title = Object.entries(counts)
+        .map(([k, v]) => `${v} ${k}`).join(' + ');
+}
+
 function renderReady(posts) {
     const el = document.getElementById('ready-list');
+    _updateBulkPublishButton();
     if (!posts || posts.length === 0) {
         el.innerHTML = '<div class="muted">No approved posts ready yet.</div>';
         return;
@@ -3097,6 +3154,87 @@ document.getElementById('ready-list').addEventListener('click', async (e) => {
         return;
     }
 });
+
+// v7.21: bulk publish — sequentially POST /publish for every ready
+// post on a verified platform with a wired publisher (LinkedIn or
+// Facebook today). ONE up-front confirm with counts; individual
+// per-post confirms would be N modal prompts. Progress streams to
+// cmd-output so failures are visible per-post.
+async function _bulkPublishAllVerified() {
+    const eligible = _bulkPublishablePosts();
+    if (eligible.length === 0) {
+        document.getElementById('cmd-status').textContent =
+            'Nothing to publish — no ready posts on verified platforms.';
+        return;
+    }
+    const counts = {};
+    for (const p of eligible) counts[p.platform] = (counts[p.platform] || 0) + 1;
+    const breakdown = Object.entries(counts)
+        .map(([k, v]) => `${v} ${k}`).join(' + ');
+    const proceed = confirm(
+        `Publish ${eligible.length} verified post${eligible.length === 1 ? '' : 's'} now? ` +
+        `This will go publicly live.\n\n` +
+        `Breakdown: ${breakdown}\n\n` +
+        `Posts will be published one at a time. Open Command Output to watch progress.`
+    );
+    if (!proceed) {
+        document.getElementById('cmd-status').textContent =
+            'Cancelled. Nothing was published.';
+        return;
+    }
+    setBusy(true);
+    const out = document.getElementById('cmd-output');
+    const stat = document.getElementById('cmd-status');
+    const progress = [];
+    let ok = 0, fail = 0;
+    stat.textContent = `Bulk publishing ${eligible.length} post(s)…`;
+    out.textContent = '';
+    // Map platform label → API platform key. Mirrors the per-row dispatch.
+    const PLATFORM_KEY = { LinkedIn: 'linkedin', Facebook: 'facebook' };
+    for (const p of eligible) {
+        const platformKey = PLATFORM_KEY[p.platform];
+        if (!platformKey) {
+            progress.push(`SKIP #${p.id} (${p.platform}): no publish path`);
+            out.textContent = progress.join('\n');
+            continue;
+        }
+        try {
+            const r = await fetch(
+                `/api/posts/${encodeURIComponent(p.id)}/publish`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ platform: platformKey }),
+                },
+            );
+            const d = await r.json();
+            if (r.ok && d.ok) {
+                ok += 1;
+                progress.push(`OK   #${p.id} (${p.platform})`);
+            } else {
+                fail += 1;
+                const err = d.message || d.detail || `HTTP ${r.status}`;
+                progress.push(`FAIL #${p.id} (${p.platform}): ${err}`);
+            }
+        } catch (err) {
+            fail += 1;
+            progress.push(`FAIL #${p.id} (${p.platform}): ${err.message || err}`);
+        }
+        // Stream after each post so the user sees progress live.
+        out.textContent = progress.join('\n');
+        stat.textContent =
+            `Bulk publishing… ${ok + fail}/${eligible.length} done (${fail} failed)`;
+    }
+    stat.textContent = `Bulk publish done — ${ok} ok, ${fail} failed.`;
+    await refreshAll();
+    setBusy(false);
+}
+
+// v7.21: bulk publish button — bound once at module load.
+(function () {
+    const btn = document.getElementById('bulk-publish-btn');
+    if (btn) btn.addEventListener('click', _bulkPublishAllVerified);
+})();
 
 // Shared publish driver — used by Post-to-LinkedIn and Post-to-Facebook
 // buttons. Identical confirm/fetch/render plumbing keeps both flows in
