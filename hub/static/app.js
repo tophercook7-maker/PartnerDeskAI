@@ -2533,6 +2533,246 @@ async function loadLeads() {
     }
 }
 
+// --- v7.28: Lead Scout Queue --------------------------------------------
+// Manual capture surface for businesses Topher spots in the wild. No
+// scraping, no auto-outreach, no OpenAI. Convert promotes a scout row
+// into the existing Logan registry via POST /api/scout-leads/{id}/convert.
+
+let _scoutLeads = [];
+
+function _renderScoutCard(s) {
+    const id = _escape(s.id);
+    const name = _escape(s.business_name || '(unnamed)');
+    const status = (s.status || 'new').toLowerCase();
+    const prio = (s.priority || 'medium').toLowerCase();
+    const meta = [];
+    if (s.category)       meta.push(_escape(s.category));
+    if (s.city_state)     meta.push(_escape(s.city_state));
+    const metaLine = meta.length
+        ? `<div class="scout-card-meta">${meta.join(' · ')}</div>` : '';
+    const emailLine = s.contact_email
+        ? `<div class="scout-card-meta">${_escape(s.contact_email)}</div>` : '';
+    const sourceLine = s.contact_source
+        ? `<div class="scout-card-meta">Source: ${_escape(s.contact_source)}</div>` : '';
+    const websiteLine = s.website_status
+        ? `<div class="scout-card-meta">Website: ${_escape(s.website_status)}</div>` : '';
+    const evidenceLine = s.evidence
+        ? `<div class="scout-card-evidence">Evidence: ${_escape(s.evidence)}</div>` : '';
+    const offerLine = s.offer_angle
+        ? `<div class="scout-card-offer">Offer: ${_escape(s.offer_angle)}</div>` : '';
+    const notesLine = s.notes
+        ? `<div class="scout-card-meta">Notes: ${_escape(s.notes)}</div>` : '';
+    const convertedLine = s.converted_lead_id
+        ? `<div class="scout-card-meta">→ Converted to Logan lead ` +
+          `${_escape(s.converted_lead_id)}</div>` : '';
+    // Buttons depend on status. Converted rows show no Qualify/Convert
+    // (no-op), but Delete stays available.
+    const buttons = [];
+    if (status !== 'qualified' && status !== 'converted') {
+        buttons.push(`<button type="button" class="row-action" ` +
+            `data-action="scout-qualify" data-scout-id="${id}">Qualify</button>`);
+    }
+    if (status !== 'converted') {
+        buttons.push(`<button type="button" class="row-action primary" ` +
+            `data-action="scout-convert" data-scout-id="${id}">Convert to Lead</button>`);
+    }
+    if (status !== 'rejected' && status !== 'converted') {
+        buttons.push(`<button type="button" class="row-action" ` +
+            `data-action="scout-reject" data-scout-id="${id}">Reject</button>`);
+    }
+    buttons.push(`<button type="button" class="row-action danger" ` +
+        `data-action="scout-delete" data-scout-id="${id}">Delete</button>`);
+
+    return (
+        `<div class="scout-card" data-scout-id="${id}">` +
+          `<div class="scout-card-name">${name} ` +
+            `<span class="scout-status-badge scout-status-${_escape(status)}">${_escape(status)}</span> ` +
+            `<span class="scout-priority-badge scout-priority-${_escape(prio)}">${_escape(prio)}</span>` +
+          `</div>` +
+          metaLine + emailLine + sourceLine + websiteLine +
+          evidenceLine + offerLine + notesLine + convertedLine +
+          `<div class="scout-card-actions">${buttons.join('')}</div>` +
+        `</div>`
+    );
+}
+
+function renderScoutQueue() {
+    const el = document.getElementById('scout-list');
+    const counter = document.getElementById('scout-count');
+    if (!el) return;
+    if (counter) {
+        counter.textContent = _scoutLeads.length
+            ? `${_scoutLeads.length} scout lead${_scoutLeads.length === 1 ? '' : 's'}`
+            : '';
+    }
+    if (_scoutLeads.length === 0) {
+        el.innerHTML = '<div class="muted">No scout leads yet. ' +
+            'Click "+ Add Scout Lead" to capture one.</div>';
+        return;
+    }
+    // Sort: newest updated first, but converted/rejected sink to the
+    // bottom so the active scouting queue stays at the top.
+    const sortRank = s => {
+        const st = (s.status || '').toLowerCase();
+        if (st === 'converted' || st === 'rejected') return 1;
+        return 0;
+    };
+    const sorted = _scoutLeads.slice().sort((a, b) => {
+        const r = sortRank(a) - sortRank(b);
+        if (r !== 0) return r;
+        return (b.updated_at || '').localeCompare(a.updated_at || '');
+    });
+    el.innerHTML = sorted.map(_renderScoutCard).join('');
+}
+
+async function loadScoutLeads() {
+    try {
+        const r = await fetch('/api/scout-leads');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _scoutLeads = d.items || [];
+        renderScoutQueue();
+    } catch (err) {
+        _scoutLeads = [];
+        const el = document.getElementById('scout-list');
+        if (el) el.innerHTML = '<div class="muted">Could not load scout queue.</div>';
+    }
+}
+
+// Toggle the add-scout form.
+const _scoutAddToggle = document.getElementById('scout-add-toggle');
+const _scoutAddForm   = document.getElementById('scout-add-form');
+if (_scoutAddToggle && _scoutAddForm) {
+    _scoutAddToggle.addEventListener('click', () => {
+        const hidden = _scoutAddForm.hidden;
+        _scoutAddForm.hidden = !hidden;
+        if (hidden) {
+            const first = _scoutAddForm.querySelector('input[name="business_name"]');
+            if (first) first.focus();
+        }
+    });
+}
+
+// Add-scout-lead form submit.
+if (_scoutAddForm) {
+    _scoutAddForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(_scoutAddForm).entries());
+        try {
+            const r = await fetch('/api/scout-leads', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            _scoutAddForm.reset();
+            _scoutAddForm.hidden = true;
+            await loadScoutLeads();
+        } catch (err) {
+            // Surface scout errors on the scout list (no per-card scope
+            // yet — failures during add land at the section level).
+            const el = document.getElementById('scout-list');
+            if (el) {
+                const div = document.createElement('div');
+                div.className = 'muted';
+                div.style.color = '#8a1c1c';
+                div.textContent = 'Add failed: ' + err.message;
+                el.prepend(div);
+                setTimeout(() => div.remove(), 5000);
+            }
+        }
+    });
+    _scoutAddForm.addEventListener('click', (e) => {
+        if (e.target.dataset.action === 'cancel-scout-add') {
+            _scoutAddForm.hidden = true;
+        }
+    });
+}
+
+// Per-card action delegator: Qualify / Convert / Reject / Delete.
+const _scoutListEl = document.getElementById('scout-list');
+if (_scoutListEl) {
+    _scoutListEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+        const action = btn.dataset.action;
+        const scoutId = btn.dataset.scoutId;
+        if (!scoutId) return;
+
+        try {
+            if (action === 'scout-qualify') {
+                const r = await fetch(
+                    `/api/scout-leads/${encodeURIComponent(scoutId)}`,
+                    {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'qualified' }),
+                    },
+                );
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadScoutLeads();
+                return;
+            }
+            if (action === 'scout-reject') {
+                if (!confirm('Reject this scout lead?')) return;
+                const r = await fetch(
+                    `/api/scout-leads/${encodeURIComponent(scoutId)}`,
+                    {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'rejected' }),
+                    },
+                );
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadScoutLeads();
+                return;
+            }
+            if (action === 'scout-delete') {
+                const scout = _scoutLeads.find(s => s.id === scoutId);
+                const label = scout ? scout.business_name : scoutId;
+                if (!confirm(`Delete scout lead "${label}"? This cannot be undone.`)) return;
+                const r = await fetch(
+                    `/api/scout-leads/${encodeURIComponent(scoutId)}`,
+                    { method: 'DELETE' },
+                );
+                if (!r.ok) {
+                    const d = await r.json().catch(() => ({}));
+                    throw new Error(d.detail || 'http ' + r.status);
+                }
+                await loadScoutLeads();
+                return;
+            }
+            if (action === 'scout-convert') {
+                const scout = _scoutLeads.find(s => s.id === scoutId);
+                const label = scout ? scout.business_name : scoutId;
+                if (!confirm(
+                    `Convert "${label}" into a Logan/LinkedIn Lead?\n\n` +
+                    `This copies the scout row into the Logan registry as a ` +
+                    `cold lead. No outreach is sent — you still have to ` +
+                    `message manually.`
+                )) return;
+                const r = await fetch(
+                    `/api/scout-leads/${encodeURIComponent(scoutId)}/convert`,
+                    { method: 'POST' },
+                );
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadScoutLeads();
+                await loadLeads();  // refresh Logan side
+                document.getElementById('cmd-status').textContent =
+                    `Converted "${label}" → new Logan lead id ${d.lead.id}.`;
+                return;
+            }
+        } catch (err) {
+            document.getElementById('cmd-status').textContent =
+                'Scout action failed: ' + (err.message || err);
+        }
+    });
+}
+
 // Filter input → re-render (no fetch).
 const _leadsFilterEl = document.getElementById('leads-filter');
 if (_leadsFilterEl) {
@@ -3691,6 +3931,7 @@ async function refreshAll() {
         ['loadInbox',         loadInbox],
         ['loadMetaReadiness', loadMetaReadiness],
         ['loadLeads',         loadLeads],
+        ['loadScoutLeads',    loadScoutLeads],  // v7.28
     ];
     const results1 = await Promise.all(batch1.map(([n, f]) => _runLoaderSafely(n, f)));
     const results2 = await Promise.all(batch2.map(([n, f]) => _runLoaderSafely(n, f)));

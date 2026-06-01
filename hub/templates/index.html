@@ -728,6 +728,52 @@
             background: #fde2e2; color: #8a1c1c;
             border-color: #d88a8a;
         }
+        /* v7.28: Lead Scout Queue UI. Sits inside #leads-section,
+           below the Logan list, separated by a sub-heading. */
+        .scout-h3 {
+            margin-top: 1.6rem; margin-bottom: 0.3rem;
+            padding-top: 0.8rem;
+            border-top: 1px solid #d8dde4;
+            font-size: 1.05rem;
+        }
+        .scout-toolbar {
+            display: flex; gap: 0.6rem; align-items: center;
+            flex-wrap: wrap; margin-bottom: 0.6rem;
+        }
+        .scout-list {
+            display: grid; gap: 0.55rem;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        }
+        .scout-card {
+            background: #fff; border: 1px solid #d8dde4;
+            border-radius: 6px; padding: 0.6rem 0.75rem;
+            display: flex; flex-direction: column; gap: 0.25rem;
+            font-size: 0.85rem;
+        }
+        .scout-card-name {
+            font-weight: 600; color: #1f2937; font-size: 0.95rem;
+        }
+        .scout-card-meta { color: #64748b; font-size: 0.78rem; }
+        .scout-card-evidence, .scout-card-offer {
+            color: #475569; margin-top: 0.15rem;
+        }
+        .scout-card-actions {
+            display: flex; gap: 0.3rem; margin-top: 0.35rem; flex-wrap: wrap;
+        }
+        .scout-status-badge, .scout-priority-badge {
+            display: inline-block; padding: 0.1rem 0.45rem;
+            border-radius: 999px; font-size: 0.7rem;
+            font-weight: 600; text-transform: lowercase;
+        }
+        .scout-status-new       { background: #e2e8f0; color: #475569; }
+        .scout-status-qualified { background: #cfe1ff; color: #1c4f8f; }
+        .scout-status-contacted { background: #fff6e0; color: #8a6320; }
+        .scout-status-follow_up { background: #fce8b8; color: #6b4d1f; }
+        .scout-status-converted { background: #d8efd8; color: #2d6a3a; }
+        .scout-status-rejected  { background: #f1d4d4; color: #7a2424; }
+        .scout-priority-low     { background: #e2e8f0; color: #64748b; }
+        .scout-priority-medium  { background: #cfe1ff; color: #2a6ec1; }
+        .scout-priority-high    { background: #fde2e2; color: #b34a4a; }
         /* v7.26: "Clear filters" escape hatch. Subdued link styling so
            it doesn't compete with the primary toolbar controls. */
         .leads-clear-filters {
@@ -1368,6 +1414,53 @@ e.g. https://www.linkedin.com/in/christian-kovac/
             </div>
         </form>
         <div id="leads-list" class="leads-list">
+            <div class="muted">Loading…</div>
+        </div>
+
+        <!-- v7.28: Lead Scout Queue. Manual capture of local businesses
+             that may need web work / tap hub / AI systems. Convert
+             qualified ones into Logan leads above. -->
+        <h3 class="scout-h3">Lead Scout Queue</h3>
+        <div class="muted" style="margin-bottom: 0.5rem; font-size: 0.85rem;">
+            Manual capture only. No scraping, no auto-outreach. Convert
+            a qualified scout lead to copy it into Logan above as a
+            cold lead.
+        </div>
+        <div class="scout-toolbar">
+            <button type="button" id="scout-add-toggle" class="primary">+ Add Scout Lead</button>
+            <span id="scout-count" class="muted"></span>
+        </div>
+        <form id="scout-add-form" class="leads-form" hidden
+              aria-label="Add a scout lead">
+            <input class="leads-input" name="business_name"
+                   placeholder="Business Name (required)" required>
+            <input class="leads-input" name="category"
+                   placeholder="Category (e.g. plumber, salon, cafe)">
+            <input class="leads-input" name="city_state"
+                   placeholder="City / State">
+            <input class="leads-input" name="contact_email"
+                   placeholder="Contact Email">
+            <input class="leads-input" name="contact_source"
+                   placeholder="Contact Source (e.g. saw their flyer, NextDoor)">
+            <input class="leads-input" name="website_status"
+                   placeholder="Website Status (default: no website found)">
+            <textarea class="leads-input" name="evidence" rows="2"
+                      placeholder="Evidence they need help"></textarea>
+            <input class="leads-input" name="offer_angle"
+                   placeholder="Offer Angle (e.g. tap hub + landing page)">
+            <select class="leads-input" name="priority">
+                <option value="low">low</option>
+                <option value="medium" selected>medium</option>
+                <option value="high">high</option>
+            </select>
+            <textarea class="leads-input" name="notes" rows="2"
+                      placeholder="Notes (optional)"></textarea>
+            <div class="leads-form-actions">
+                <button type="submit" class="primary">Add Scout Lead</button>
+                <button type="button" data-action="cancel-scout-add">Cancel</button>
+            </div>
+        </form>
+        <div id="scout-list" class="scout-list">
             <div class="muted">Loading…</div>
         </div>
     </section>

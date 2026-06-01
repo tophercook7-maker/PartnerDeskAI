@@ -48,6 +48,7 @@ import approval_manager  # noqa: E402
 import connection_state  # noqa: E402
 import env_writer  # noqa: E402
 import leads as leads_mod  # noqa: E402
+import scout_queue as scout_mod  # noqa: E402
 import linkedin_oauth  # noqa: E402
 import meta_app_state  # noqa: E402
 import social_posters  # noqa: E402
@@ -1065,6 +1066,23 @@ class LeadBatchIn(BaseModel):
     text: str
 
 
+class ScoutLeadIn(BaseModel):
+    """v7.28: scout-queue input. All optional so PUT can omit fields.
+    Server's scout_mod._clean enforces business_name required +
+    validates status/priority enums."""
+    business_name:  str | None = None
+    category:       str | None = None
+    city_state:     str | None = None
+    contact_email:  str | None = None
+    contact_source: str | None = None
+    website_status: str | None = None
+    evidence:       str | None = None
+    offer_angle:    str | None = None
+    priority:       str | None = None
+    status:         str | None = None
+    notes:          str | None = None
+
+
 @app.get("/api/leads")
 def api_leads_list() -> dict:
     """All leads, newest-first by updated_at."""
@@ -1218,6 +1236,63 @@ def api_leads_templates() -> dict:
             for k, v in leads_mod.MESSAGE_TEMPLATES.items()
         ],
     }
+
+
+# --- v7.28: Logan Lead Scout Queue ------------------------------------
+# Local-only capture + qualification queue. NO scraping, NO outreach,
+# NO OpenAI. The /convert helper copies a row into the existing leads
+# registry — that's the only cross-data-file write any of these do.
+
+@app.get("/api/scout-leads")
+def api_scout_leads_list() -> dict:
+    items = scout_mod.load()
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/scout-leads")
+def api_scout_leads_add(body: ScoutLeadIn) -> dict:
+    try:
+        return scout_mod.add(body.model_dump(exclude_none=True))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not write: {e}")
+
+
+@app.put("/api/scout-leads/{scout_id}")
+def api_scout_leads_update(scout_id: str, body: ScoutLeadIn) -> dict:
+    try:
+        return scout_mod.update(scout_id, body.model_dump(exclude_none=True))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Scout lead {scout_id!r} not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not write: {e}")
+
+
+@app.delete("/api/scout-leads/{scout_id}")
+def api_scout_leads_delete(scout_id: str) -> dict:
+    if not scout_mod.delete(scout_id):
+        raise HTTPException(status_code=404, detail=f"Scout lead {scout_id!r} not found")
+    return {"ok": True, "id": scout_id}
+
+
+@app.post("/api/scout-leads/{scout_id}/convert")
+def api_scout_leads_convert(scout_id: str) -> dict:
+    """
+    Copy a scout lead into the Logan/LinkedIn Leads registry as a cold
+    lead, then mark the scout row as 'converted'. Returns
+    {scout, lead}. Local-only: no external calls, no outreach.
+    """
+    try:
+        return scout_mod.convert(scout_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Scout lead {scout_id!r} not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not write: {e}")
 
 
 @app.get("/api/connections")
