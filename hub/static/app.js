@@ -2038,13 +2038,31 @@ function _templateLabel(key) {
     return t ? t.label : key;
 }
 
+// v7.17: substitute {name} and {company} into a template body, mirroring
+// the server's draft_message logic. Pure local — no fetch per hover.
+function _renderTemplatePreview(body, lead) {
+    if (!body || !lead) return '';
+    const name    = ((lead.name    || '').trim()) || 'there';
+    const company = ((lead.company || '').trim()) || 'your business';
+    return body.replace(/\{name\}/g, name).replace(/\{company\}/g, company);
+}
+
 function _renderTemplateSelect(leadId) {
-    const opts = _messageTemplates.map(t =>
-        `<option value="${_escape(t.key)}">${_escape(t.label)}</option>`
-    ).join('');
+    const lead = _leads.find(l => l.id === leadId);
+    const opts = _messageTemplates.map(t => {
+        // Native title= tooltip on each <option>. Browser support is
+        // patchy for in-dropdown tooltips (Firefox: yes, Chromium:
+        // mostly, Safari: hover delay) but it's the lightest path
+        // and degrades gracefully — worst case the user sees no
+        // tooltip, which matches v7.16 behavior.
+        const preview = _renderTemplatePreview(t.body, lead);
+        return `<option value="${_escape(t.key)}" ` +
+            `title="${_escape(preview)}">${_escape(t.label)}</option>`;
+    }).join('');
     return (
         `<select class="lead-template-select" ` +
-            `data-lead-id="${_escape(leadId)}" aria-label="Message template">` +
+            `data-lead-id="${_escape(leadId)}" aria-label="Message template" ` +
+            `title="Auto: server picks template based on lead status">` +
             `<option value="">Auto</option>${opts}` +
         `</select>`
     );
@@ -2279,6 +2297,19 @@ if (_leadsSortEl) {
         _leadsSort = _leadsSortEl.value === 'follow-up' ? 'follow-up' : 'updated';
         try { localStorage.setItem(_LEADS_SORT_KEY, _leadsSort); } catch (e) {}
         renderLeads();
+    });
+}
+
+// v7.17: when the user changes a template select, copy the chosen
+// option's title= up to the select itself so hovering the closed
+// select shows the right preview (Chromium ignores per-option
+// titles on the closed control).
+if (_leadsListEl) {
+    _leadsListEl.addEventListener('change', (e) => {
+        const sel = e.target.closest('.lead-template-select');
+        if (!sel) return;
+        const opt = sel.options[sel.selectedIndex];
+        sel.title = opt ? (opt.title || opt.text) : '';
     });
 }
 

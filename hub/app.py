@@ -1174,10 +1174,20 @@ def api_leads_templates() -> dict:
     Expose the outreach template registry to the frontend so the
     picker stays in sync with leads.py without hardcoding labels
     on the client.
+
+    v7.17: also returns each template's raw body (with {name}/
+    {company} placeholders) so the frontend can render a per-lead
+    preview tooltip without an extra round-trip. Bodies are static
+    public marketing copy — no secrets.
     """
     return {
         "templates": [
-            {"key": k, "label": v["label"], "for_status": v["for_status"]}
+            {
+                "key":        k,
+                "label":      v["label"],
+                "for_status": v["for_status"],
+                "body":       v["body"],
+            }
             for k, v in leads_mod.MESSAGE_TEMPLATES.items()
         ],
     }

@@ -112,6 +112,8 @@ v7.14 wires the **Olivia Office partner card** to real data. `summaries_generate
 
 v7.15 normalizes the last filter-empty outlier: `'No matching Parker work.'` → `'No Parker work matches the filter.'`, matching the structure of `'No leads match the filter.'` and `'No reports match the current filter.'` The rest of the v7-walkthrough's empty-state findings turned out to be coherent on closer inspection (e.g. `'No data in this window.'` matches the section's own "Window:" selector label, and the duplicated "configured" strings live in different sections).
 
+v7.17 adds **template preview on hover** to the v7.16 picker. `GET /api/leads/templates` now also returns each template's raw body. The frontend renders `{name}`/`{company}` substituted previews into `title=` attributes on every `<option>` *and* on the select itself (mirrored on `change` so the closed control shows the currently-selected template's preview). Pure native tooltips — no custom popup, no extra round-trips, degrades gracefully on browsers that don't show `<option>` titles in the dropdown.
+
 v7.16 — **Logan Outreach Pipeline (multi-template messaging)**. Replaces the single fixed v7.0 outreach template with a stage-aware registry of four:
 
 | Key | Label | Default for status |
