@@ -1700,8 +1700,12 @@ def api_partners() -> dict:
             },
             {
                 "key":    "olivia",
+                # v7.30: Olivia is active — daily_ops.py has been
+                # writing her summaries + snapshots on the cron every
+                # morning. v7.14 already wired real metrics; the
+                # status label was the last thing lagging the truth.
                 "name":   "Olivia Office",
-                "status": "standby",
+                "status": "active",
                 "role":   "Operations / admin",
                 "metrics": {
                     "summaries_generated": summaries_count,

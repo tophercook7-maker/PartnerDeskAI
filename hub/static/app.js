@@ -704,9 +704,9 @@ function renderPartners(partners) {
               `<pre id="parker-next">…</pre></div>`
             : '';
 
-        // v7.29: Logan now has its own actions (was hardcoded "Coming
-        // Soon" alongside Olivia). Olivia stays in the fallback since
-        // her surface is still placeholder-only.
+        // v7.29 (Logan) + v7.30 (Olivia): every shipped partner has
+        // real actions now. The disabled "Coming Soon" fallback stays
+        // for future partners that haven't been wired yet.
         let actionsHtml;
         if (p.key === 'parker') {
             actionsHtml =
@@ -718,6 +718,11 @@ function renderPartners(partners) {
             actionsHtml =
                 `<div class="partner-actions">` +
                     `<button data-partner-action="logan-open" class="primary">Open Logan Leads</button>` +
+                `</div>`;
+        } else if (p.key === 'olivia') {
+            actionsHtml =
+                `<div class="partner-actions">` +
+                    `<button data-partner-action="olivia-open" class="primary">Open Today's Summary</button>` +
                 `</div>`;
         } else {
             actionsHtml =
@@ -772,6 +777,11 @@ document.getElementById('partner-rooms').addEventListener('click', (e) => {
         // v7.29: scroll to the LinkedIn Leads section, which now
         // also contains the v7.28 Lead Scout Queue at the bottom.
         const target = document.getElementById('leads-section');
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (action === 'olivia-open') {
+        // v7.30: scroll to Today's Summary, which is the human-
+        // readable face of Olivia's daily morning_summary.py output.
+        const target = document.getElementById('summary-section');
         if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 });

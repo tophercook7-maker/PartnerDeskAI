@@ -112,6 +112,14 @@ v7.14 wires the **Olivia Office partner card** to real data. `summaries_generate
 
 v7.15 normalizes the last filter-empty outlier: `'No matching Parker work.'` → `'No Parker work matches the filter.'`, matching the structure of `'No leads match the filter.'` and `'No reports match the current filter.'` The rest of the v7-walkthrough's empty-state findings turned out to be coherent on closer inspection (e.g. `'No data in this window.'` matches the section's own "Window:" selector label, and the duplicated "configured" strings live in different sections).
 
+v7.30 — **Make Olivia honest**. Same treatment as Logan got in v7.29:
+
+1. `/api/partners` returns Olivia with `status: "active"` (was `"standby"`). She was always active — `daily_ops.py` has been writing her `summaries/*.md` + `status_history/*.json` every morning since v0.1 — the status label was the only thing lagging the truth.
+2. `renderPartners` gives Olivia her own actionsHtml with a primary `Open Today's Summary` button.
+3. New `olivia-open` click handler smooth-scrolls to the Today's Summary section (now bears an `id="summary-section"` for that hook).
+
+All three Partner Rooms now show truthful status badges + real metrics + functional buttons. The disabled "Coming Soon" fallback path stays in the code for any future partner that hasn't been wired yet, but no current partner uses it.
+
 v7.29 — **Logan partner room fix**. Logan is no longer "Coming Soon". Three changes:
 
 1. `/api/partners` returns Logan with `status: "active"` (was `"standby"`), and adds a third metric `scout_queue` (count of active scout rows — anything not converted/rejected) alongside the existing `prospects_tracked` and `outreach_queue`.
