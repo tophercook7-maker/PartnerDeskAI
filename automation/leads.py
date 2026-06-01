@@ -32,6 +32,7 @@ from datetime import datetime
 from pathlib import Path
 import json
 import os
+import re
 import tempfile
 import time
 
@@ -199,6 +200,103 @@ def delete(lead_id: str) -> bool:
         return False
     _save(leads)
     return True
+
+
+# --- v7.20: Bulk paste import ------------------------------------------
+
+MAX_BATCH_SIZE = 50
+
+# Match the canonical LinkedIn profile URL shapes. We accept with or
+# without protocol, with or without www, and with or without a trailing
+# slash. The slug is captured for normalization. Bare slugs (without
+# /in/) are rejected because they're too ambiguous against natural
+# text.
+_LINKEDIN_URL_RE = re.compile(
+    r"(?:https?://)?(?:www\.)?linkedin\.com/in/([a-zA-Z0-9_\-]+)/?",
+    re.IGNORECASE,
+)
+
+
+def parse_linkedin_input(line: str) -> dict | None:
+    """
+    Parse one line of paste input. Returns a {handle, name} dict on
+    success or None for blank lines, comment lines (#…), or anything
+    that isn't a recognizable LinkedIn URL. Name is guessed from the
+    slug ("christian-kovac" → "Christian Kovac"); the user can edit
+    after import.
+    """
+    s = line.strip()
+    if not s or s.startswith("#"):
+        return None
+    m = _LINKEDIN_URL_RE.search(s)
+    if not m:
+        return None
+    slug = m.group(1)
+    name_words = [w.capitalize() for w in slug.replace("_", "-").split("-") if w]
+    return {
+        "handle": f"linkedin.com/in/{slug}",
+        "name":   " ".join(name_words) or slug,
+    }
+
+
+def add_batch(lines: list[str]) -> dict:
+    """
+    Bulk-create cold leads from paste input. Dedupes against existing
+    leads AND within the batch itself (both by handle, case-insensitive).
+    All recognized lines get status=cold, source='paste-import'. Single
+    atomic write at the end so a 50-line paste is one disk hit, not 50.
+
+    Returns:
+        {
+          "added":              [<new lead rows>],
+          "skipped_duplicates": [<handles already present>],
+          "skipped_invalid":    [<lines that didn't parse>],
+          "total_processed":    int,
+        }
+    """
+    if len(lines) > MAX_BATCH_SIZE:
+        raise ValueError(
+            f"batch size {len(lines)} exceeds limit of {MAX_BATCH_SIZE}"
+        )
+    leads = load()
+    existing_handles = {(l.get("handle") or "").lower() for l in leads}
+    added: list[dict] = []
+    duplicates: list[str] = []
+    invalid: list[str] = []
+    seen_in_batch: set[str] = set()
+    for raw_line in lines:
+        parsed = parse_linkedin_input(raw_line)
+        if parsed is None:
+            stripped = raw_line.strip()
+            if stripped and not stripped.startswith("#"):
+                invalid.append(stripped[:200])  # cap reported length
+            continue
+        handle_lower = parsed["handle"].lower()
+        if handle_lower in existing_handles or handle_lower in seen_in_batch:
+            duplicates.append(parsed["handle"])
+            continue
+        seen_in_batch.add(handle_lower)
+        cleaned = _clean_lead({
+            "name":   parsed["name"],
+            "handle": parsed["handle"],
+            "source": "paste-import",
+            "status": DEFAULT_STATUS,
+        })
+        # _next_id reads existing-id set; pass leads+added so siblings
+        # added earlier in this same batch can't collide.
+        cleaned["id"] = _next_id(leads + added)
+        cleaned["created_at"] = _now()
+        cleaned["updated_at"] = cleaned["created_at"]
+        added.append(cleaned)
+    if added:
+        leads.extend(added)
+        _save(leads)
+    return {
+        "added":              added,
+        "skipped_duplicates": duplicates,
+        "skipped_invalid":    invalid,
+        "total_processed":    len(lines),
+    }
 
 
 # --- v7.0: Follow-up queue helpers --------------------------------------

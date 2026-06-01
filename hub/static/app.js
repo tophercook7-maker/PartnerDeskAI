@@ -2379,6 +2379,55 @@ if (_leadsAddToggle && _leadsAddForm) {
     });
 }
 
+// v7.20: bulk paste-import form.
+const _leadsBulkToggle = document.getElementById('leads-bulk-toggle');
+const _leadsBulkForm   = document.getElementById('leads-bulk-form');
+if (_leadsBulkToggle && _leadsBulkForm) {
+    _leadsBulkToggle.addEventListener('click', () => {
+        const hidden = _leadsBulkForm.hidden;
+        _leadsBulkForm.hidden = !hidden;
+        if (hidden) {
+            const ta = _leadsBulkForm.querySelector('textarea');
+            if (ta) ta.focus();
+        }
+    });
+}
+if (_leadsBulkForm) {
+    _leadsBulkForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = _leadsBulkForm.querySelector('textarea').value;
+        try {
+            const r = await fetch('/api/leads/batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            const addedN = (d.added || []).length;
+            const dupN   = (d.skipped_duplicates || []).length;
+            const invN   = (d.skipped_invalid    || []).length;
+            // Build a terse summary: 'Added N' plus only non-zero qualifiers.
+            const parts = [`Added ${addedN}`];
+            if (dupN) parts.push(`${dupN} duplicate${dupN === 1 ? '' : 's'}`);
+            if (invN) parts.push(`${invN} unrecognized`);
+            const summary = parts.join(', ') + '.';
+            _leadsBulkForm.reset();
+            _leadsBulkForm.hidden = true;
+            await loadLeads();
+            // Section-level toast (no leadId — addedN may be >1, no single card to attach to).
+            _flashLeadToast(null, summary);
+        } catch (err) {
+            _flashLeadToast(null, 'Bulk import failed: ' + err.message, 'error');
+        }
+    });
+    _leadsBulkForm.addEventListener('click', (e) => {
+        if (e.target.dataset.action === 'cancel-bulk') {
+            _leadsBulkForm.hidden = true;
+        }
+    });
+}
+
 // Add form submit.
 if (_leadsAddForm) {
     _leadsAddForm.addEventListener('submit', async (e) => {

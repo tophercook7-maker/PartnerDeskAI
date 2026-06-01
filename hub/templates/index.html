@@ -1185,6 +1185,7 @@
         </div>
         <div class="leads-toolbar">
             <button type="button" id="leads-add-toggle" class="primary">+ Add Lead</button>
+            <button type="button" id="leads-bulk-toggle">+ Bulk Add</button>
             <input type="search" id="leads-filter"
                    placeholder="Filter by name, company, status…"
                    aria-label="Filter leads" />
@@ -1215,6 +1216,18 @@
             <div class="leads-form-actions">
                 <button type="submit" class="primary">Save lead</button>
                 <button type="button" data-action="cancel-add">Cancel</button>
+            </div>
+        </form>
+        <form id="leads-bulk-form" class="leads-form" hidden
+              aria-label="Bulk add leads from paste">
+            <textarea class="leads-input" name="text" rows="6" required
+                      placeholder="Paste LinkedIn URLs or handles, one per line. Max 50.
+e.g. https://www.linkedin.com/in/christian-kovac/
+     linkedin.com/in/jane-doe
+# lines starting with # are skipped"></textarea>
+            <div class="leads-form-actions">
+                <button type="submit" class="primary">Import Leads</button>
+                <button type="button" data-action="cancel-bulk">Cancel</button>
             </div>
         </form>
         <div id="leads-list" class="leads-list">

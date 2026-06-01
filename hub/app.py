@@ -1057,6 +1057,14 @@ class LeadIn(BaseModel):
     notes:   str | None = None
 
 
+class LeadBatchIn(BaseModel):
+    # v7.20: raw textarea contents for the bulk-paste importer. Server
+    # splits on newlines and parses each line independently — keeps the
+    # wire format simple. Defined here (not next to MessageDraftIn) so
+    # api_leads_batch can resolve the forward reference at import time.
+    text: str
+
+
 @app.get("/api/leads")
 def api_leads_list() -> dict:
     """All leads, newest-first by updated_at."""
@@ -1070,6 +1078,25 @@ def api_leads_add(body: LeadIn) -> dict:
     """Add a new lead. Returns the saved row."""
     try:
         return leads_mod.add(body.model_dump(exclude_none=True))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not write: {e}")
+
+
+@app.post("/api/leads/batch")
+def api_leads_batch(body: LeadBatchIn) -> dict:
+    """
+    v7.20: bulk-add leads from a paste of LinkedIn URLs/handles.
+    Each line is parsed independently; recognized handles become cold
+    leads with source='paste-import'. Duplicates (vs existing leads
+    AND within the same paste) are skipped silently and counted.
+    Unrecognized non-blank lines are reported back so the user can
+    fix and re-submit. Hard cap at MAX_BATCH_SIZE (50) to prevent
+    accidental large pastes.
+    """
+    try:
+        return leads_mod.add_batch(body.text.splitlines())
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except OSError as e:
