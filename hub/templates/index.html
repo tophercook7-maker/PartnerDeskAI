@@ -817,6 +817,16 @@
             background: #fff; border: 1px solid #d8dde4; border-radius: 5px;
             padding: 0.4rem 0.5rem; font-size: 0.82rem;
             display: flex; flex-direction: column; gap: 0.2rem;
+            cursor: grab;
+        }
+        .leads-board-card:active { cursor: grabbing; }
+        /* v7.27: drag-and-drop visual cues. Source card dims while
+           being dragged; the target column highlights on hover. */
+        .leads-board-card.is-dragging {
+            opacity: 0.4;
+        }
+        .leads-board-column.is-drop-target {
+            background: #e8f0fc; border-color: #2a6ec1;
         }
         .leads-board-card-name    { font-weight: 600; color: #1f2937; }
         .leads-board-card-meta    { color: #64748b; font-size: 0.76rem; }

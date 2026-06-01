@@ -2469,7 +2469,10 @@ function _renderBoardCard(lead) {
             `</button>`
         ).join('');
     return (
-        `<div class="leads-board-card" data-lead-id="${id}">` +
+        // v7.27: draggable=true enables HTML5 DnD. Buttons stay as
+        // the keyboard/touch fallback so non-mouse users aren't locked
+        // out (DnD is mouse-only by spec without polyfills).
+        `<div class="leads-board-card" data-lead-id="${id}" draggable="true">` +
           `<div class="leads-board-card-name">${name}</div>` +
           company + followUp + lastTmpl +
           `<div class="leads-board-card-actions">${buttons}</div>` +
@@ -2498,8 +2501,10 @@ function renderLeadsBoard() {
         const cardsHtml = items.length
             ? items.map(_renderBoardCard).join('')
             : `<div class="leads-board-cards-empty">No leads</div>`;
+        // v7.27: data-status lets the drop handler read the target.
         return (
-            `<div class="leads-board-column status-${col.key}">` +
+            `<div class="leads-board-column status-${col.key}" ` +
+                `data-status="${_escape(col.key)}">` +
               `<div class="leads-board-column-header">` +
                 `<span>${_escape(col.label)}</span>` +
                 `<span class="leads-board-count">${items.length}</span>` +
@@ -2703,36 +2708,99 @@ if (_leadsDashboardEl) {
     });
 }
 
+// v7.27: shared move helper used by both the v7.23 button click and
+// the DnD drop handler below. Single PUT path means safety gates,
+// error handling, and toast text stay consistent across both UIs.
+const _LEADS_STATUS_LABEL = {
+    cold: 'Cold', warm: 'Warm', hot: 'Hot',
+    closed: 'Closed', dropped: 'Dropped',
+};
+async function _moveLeadToStatus(leadId, targetStatus) {
+    if (!leadId || !targetStatus) return;
+    try {
+        const r = await fetch(
+            `/api/leads/${encodeURIComponent(leadId)}`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: targetStatus }),
+            },
+        );
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+        await loadLeads();
+        const tgtLabel = _LEADS_STATUS_LABEL[targetStatus] || targetStatus;
+        _flashLeadToast(leadId, `Moved to ${tgtLabel}`);
+    } catch (err) {
+        _flashLeadToast(leadId, 'Move failed: ' + err.message, 'error');
+    }
+}
+
 const _leadsBoardEl = document.getElementById('leads-board');
 if (_leadsBoardEl) {
-    _leadsBoardEl.addEventListener('click', async (e) => {
+    // v7.23 buttons — keyboard/touch path.
+    _leadsBoardEl.addEventListener('click', (e) => {
         const btn = e.target.closest('button[data-action="board-move"]');
         if (!btn) return;
-        const leadId = btn.dataset.leadId;
-        const target = btn.dataset.targetStatus;
-        if (!leadId || !target) return;
-        try {
-            const r = await fetch(
-                `/api/leads/${encodeURIComponent(leadId)}`,
-                {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: target }),
-                },
-            );
-            const d = await r.json();
-            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
-            await loadLeads();
-            // Toast on the now-relocated card (board re-rendered in
-            // loadLeads → board-card stays at leadId selector).
-            const labelMap = { warm: 'Warm', hot: 'Hot',
-                               closed: 'Closed', dropped: 'Dropped',
-                               cold: 'Cold' };
-            const tgtLabel = labelMap[target] || target;
-            _flashLeadToast(leadId, `Moved to ${tgtLabel}`);
-        } catch (err) {
-            _flashLeadToast(leadId, 'Move failed: ' + err.message, 'error');
+        _moveLeadToStatus(btn.dataset.leadId, btn.dataset.targetStatus);
+    });
+
+    // v7.27: HTML5 drag-and-drop, delegated so listeners survive every
+    // renderLeadsBoard() that rewrites the DOM. Source id is tracked
+    // in a closure var (faster than reading dataTransfer on every
+    // dragover, which fires constantly).
+    let _dndSourceLeadId = null;
+    _leadsBoardEl.addEventListener('dragstart', (e) => {
+        const card = e.target.closest('.leads-board-card[data-lead-id]');
+        if (!card) return;
+        _dndSourceLeadId = card.dataset.leadId;
+        if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            // Firefox refuses to drag unless dataTransfer has data set.
+            try { e.dataTransfer.setData('text/plain', _dndSourceLeadId); }
+            catch (_) {}
         }
+        card.classList.add('is-dragging');
+    });
+    _leadsBoardEl.addEventListener('dragend', (e) => {
+        const card = e.target.closest('.leads-board-card');
+        if (card) card.classList.remove('is-dragging');
+        // Belt + suspenders: wipe any lingering drop-target outlines.
+        _leadsBoardEl.querySelectorAll('.leads-board-column.is-drop-target')
+            .forEach(c => c.classList.remove('is-drop-target'));
+        _dndSourceLeadId = null;
+    });
+    _leadsBoardEl.addEventListener('dragenter', (e) => {
+        const col = e.target.closest('.leads-board-column');
+        if (col) col.classList.add('is-drop-target');
+    });
+    _leadsBoardEl.addEventListener('dragleave', (e) => {
+        const col = e.target.closest('.leads-board-column');
+        // dragleave fires when crossing into children too — only
+        // remove the class when truly leaving the column subtree.
+        if (col && (!e.relatedTarget || !col.contains(e.relatedTarget))) {
+            col.classList.remove('is-drop-target');
+        }
+    });
+    _leadsBoardEl.addEventListener('dragover', (e) => {
+        // preventDefault is REQUIRED for the drop event to fire.
+        if (e.target.closest('.leads-board-column')) e.preventDefault();
+    });
+    _leadsBoardEl.addEventListener('drop', (e) => {
+        const col = e.target.closest('.leads-board-column');
+        if (!col || !_dndSourceLeadId) return;
+        e.preventDefault();
+        const target = col.dataset.status;
+        // Skip same-column drops to avoid a no-op PUT that would still
+        // re-stamp updated_at (and inflate the v7.24 "closed this
+        // month" count for closed leads).
+        const lead = _leads.find(l => l.id === _dndSourceLeadId);
+        if (lead && (lead.status || '').toLowerCase() === target) {
+            col.classList.remove('is-drop-target');
+            return;
+        }
+        _moveLeadToStatus(_dndSourceLeadId, target);
+        col.classList.remove('is-drop-target');
     });
 }
 
