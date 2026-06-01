@@ -2338,19 +2338,6 @@ if (_leadsSortEl) {
     });
 }
 
-// v7.17: when the user changes a template select, copy the chosen
-// option's title= up to the select itself so hovering the closed
-// select shows the right preview (Chromium ignores per-option
-// titles on the closed control).
-if (_leadsListEl) {
-    _leadsListEl.addEventListener('change', (e) => {
-        const sel = e.target.closest('.lead-template-select');
-        if (!sel) return;
-        const opt = sel.options[sel.selectedIndex];
-        sel.title = opt ? (opt.title || opt.text) : '';
-    });
-}
-
 // v7.2: due-this-week chip toggles a filter restricting the list to
 // leads with follow_up_date in the next 7 days. Not persisted across
 // reloads — it's an action filter, not a preference.
@@ -2480,6 +2467,19 @@ if (_leadsAddForm) {
 
 // Edit/Delete/Save delegators on the lead list.
 const _leadsListEl = document.getElementById('leads-list');
+// v7.17 (relocated from above the declaration to fix TDZ crash that
+// hung the whole Hub on "Loading…"): when the user changes a template
+// select, copy the chosen option's title= up to the select itself so
+// hovering the closed control shows the right preview (Chromium
+// ignores per-option titles on the closed select).
+if (_leadsListEl) {
+    _leadsListEl.addEventListener('change', (e) => {
+        const sel = e.target.closest('.lead-template-select');
+        if (!sel) return;
+        const opt = sel.options[sel.selectedIndex];
+        sel.title = opt ? (opt.title || opt.text) : '';
+    });
+}
 if (_leadsListEl) {
     _leadsListEl.addEventListener('click', async (e) => {
         const btn = e.target.closest('button[data-action]');
@@ -3318,32 +3318,63 @@ async function loadLogs() {
     }
 }
 
+// v7.22: per-loader isolation so a single loader failure can't strand
+// the rest of the Hub on "Loading…". Each loader name is logged so a
+// failure surfaces visibly in Command Output instead of swallowing the
+// whole refresh into one opaque toast.
+async function _runLoaderSafely(name, fn) {
+    try {
+        await fn();
+        return { name, ok: true };
+    } catch (err) {
+        return { name, ok: false, error: String(err && err.message || err) };
+    }
+}
+
 async function refreshAll() {
     document.getElementById('cmd-status').textContent = 'Reloading…';
-    try {
-        // Prerequisites that must complete BEFORE loadReady / loadStatus
-        // run, because they populate DOM nodes / module caches those
-        // later renderers depend on:
-        //   - loadPartners: creates Parker's #parker-pending / #parker-next
-        //   - loadConnections: fills _connectionsByPlatform so renderReady
-        //                       knows which publish buttons to gray out.
-        //   - loadMessageTemplates (v7.16): fills _messageTemplates so
-        //                       per-lead cards render the picker correctly.
-        await Promise.all([
-            loadPartners(), loadConnections(), loadMessageTemplates(),
-        ]);
-        await Promise.all([
-            loadStatus(), loadSummary(), loadLogs(),
-            loadHistory(), loadReady(),
-            loadActivity(), loadReports(), loadInbox(),
-            loadMetaReadiness(), loadLeads(),
-        ]);
-        // Mission Control reads cached payloads from the loaders above,
-        // so it runs last to ensure every cache is populated.
-        renderMissionControl();
-        document.getElementById('cmd-status').textContent = 'Hub refreshed.';
-    } catch (err) {
-        document.getElementById('cmd-status').textContent = 'Refresh failed: ' + err;
+    // Two batches. The first is a prerequisite set (loadPartners /
+    // loadConnections / loadMessageTemplates populate caches the second
+    // batch reads), but a failure inside either batch must NOT block
+    // sibling loaders any more.
+    const batch1 = [
+        ['loadPartners',         loadPartners],
+        ['loadConnections',      loadConnections],
+        ['loadMessageTemplates', loadMessageTemplates],
+    ];
+    const batch2 = [
+        ['loadStatus',        loadStatus],
+        ['loadSummary',       loadSummary],
+        ['loadLogs',          loadLogs],
+        ['loadHistory',       loadHistory],
+        ['loadReady',         loadReady],
+        ['loadActivity',      loadActivity],
+        ['loadReports',       loadReports],
+        ['loadInbox',         loadInbox],
+        ['loadMetaReadiness', loadMetaReadiness],
+        ['loadLeads',         loadLeads],
+    ];
+    const results1 = await Promise.all(batch1.map(([n, f]) => _runLoaderSafely(n, f)));
+    const results2 = await Promise.all(batch2.map(([n, f]) => _runLoaderSafely(n, f)));
+    // Mission Control reads caches from the loaders above. Guard so a
+    // bug here can't drag the whole refresh down.
+    let mcError = null;
+    try { renderMissionControl(); }
+    catch (e) { mcError = String(e && e.message || e); }
+    const failures = [...results1, ...results2].filter(r => !r.ok);
+    if (mcError) failures.push({ name: 'renderMissionControl', error: mcError });
+    const status = document.getElementById('cmd-status');
+    const out    = document.getElementById('cmd-output');
+    if (failures.length === 0) {
+        status.textContent = 'Hub refreshed.';
+    } else {
+        status.textContent =
+            `Hub refreshed with ${failures.length} section error${failures.length === 1 ? '' : 's'}.`;
+        if (out) {
+            out.textContent = failures
+                .map(f => `FAIL ${f.name}: ${f.error}`)
+                .join('\n');
+        }
     }
 }
 

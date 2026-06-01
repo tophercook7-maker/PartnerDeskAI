@@ -112,6 +112,12 @@ v7.14 wires the **Olivia Office partner card** to real data. `summaries_generate
 
 v7.15 normalizes the last filter-empty outlier: `'No matching Parker work.'` → `'No Parker work matches the filter.'`, matching the structure of `'No leads match the filter.'` and `'No reports match the current filter.'` The rest of the v7-walkthrough's empty-state findings turned out to be coherent on closer inspection (e.g. `'No data in this window.'` matches the section's own "Window:" selector label, and the duplicated "configured" strings live in different sections).
 
+v7.22 — **Fix: Hub stuck on "Loading…"**. Two changes:
+
+1. **Root cause**: a v7.17 `change`-event handler was placed ABOVE the `const _leadsListEl = …` declaration it referenced. With `const`/`let` that's a Temporal Dead Zone access, which throws synchronously during module init — every event handler below the throw stayed unbound, and the page sat on the initial `Loading…` markup forever. Handler moved to right after the declaration.
+
+2. **Defensive hardening of `refreshAll`**: each loader now runs through a `_runLoaderSafely(name, fn)` wrapper that catches per-section failures so one bad fetch can no longer short-circuit a `Promise.all` and leave 9 other sections stranded. Failures are collected and surfaced in Command Output as `FAIL <loader>: <error>` lines so the next-time-this-happens diagnostic is one click away instead of buried.
+
 v7.21 — **Publishing-staleness mood + one-click bulk publish**. Two pieces:
 
 1. Mission Control's mood flips to **`Ship stale`** (yellow) when there are ready posts AND nothing has been published in the last 24h. Was always green ("Ready to publish") even when the publish queue had been stalled for days. Uses a new `_lastHistory` module cache + `_hoursSinceLastPublish` helper; the existing posted_date local-time strings parse correctly without server changes.
