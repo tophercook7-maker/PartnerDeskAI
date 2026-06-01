@@ -112,6 +112,19 @@ v7.14 wires the **Olivia Office partner card** to real data. `summaries_generate
 
 v7.15 normalizes the last filter-empty outlier: `'No matching Parker work.'` → `'No Parker work matches the filter.'`, matching the structure of `'No leads match the filter.'` and `'No reports match the current filter.'` The rest of the v7-walkthrough's empty-state findings turned out to be coherent on closer inspection (e.g. `'No data in this window.'` matches the section's own "Window:" selector label, and the duplicated "configured" strings live in different sections).
 
+v7.24 — **Lead Dashboard**. Six-card summary strip above the v7.23 pipeline board:
+
+| Card | Source |
+|---|---|
+| Cold | leads with `status == 'cold'` |
+| Warm | leads with `status == 'warm'` |
+| Hot  | leads with `status == 'hot'` |
+| Due Today | `follow_up_date == today` |
+| Overdue | `follow_up_date < today` |
+| Closed This Month | `status == 'closed'` AND `updated_at` is in the current YYYY-MM |
+
+Pure-frontend derivation from the existing `_leads` cache — no new fetch, no new endpoint, no schema change. Cards flex-wrap on narrow viewports. Per-card tonal border-left matches the existing badge palette (overdue + hot share red; due today is blue; closed-this-month is green). Cards render on every `loadLeads`, so any move/edit/import updates the strip in lockstep with the board and list. No OpenAI, no posting, no LinkedIn API.
+
 v7.23 — **Logan Lead Pipeline Board**. A 5-column board (Cold / Warm / Hot / Closed / Dropped) added to the LinkedIn Leads section, above the existing list. Same `_leads` cache — no new fetch, no new endpoint. Each board card shows name, company, follow-up date (with overdue cue), last template used (v7.18 field), and quick-move buttons sized to the lead's current status: from Cold you see *Move to Warm / Hot / Closed / Drop*; from Warm you see *Move to Hot / Closed / Drop*; etc. (the no-op button matching the current status is omitted). Per-status border tint matches the v6.9 list badge palette. Moves use the existing `PUT /api/leads/{id}` with a partial body; server-side `_clean_lead` still validates against ALLOWED_STATUSES, so a tampered request returns 400 with a helpful message. Pipeline counts per column live in a small pill badge. No schema change, no DB write outside `data/leads.json`, no OpenAI, no LinkedIn API.
 
 v7.22 — **Fix: Hub stuck on "Loading…"**. Two changes:

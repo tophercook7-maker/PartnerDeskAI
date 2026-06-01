@@ -2303,6 +2303,55 @@ function renderLeads() {
     ).join('');
 }
 
+// v7.24: lead dashboard. Six-card summary strip computed purely from
+// _leads — no new fetch, no schema change. Card order is fixed so the
+// strip stays scannable. "Closed this month" uses updated_at as a
+// proxy for "when the close happened" — it's the only timestamp on
+// the row that re-stamps on a status flip, so a flip from cold→closed
+// today updates it. Older closes whose updated_at predates this month
+// won't double-count.
+function _computeLeadsDashboard(leads, today) {
+    const month = (today || '').slice(0, 7);  // 'YYYY-MM'
+    const out = { cold: 0, warm: 0, hot: 0, due: 0, overdue: 0, closedMonth: 0 };
+    for (const l of leads) {
+        const status = (l.status || '').toLowerCase();
+        if (status === 'cold') out.cold += 1;
+        else if (status === 'warm') out.warm += 1;
+        else if (status === 'hot')  out.hot  += 1;
+        const fu = l.follow_up_date || '';
+        if (fu === today) out.due += 1;
+        else if (fu && fu < today) out.overdue += 1;
+        if (status === 'closed') {
+            const u = l.updated_at || '';
+            // updated_at format is 'YYYY-MM-DD HH:MM:SS' — slice the YYYY-MM
+            if (u.slice(0, 7) === month) out.closedMonth += 1;
+        }
+    }
+    return out;
+}
+
+function renderLeadsDashboard() {
+    const el = document.getElementById('leads-dashboard');
+    if (!el) return;
+    const today = _todayStr();
+    const m = _computeLeadsDashboard(_leads, today);
+    const cards = [
+        { label: 'Cold',                value: m.cold,        tone: 'cold'    },
+        { label: 'Warm',                value: m.warm,        tone: 'warm'    },
+        { label: 'Hot',                 value: m.hot,         tone: 'hot'     },
+        { label: 'Due Today',           value: m.due,         tone: 'due'     },
+        { label: 'Overdue',             value: m.overdue,     tone: 'overdue' },
+        { label: 'Closed This Month',   value: m.closedMonth, tone: 'closed'  },
+    ];
+    el.innerHTML = cards.map(c =>
+        `<div class="leads-dashboard-card tone-${c.tone}" ` +
+            `title="${_escape(c.label)}: ${c.value}">` +
+          `<div class="leads-dashboard-label">${_escape(c.label)}</div>` +
+          `<div class="leads-dashboard-value">${c.value}</div>` +
+        `</div>`
+    ).join('');
+}
+
 // v7.23: pipeline board. Renders the same _leads cache, grouped by
 // status into 5 columns. Quick-move buttons on each card PUT a partial
 // {status: x} body to the existing /api/leads/{id} endpoint — no new
@@ -2398,12 +2447,14 @@ async function loadLeads() {
         const d = await r.json();
         _leads = d.items || [];
         renderLeads();
-        renderLeadsBoard();  // v7.23
+        renderLeadsBoard();      // v7.23
+        renderLeadsDashboard();  // v7.24
     } catch (err) {
         _leads = [];
         const el = document.getElementById('leads-list');
         if (el) el.innerHTML = '<div class="muted">Could not load leads.</div>';
-        renderLeadsBoard();  // v7.23: render empty board on fetch failure too
+        renderLeadsBoard();      // v7.23: render empty board on fetch failure too
+        renderLeadsDashboard();  // v7.24: empty dashboard on failure too
     }
 }
 

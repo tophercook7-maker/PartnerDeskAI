@@ -728,6 +728,34 @@
             background: #fde2e2; color: #8a1c1c;
             border-color: #d88a8a;
         }
+        /* v7.24: 6-card lead dashboard. Flex-wrap so cards reflow on
+           narrow viewports without horizontal scroll. */
+        .leads-dashboard {
+            display: flex; gap: 0.5rem; flex-wrap: wrap;
+            margin-bottom: 0.7rem;
+        }
+        .leads-dashboard-card {
+            flex: 1 1 7rem; min-width: 7rem;
+            background: #fff; border: 1px solid #d8dde4;
+            border-radius: 6px; padding: 0.4rem 0.6rem;
+            display: flex; flex-direction: column; gap: 0.1rem;
+        }
+        .leads-dashboard-label {
+            font-size: 0.72rem; color: #64748b;
+            text-transform: uppercase; letter-spacing: 0.02em;
+        }
+        .leads-dashboard-value {
+            font-size: 1.4rem; font-weight: 700; color: #1f2937;
+            line-height: 1.1;
+        }
+        /* Tonal cards — match the existing palette for status/urgency. */
+        .leads-dashboard-card.tone-cold     { border-left: 3px solid #94a3b8; }
+        .leads-dashboard-card.tone-warm     { border-left: 3px solid #ddb14a; }
+        .leads-dashboard-card.tone-hot      { border-left: 3px solid #b34a4a; }
+        .leads-dashboard-card.tone-due      { border-left: 3px solid #2a6ec1; }
+        .leads-dashboard-card.tone-overdue  { border-left: 3px solid #b34a4a; }
+        .leads-dashboard-card.tone-overdue .leads-dashboard-value { color: #b34a4a; }
+        .leads-dashboard-card.tone-closed   { border-left: 3px solid #4aa05c; }
         /* v7.23: lead pipeline board (5 columns by status). Sits above
            the existing list view of the same data. */
         .leads-board {
@@ -1281,6 +1309,9 @@
                 <button type="button" data-action="cancel-add">Cancel</button>
             </div>
         </form>
+        <!-- v7.24: 6-card summary strip above the pipeline board.
+             Pure client-side derivation from the same _leads cache. -->
+        <div id="leads-dashboard" class="leads-dashboard" aria-label="Lead dashboard"></div>
         <!-- v7.23: pipeline board view. Renders the same _leads cache as
              the list below, grouped into 5 status columns. Always visible. -->
         <div id="leads-board" class="leads-board" aria-label="Lead pipeline board"></div>
