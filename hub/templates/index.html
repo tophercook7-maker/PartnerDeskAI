@@ -739,6 +739,23 @@
             background: #fff; border: 1px solid #d8dde4;
             border-radius: 6px; padding: 0.4rem 0.6rem;
             display: flex; flex-direction: column; gap: 0.1rem;
+            font-family: inherit; text-align: left;
+            cursor: pointer;
+        }
+        .leads-dashboard-card:hover {
+            background: #f8fafc; border-color: #94a3b8;
+        }
+        /* v7.25: active filter state — solid fill that mirrors the
+           tone, plus a focus-visible outline for keyboard users. */
+        .leads-dashboard-card[aria-pressed="true"] {
+            background: #1f2937; border-color: #1f2937;
+        }
+        .leads-dashboard-card[aria-pressed="true"] .leads-dashboard-label,
+        .leads-dashboard-card[aria-pressed="true"] .leads-dashboard-value {
+            color: #fff;
+        }
+        .leads-dashboard-card:focus-visible {
+            outline: 2px solid #2a6ec1; outline-offset: 1px;
         }
         .leads-dashboard-label {
             font-size: 0.72rem; color: #64748b;

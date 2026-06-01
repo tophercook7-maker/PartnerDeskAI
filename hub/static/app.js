@@ -2018,6 +2018,8 @@ function _filteredLeads() {
         const horizon = _addDays(today, 6);
         matched = matched.filter(l => _isDueThisWeek(l, today, horizon));
     }
+    // v7.25: stack the dashboard filter on top of text + due-this-week.
+    matched = matched.filter(_dashboardPredicate);
     if (_leadsSort === 'follow-up') {
         const today = _todayStr();
         // Bucket first; within a dated bucket sort ascending by date
@@ -2303,6 +2305,30 @@ function renderLeads() {
     ).join('');
 }
 
+// v7.25: dashboard click-to-filter. _dashboardFilter holds the key of
+// the currently active card (or null). Predicate is applied to both
+// the board (pre-grouping) and the list (joins _filteredLeads). Not
+// persisted across reloads — it's an action filter, not a preference.
+let _dashboardFilter = null;
+
+function _dashboardPredicate(lead) {
+    if (!_dashboardFilter) return true;
+    const today = _todayStr();
+    const month = today.slice(0, 7);
+    const status = (lead.status || '').toLowerCase();
+    const fu = lead.follow_up_date || '';
+    switch (_dashboardFilter) {
+        case 'cold':         return status === 'cold';
+        case 'warm':         return status === 'warm';
+        case 'hot':          return status === 'hot';
+        case 'due':          return fu === today;
+        case 'overdue':      return fu !== '' && fu < today;
+        case 'closed-month': return status === 'closed' &&
+                                    (lead.updated_at || '').slice(0, 7) === month;
+        default:             return true;
+    }
+}
+
 // v7.24: lead dashboard. Six-card summary strip computed purely from
 // _leads — no new fetch, no schema change. Card order is fixed so the
 // strip stays scannable. "Closed this month" uses updated_at as a
@@ -2310,6 +2336,9 @@ function renderLeads() {
 // the row that re-stamps on a status flip, so a flip from cold→closed
 // today updates it. Older closes whose updated_at predates this month
 // won't double-count.
+// v7.25: cards are now <button> elements with data-filter-key=... and
+// aria-pressed mirroring _dashboardFilter. Click toggles the filter
+// and triggers a full re-render of dashboard + board + list.
 function _computeLeadsDashboard(leads, today) {
     const month = (today || '').slice(0, 7);  // 'YYYY-MM'
     const out = { cold: 0, warm: 0, hot: 0, due: 0, overdue: 0, closedMonth: 0 };
@@ -2336,20 +2365,25 @@ function renderLeadsDashboard() {
     const today = _todayStr();
     const m = _computeLeadsDashboard(_leads, today);
     const cards = [
-        { label: 'Cold',                value: m.cold,        tone: 'cold'    },
-        { label: 'Warm',                value: m.warm,        tone: 'warm'    },
-        { label: 'Hot',                 value: m.hot,         tone: 'hot'     },
-        { label: 'Due Today',           value: m.due,         tone: 'due'     },
-        { label: 'Overdue',             value: m.overdue,     tone: 'overdue' },
-        { label: 'Closed This Month',   value: m.closedMonth, tone: 'closed'  },
+        { key: 'cold',         label: 'Cold',              value: m.cold,        tone: 'cold'    },
+        { key: 'warm',         label: 'Warm',              value: m.warm,        tone: 'warm'    },
+        { key: 'hot',          label: 'Hot',               value: m.hot,         tone: 'hot'     },
+        { key: 'due',          label: 'Due Today',         value: m.due,         tone: 'due'     },
+        { key: 'overdue',      label: 'Overdue',           value: m.overdue,     tone: 'overdue' },
+        { key: 'closed-month', label: 'Closed This Month', value: m.closedMonth, tone: 'closed'  },
     ];
-    el.innerHTML = cards.map(c =>
-        `<div class="leads-dashboard-card tone-${c.tone}" ` +
-            `title="${_escape(c.label)}: ${c.value}">` +
-          `<div class="leads-dashboard-label">${_escape(c.label)}</div>` +
-          `<div class="leads-dashboard-value">${c.value}</div>` +
-        `</div>`
-    ).join('');
+    el.innerHTML = cards.map(c => {
+        const active = (_dashboardFilter === c.key);
+        const titleSuffix = active ? ' — click to clear filter' : ' — click to filter';
+        return (
+            `<button type="button" class="leads-dashboard-card tone-${c.tone}" ` +
+                `data-filter-key="${_escape(c.key)}" aria-pressed="${active}" ` +
+                `title="${_escape(c.label)}: ${c.value}${titleSuffix}">` +
+              `<div class="leads-dashboard-label">${_escape(c.label)}</div>` +
+              `<div class="leads-dashboard-value">${c.value}</div>` +
+            `</button>`
+        );
+    }).join('');
 }
 
 // v7.23: pipeline board. Renders the same _leads cache, grouped by
@@ -2414,11 +2448,15 @@ function _renderBoardCard(lead) {
 function renderLeadsBoard() {
     const el = document.getElementById('leads-board');
     if (!el) return;
+    // v7.25: filter leads via the dashboard predicate BEFORE grouping
+    // so a dashboard click that says "overdue" only shows overdue
+    // leads inside their natural status columns.
+    const visible = _leads.filter(_dashboardPredicate);
     // Group leads by status. Unknown statuses (defensive — shouldn't
     // happen since the server validates against ALLOWED_STATUSES) get
     // bucketed into Cold so they're still visible.
     const groups = Object.fromEntries(_LEADS_BOARD_COLUMNS.map(c => [c.key, []]));
-    for (const lead of _leads) {
+    for (const lead of visible) {
         const s = (lead.status || 'cold').toLowerCase();
         if (groups[s]) groups[s].push(lead);
         else groups.cold.push(lead);
@@ -2611,6 +2649,22 @@ if (_leadsAddForm) {
 // body (LeadIn fields all optional), so we send just {status: x}.
 // Server's _clean_lead validates against ALLOWED_STATUSES; an unknown
 // status returns 400 and surfaces in a red error toast.
+// v7.25: dashboard click delegator. Toggles _dashboardFilter on the
+// matching card, then re-renders dashboard + board + list so all three
+// surfaces stay consistent without another fetch.
+const _leadsDashboardEl = document.getElementById('leads-dashboard');
+if (_leadsDashboardEl) {
+    _leadsDashboardEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-filter-key]');
+        if (!btn) return;
+        const key = btn.dataset.filterKey;
+        _dashboardFilter = (_dashboardFilter === key) ? null : key;
+        renderLeadsDashboard();
+        renderLeadsBoard();
+        renderLeads();
+    });
+}
+
 const _leadsBoardEl = document.getElementById('leads-board');
 if (_leadsBoardEl) {
     _leadsBoardEl.addEventListener('click', async (e) => {

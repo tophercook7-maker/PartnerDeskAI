@@ -112,6 +112,8 @@ v7.14 wires the **Olivia Office partner card** to real data. `summaries_generate
 
 v7.15 normalizes the last filter-empty outlier: `'No matching Parker work.'` → `'No Parker work matches the filter.'`, matching the structure of `'No leads match the filter.'` and `'No reports match the current filter.'` The rest of the v7-walkthrough's empty-state findings turned out to be coherent on closer inspection (e.g. `'No data in this window.'` matches the section's own "Window:" selector label, and the duplicated "configured" strings live in different sections).
 
+v7.25 — **Dashboard click-to-filter**. Each of the v7.24 cards is now a `<button>`. Click one → the matching predicate filters both the pipeline board (pre-grouping) AND the list (joins the existing text + due-this-week chain). Click the active card again to clear. Active state shows as a solid dark fill + `aria-pressed="true"`. Predicate stacks: text-search + due-this-week chip + dashboard filter can all be active at once. Not persisted across reloads — it's an action filter, not a preference.
+
 v7.24 — **Lead Dashboard**. Six-card summary strip above the v7.23 pipeline board:
 
 | Card | Source |
