@@ -774,6 +774,51 @@
         .scout-priority-low     { background: #e2e8f0; color: #64748b; }
         .scout-priority-medium  { background: #cfe1ff; color: #2a6ec1; }
         .scout-priority-high    { background: #fde2e2; color: #b34a4a; }
+        /* v8.1: Auto Lead Generator UI. */
+        .missions-h3 {
+            margin-top: 1.6rem; margin-bottom: 0.3rem;
+            padding-top: 0.8rem;
+            border-top: 1px solid #d8dde4;
+            font-size: 1.05rem;
+            display: flex; align-items: baseline; gap: 0.5rem;
+        }
+        .missions-list {
+            display: grid; gap: 0.55rem;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            margin-top: 0.7rem;
+        }
+        .mission-card {
+            background: #fff; border: 1px solid #d8dde4;
+            border-radius: 6px; padding: 0.6rem 0.75rem;
+            display: flex; flex-direction: column; gap: 0.3rem;
+            font-size: 0.85rem;
+        }
+        .mission-query {
+            font-family: ui-monospace, monospace; font-size: 0.82rem;
+            background: #f1f5f9; padding: 0.3rem 0.5rem;
+            border-radius: 4px; word-break: break-word;
+        }
+        .mission-meta { color: #64748b; font-size: 0.78rem; }
+        .mission-look { color: #475569; font-size: 0.82rem; }
+        .mission-offer {
+            color: #2a6ec1; font-size: 0.82rem; font-style: italic;
+        }
+        .mission-actions {
+            display: flex; gap: 0.3rem; margin-top: 0.35rem; flex-wrap: wrap;
+        }
+        .mission-status-badge, .mission-priority-badge {
+            display: inline-block; padding: 0.1rem 0.45rem;
+            border-radius: 999px; font-size: 0.7rem;
+            font-weight: 600; text-transform: lowercase;
+        }
+        .mission-status-new         { background: #e2e8f0; color: #475569; }
+        .mission-status-researching { background: #fff6e0; color: #8a6320; }
+        .mission-status-found_lead  { background: #cfe1ff; color: #1c4f8f; }
+        .mission-status-skipped     { background: #f1f1f1; color: #64748b; }
+        .mission-status-done        { background: #d8efd8; color: #2d6a3a; }
+        .mission-priority-low       { background: #e2e8f0; color: #64748b; }
+        .mission-priority-medium    { background: #cfe1ff; color: #2a6ec1; }
+        .mission-priority-high      { background: #fde2e2; color: #b34a4a; }
         /* v7.26: "Clear filters" escape hatch. Subdued link styling so
            it doesn't compete with the primary toolbar controls. */
         .leads-clear-filters {
@@ -1566,6 +1611,42 @@
                 </div>
             </form>
             <div id="scout-list" class="scout-list">
+                <div class="muted">Loading…</div>
+            </div>
+
+            <!-- v8.1: Auto Lead Generator. Creates Google search
+                 MISSIONS (strings + URLs) for Topher to open manually.
+                 No scraping, no outbound HTTP, no contact actions. -->
+            <h3 class="missions-h3">Auto Lead Generator
+                <span id="missions-count" class="muted"></span>
+            </h3>
+            <div class="muted" style="margin-bottom: 0.5rem; font-size: 0.85rem;">
+                Generates Google search query missions. <strong>Does not</strong>
+                browse the web or contact anyone. Open a mission's
+                search button to research a query, then capture any
+                businesses you find via the Scout Queue above.
+            </div>
+            <form id="missions-generate-form" class="leads-form"
+                  aria-label="Generate lead-search missions">
+                <input class="leads-input" name="category"
+                       placeholder="Category (e.g. landscaping, salons)" required>
+                <input class="leads-input" name="city_state"
+                       placeholder="City/State (e.g. Hot Springs AR)" required>
+                <input class="leads-input" name="count" type="number"
+                       min="1" max="25" value="5"
+                       placeholder="Number of missions (1-25)">
+                <select class="leads-input" name="website_status_target">
+                    <option value="no website found" selected>no website found</option>
+                    <option value="old or weak website">old or weak website</option>
+                    <option value="facebook-only">facebook-only</option>
+                    <option value="google listing only">google listing only</option>
+                    <option value="has email address">has email address</option>
+                </select>
+                <div class="leads-form-actions">
+                    <button type="submit" class="primary">Generate Search Missions</button>
+                </div>
+            </form>
+            <div id="missions-list" class="missions-list">
                 <div class="muted">Loading…</div>
             </div>
         </section>

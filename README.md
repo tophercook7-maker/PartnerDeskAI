@@ -94,6 +94,7 @@ These shipped before v8.0 and still ground every Hub action:
 - **Meta Readiness Center** (v6.7) shows Facebook + Instagram setup status with ✓/✗ for required env key *names* — **never values**. Backed by `GET /api/meta/readiness` which returns names only.
 - **Meta app approval notes** (v6.8) — free-text per-platform textarea, capped at 4000 chars, persisted atomically to `data/meta_app_state.json` (gitignored). Updates via `POST /api/meta/notes`.
 - **LinkedIn Leads** (v6.9 + v7.x) — outbound prospect tracker / CRM-lite. Pure local storage: no LinkedIn API, no auto-sync. Persisted atomically to `data/leads.json` (gitignored). CRUD via `GET/POST/PUT/DELETE /api/leads`. The follow-up queue (v7.0) adds `POST /api/leads/{id}/contacted`, `/follow-up`, and `/message-draft` — the message endpoint returns a fixed template (no OpenAI) and the user copy-pastes manually.
+- **Auto Lead Generator** (v8.1) — Logan includes an Auto Lead Generator that creates local search missions for finding businesses with no website, weak websites, or social-only presence. It does not scrape or contact businesses automatically.
 
 ## Recent versions
 

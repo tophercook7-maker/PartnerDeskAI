@@ -2859,6 +2859,183 @@ async function loadScoutLeads() {
     }
 }
 
+// --- v8.1: Auto Lead Generator (missions) ---------------------------------
+// Mission = Google search query + URL. Hub never fetches the URL —
+// Topher opens it manually. Per-card actions only mutate local state
+// (status, notes, delete). No scraping, no contact actions.
+
+let _leadMissions = [];
+
+function _renderMissionCard(m) {
+    const id = _escape(m.id);
+    const status = (m.status || 'new').toLowerCase();
+    const prio = (m.priority || 'medium').toLowerCase();
+    const notesLine = m.notes
+        ? `<div class="mission-meta">Notes: ${_escape(m.notes)}</div>` : '';
+    // Buttons: Open Search always; status transitions hide their
+    // current state to avoid no-op clicks.
+    const buttons = [];
+    buttons.push(`<a class="row-action primary" target="_blank" ` +
+        `rel="noopener noreferrer" href="${_escape(m.search_url)}">Open Search</a>`);
+    if (status !== 'researching' && status !== 'done') {
+        buttons.push(`<button type="button" class="row-action" ` +
+            `data-action="mission-status" data-mission-id="${id}" ` +
+            `data-target="researching">Mark Researching</button>`);
+    }
+    if (status !== 'found_lead' && status !== 'done') {
+        buttons.push(`<button type="button" class="row-action" ` +
+            `data-action="mission-status" data-mission-id="${id}" ` +
+            `data-target="found_lead">Mark Found Lead</button>`);
+    }
+    if (status !== 'done') {
+        buttons.push(`<button type="button" class="row-action" ` +
+            `data-action="mission-status" data-mission-id="${id}" ` +
+            `data-target="done">Done</button>`);
+    }
+    if (status !== 'skipped' && status !== 'done') {
+        buttons.push(`<button type="button" class="row-action" ` +
+            `data-action="mission-status" data-mission-id="${id}" ` +
+            `data-target="skipped">Skip</button>`);
+    }
+    buttons.push(`<button type="button" class="row-action danger" ` +
+        `data-action="mission-delete" data-mission-id="${id}">Delete</button>`);
+
+    return (
+        `<div class="mission-card" data-mission-id="${id}">` +
+          `<div>` +
+            `<strong>${_escape(m.category)}</strong> · ` +
+            `${_escape(m.city_state)} ` +
+            `<span class="mission-status-badge mission-status-${_escape(status)}">${_escape(status)}</span> ` +
+            `<span class="mission-priority-badge mission-priority-${_escape(prio)}">${_escape(prio)}</span>` +
+          `</div>` +
+          `<div class="mission-query">${_escape(m.search_query)}</div>` +
+          (m.look_for    ? `<div class="mission-look">Look for: ${_escape(m.look_for)}</div>`    : '') +
+          (m.offer_angle ? `<div class="mission-offer">Offer: ${_escape(m.offer_angle)}</div>` : '') +
+          notesLine +
+          `<div class="mission-actions">${buttons.join('')}</div>` +
+        `</div>`
+    );
+}
+
+function renderMissions() {
+    const el = document.getElementById('missions-list');
+    const countEl = document.getElementById('missions-count');
+    if (!el) return;
+    if (countEl) {
+        countEl.textContent = _leadMissions.length
+            ? `${_leadMissions.length} mission${_leadMissions.length === 1 ? '' : 's'}`
+            : '';
+    }
+    if (_leadMissions.length === 0) {
+        el.innerHTML = '<div class="muted">No missions yet. Fill the form ' +
+            'above and click Generate Search Missions.</div>';
+        return;
+    }
+    // Sort: 'done' and 'skipped' to the bottom, then newest updated first.
+    const rank = m => {
+        const s = (m.status || '').toLowerCase();
+        return (s === 'done' || s === 'skipped') ? 1 : 0;
+    };
+    const sorted = _leadMissions.slice().sort((a, b) => {
+        const r = rank(a) - rank(b);
+        if (r !== 0) return r;
+        return (b.updated_at || '').localeCompare(a.updated_at || '');
+    });
+    el.innerHTML = sorted.map(_renderMissionCard).join('');
+}
+
+async function loadMissions() {
+    try {
+        const r = await fetch('/api/lead-missions');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _leadMissions = d.items || [];
+        renderMissions();
+    } catch (err) {
+        _leadMissions = [];
+        const el = document.getElementById('missions-list');
+        if (el) el.innerHTML = '<div class="muted">Could not load missions.</div>';
+    }
+}
+
+// Generate-form submit.
+const _missionsGenerateForm = document.getElementById('missions-generate-form');
+if (_missionsGenerateForm) {
+    _missionsGenerateForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(_missionsGenerateForm).entries());
+        const body = {
+            category:              data.category,
+            city_state:            data.city_state,
+            count:                 parseInt(data.count, 10) || 5,
+            website_status_target: data.website_status_target,
+        };
+        try {
+            const r = await fetch('/api/lead-missions/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            document.getElementById('cmd-status').textContent =
+                `Generated ${d.count} mission${d.count === 1 ? '' : 's'} for ` +
+                `${body.category} in ${body.city_state}.`;
+            await loadMissions();
+        } catch (err) {
+            document.getElementById('cmd-status').textContent =
+                'Generate failed: ' + (err.message || err);
+        }
+    });
+}
+
+// Per-card delegator: status updates + delete.
+const _missionsListEl = document.getElementById('missions-list');
+if (_missionsListEl) {
+    _missionsListEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+        const action = btn.dataset.action;
+        const mid = btn.dataset.missionId;
+        if (!mid) return;
+        try {
+            if (action === 'mission-status') {
+                const target = btn.dataset.target;
+                const r = await fetch(
+                    `/api/lead-missions/${encodeURIComponent(mid)}`,
+                    {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: target }),
+                    },
+                );
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadMissions();
+                return;
+            }
+            if (action === 'mission-delete') {
+                const mission = _leadMissions.find(m => m.id === mid);
+                const label = mission ? mission.search_query.slice(0, 60) : mid;
+                if (!confirm(`Delete mission "${label}…"?`)) return;
+                const r = await fetch(
+                    `/api/lead-missions/${encodeURIComponent(mid)}`,
+                    { method: 'DELETE' },
+                );
+                if (!r.ok) {
+                    const d = await r.json().catch(() => ({}));
+                    throw new Error(d.detail || 'http ' + r.status);
+                }
+                await loadMissions();
+                return;
+            }
+        } catch (err) {
+            document.getElementById('cmd-status').textContent =
+                'Mission action failed: ' + (err.message || err);
+        }
+    });
+}
+
 // Toggle the add-scout form.
 const _scoutAddToggle = document.getElementById('scout-add-toggle');
 const _scoutAddForm   = document.getElementById('scout-add-form');
@@ -4153,6 +4330,7 @@ async function refreshAll() {
         ['loadLeads',         loadLeads],
         ['loadScoutLeads',    loadScoutLeads],     // v7.28
         ['loadSummariesList', loadSummariesList],  // v7.31
+        ['loadMissions',      loadMissions],       // v8.1
     ];
     const results1 = await Promise.all(batch1.map(([n, f]) => _runLoaderSafely(n, f)));
     const results2 = await Promise.all(batch2.map(([n, f]) => _runLoaderSafely(n, f)));

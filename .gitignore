@@ -30,6 +30,8 @@ data/leads.json
 data/.leads.*.tmp
 data/scout_queue.json
 data/.scout_queue.*.tmp
+data/lead_missions.json
+data/.lead_missions.*.tmp
 reports/*.md
 
 # OS

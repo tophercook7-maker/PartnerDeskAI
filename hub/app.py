@@ -49,6 +49,7 @@ import connection_state  # noqa: E402
 import env_writer  # noqa: E402
 import leads as leads_mod  # noqa: E402
 import scout_queue as scout_mod  # noqa: E402
+import lead_missions as missions_mod  # noqa: E402
 import linkedin_oauth  # noqa: E402
 import meta_app_state  # noqa: E402
 import social_posters  # noqa: E402
@@ -1105,6 +1106,31 @@ class LeadBatchIn(BaseModel):
     text: str
 
 
+class MissionIn(BaseModel):
+    """v8.1: mission update body. All optional so PUT can patch a
+    subset; lead_missions._clean enforces what's required."""
+    category:              str | None = None
+    city_state:            str | None = None
+    search_query:          str | None = None
+    search_url:            str | None = None
+    look_for:              str | None = None
+    offer_angle:           str | None = None
+    priority:              str | None = None
+    status:                str | None = None
+    notes:                 str | None = None
+    website_status_target: str | None = None
+
+
+class MissionGenerateIn(BaseModel):
+    """v8.1: generation request — server builds N missions for
+    (category, city_state) using the website_status_target hint to pick
+    'look for' + offer angle copy."""
+    category:              str
+    city_state:            str
+    count:                 int = 5
+    website_status_target: str | None = None
+
+
 class ScoutLeadIn(BaseModel):
     """v7.28: scout-queue input. All optional so PUT can omit fields.
     Server's scout_mod._clean enforces business_name required +
@@ -1332,6 +1358,52 @@ def api_scout_leads_convert(scout_id: str) -> dict:
         raise HTTPException(status_code=400, detail=str(e))
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"Could not write: {e}")
+
+
+# --- v8.1: Logan Auto Lead Generator -----------------------------------
+# Generates Google search MISSIONS — strings + URLs. The Hub never
+# fetches the URLs; Topher opens them manually. No scraping, no
+# outbound HTTP, no OpenAI.
+
+@app.get("/api/lead-missions")
+def api_missions_list() -> dict:
+    items = missions_mod.load()
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/lead-missions/generate")
+def api_missions_generate(body: MissionGenerateIn) -> dict:
+    try:
+        new_rows = missions_mod.generate(
+            category=body.category,
+            city_state=body.city_state,
+            count=body.count,
+            website_status_target=body.website_status_target or "no website found",
+        )
+        return {"added": new_rows, "count": len(new_rows)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not write: {e}")
+
+
+@app.put("/api/lead-missions/{mission_id}")
+def api_missions_update(mission_id: str, body: MissionIn) -> dict:
+    try:
+        return missions_mod.update(mission_id, body.model_dump(exclude_none=True))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Mission {mission_id!r} not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not write: {e}")
+
+
+@app.delete("/api/lead-missions/{mission_id}")
+def api_missions_delete(mission_id: str) -> dict:
+    if not missions_mod.delete(mission_id):
+        raise HTTPException(status_code=404, detail=f"Mission {mission_id!r} not found")
+    return {"ok": True, "id": mission_id}
 
 
 @app.get("/api/connections")
