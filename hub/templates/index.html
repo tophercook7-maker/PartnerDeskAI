@@ -819,6 +819,14 @@
         .mission-priority-low       { background: #e2e8f0; color: #64748b; }
         .mission-priority-medium    { background: #cfe1ff; color: #2a6ec1; }
         .mission-priority-high      { background: #fde2e2; color: #b34a4a; }
+        /* v8.3: "→ in Scout Queue" — shown when a scout entry's
+           contact_source already references this mission's query. */
+        .mission-scout-badge {
+            display: inline-block; padding: 0.1rem 0.45rem;
+            border-radius: 999px; font-size: 0.7rem;
+            font-weight: 600; background: #d8efd8; color: #2d6a3a;
+            margin-left: 0.15rem;
+        }
         /* v7.26: "Clear filters" escape hatch. Subdued link styling so
            it doesn't compete with the primary toolbar controls. */
         .leads-clear-filters {

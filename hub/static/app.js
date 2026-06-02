@@ -2852,6 +2852,10 @@ async function loadScoutLeads() {
         const d = await r.json();
         _scoutLeads = d.items || [];
         renderScoutQueue();
+        // v8.3: missions depend on scout state for the "in Scout Queue"
+        // badge — re-render once scout data lands so the badge appears
+        // even if missions rendered first.
+        if (typeof renderMissions === 'function') renderMissions();
     } catch (err) {
         _scoutLeads = [];
         const el = document.getElementById('scout-list');
@@ -2866,12 +2870,34 @@ async function loadScoutLeads() {
 
 let _leadMissions = [];
 
+// v8.3: detect whether a mission has already been bridged into the
+// scout queue. The v8.2 bridge sets contact_source verbatim to
+// `Auto Lead Generator mission (<search_query>)`, so a substring
+// match on search_query is the canonical fingerprint.
+function _scoutEntryForMission(mission) {
+    if (!mission || !mission.search_query) return null;
+    const q = mission.search_query;
+    return _scoutLeads.find(s =>
+        (s.contact_source || '').includes(q)
+    ) || null;
+}
+
 function _renderMissionCard(m) {
     const id = _escape(m.id);
     const status = (m.status || 'new').toLowerCase();
     const prio = (m.priority || 'medium').toLowerCase();
     const notesLine = m.notes
         ? `<div class="mission-meta">Notes: ${_escape(m.notes)}</div>` : '';
+    // v8.3: if a scout entry already exists for this mission, surface
+    // it as a small badge and suppress the duplicate-create button.
+    const scoutLink = _scoutEntryForMission(m);
+    const scoutBadge = scoutLink
+        ? ` <span class="mission-scout-badge" ` +
+          `title="${_escape(scoutLink.business_name || '(unnamed)')} ` +
+          `— status: ${_escape(scoutLink.status || 'new')}">` +
+          `→ in Scout Queue` +
+          `</span>`
+        : '';
     // Buttons: Open Search always; status transitions hide their
     // current state to avoid no-op clicks.
     const buttons = [];
@@ -2900,8 +2926,9 @@ function _renderMissionCard(m) {
     // v8.2: bridge to the scout queue. Pre-fills the scout-add form
     // with category + city/state + a back-reference to the search
     // query, and auto-flips the mission to found_lead since the user
-    // is actively converting it.
-    if (status !== 'done' && status !== 'skipped') {
+    // is actively converting it. v8.3 hides the button when the
+    // mission already has a scout entry — prevents accidental dupes.
+    if (status !== 'done' && status !== 'skipped' && !scoutLink) {
         buttons.push(`<button type="button" class="row-action primary" ` +
             `data-action="mission-to-scout" data-mission-id="${id}">+ Add to Scout</button>`);
     }
@@ -2915,6 +2942,7 @@ function _renderMissionCard(m) {
             `${_escape(m.city_state)} ` +
             `<span class="mission-status-badge mission-status-${_escape(status)}">${_escape(status)}</span> ` +
             `<span class="mission-priority-badge mission-priority-${_escape(prio)}">${_escape(prio)}</span>` +
+            scoutBadge +
           `</div>` +
           `<div class="mission-query">${_escape(m.search_query)}</div>` +
           (m.look_for    ? `<div class="mission-look">Look for: ${_escape(m.look_for)}</div>`    : '') +
