@@ -4,6 +4,8 @@ A local-first AI Business Partner system for **MixedMakerShop**.
 
 PartnerDeskAI is a collection of AI "partners" — each one a focused role with its own prompt, memory, workflows, and reusable assets. Everything runs locally, writes to plain markdown + SQLite, and **requires human approval before any public action.**
 
+> See [CHANGELOG.md](./CHANGELOG.md) for release notes (v8.0 current, plus the full v7.x series).
+
 ## v0.1 — Parker Promo
 
 The first partner. Parker Promo generates daily social media drafts (Google Business Profile, Facebook, Instagram, LinkedIn) using the OpenAI API and saves them to a dated folder for human review.
@@ -66,21 +68,32 @@ The wrapper exits 0 even on failure (so macOS doesn't show its generic "unexpect
 uvicorn hub.app:app --reload --port 8787
 ```
 
-Open:
+Open `http://127.0.0.1:8787`.
 
-```
-http://127.0.0.1:8787
-```
+### Layout (v8.0)
 
-The Hub includes a Mission Control section at the top that summarizes drafts, pending review, ready-to-post items, verified connections, partner status, and system mood at a glance.
+The Hub is organized into five regions, top to bottom:
 
-Mission Control also includes a Quick Actions bar for running daily ops, refreshing the Hub, refreshing summaries, jumping to draft review, and jumping to Ready to Post.
+- **Top bar** (sticky) — Refresh Hub · Run Daily Ops · Verify All Connections.
+- **Today** — four clickable cards summarizing the work that matters right now: *leads needing attention* (overdue + due-today), *ready to publish*, *hub health*, *today's summary shortcut*. Each card expands the relevant partner/system section on click.
+- **▶ Parker** — content + publishing. Collapsed by default. Inside: Generate / Review / Approve Visible / Reject Visible action toolbar; Ready to Post queue with per-platform publish buttons and one-click bulk publish for verified platforms; Recent Parker Work (filterable list); Approved History.
+- **▶ Logan** — outbound lead generation. Collapsed by default. Inside: lead dashboard (6 click-to-filter cards), drag-and-drop pipeline board (cold/warm/hot/closed/dropped), filterable list view with bulk paste-import, multi-template outreach drafts, plus a Lead Scout Queue for capturing local businesses to qualify and convert into leads.
+- **▶ Olivia** — operations / admin. Collapsed by default. Inside: Today's Summary + an inline archive of past summaries with click-to-open.
+- **▶ System** — collapsed by default, with 5 nested sub-collapsibles: Connections · Meta Readiness Center · System Activity feed · Report Center & Inbox · Diagnostics & Logs.
 
-The Hub includes a Control Panel for common PartnerDeskAI actions, reducing the need to use terminal commands during normal operation. Clicked Control Panel buttons briefly dim as visual feedback and lock against double-clicks for ~800ms. The Control Panel is the canonical action surface; the previous standalone Refresh Hub / Run Daily Ops / Refresh Summary buttons have been retired in favor of named action functions called directly by Mission Control and the Control Panel. The Hub / System group also includes a **Stop Hub** button (v6.5) that sends `SIGTERM` to the PID in `logs/hub.pid`; the endpoint validates the target is actually a `uvicorn hub.app` process before signaling (defense against PID reuse). The Hub Control Panel includes a **Show Hub Diagnostics** button (v6.6) that runs the local hub doctor and displays safe server/log status — output is redacted against any `.env` value, OAuth code/state query params, and Bearer tokens before being shown. The Hub also includes a **Meta Readiness Center** (v6.7) section with side-by-side cards for Facebook + Instagram showing setup status, required env keys (with present/absent ✓/✗ — never values), step-by-step setup checklists, and per-platform "Verify now" buttons. Backed by `GET /api/meta/readiness` which returns key NAMES only. Each Meta card has a free-text **App approval notes** textarea (v6.8, capped at 4000 chars, persisted atomically to `data/meta_app_state.json` which is gitignored; never stores anything fetched from Meta APIs) so you can track app-review status, granted permissions, and reviewer feedback per platform. Updates via `POST /api/meta/notes`.
+Below everything: the **Command Output** panel showing the last action's status.
 
-The Hub also includes a **LinkedIn Leads** section (v6.9) — an outbound prospect tracker / CRM-lite. Add prospects with name, company, LinkedIn handle, source, status (`cold`/`warm`/`hot`/`closed`/`dropped`), and free-text notes. Pure local storage: no LinkedIn API, no auto-sync. Persisted atomically to `data/leads.json` (gitignored). CRUD via `GET /api/leads`, `POST /api/leads`, `PUT /api/leads/{id}`, `DELETE /api/leads/{id}` — all writes go through `automation/leads.py` which whitelists fields and clamps lengths. Filter by name/company/status from the in-section search box.
+Clicked buttons briefly dim as visual feedback and lock against double-clicks for ~800ms.
 
-LinkedIn Leads includes a local follow-up queue with contacted status, follow-up dates, and simple message drafts. It does not message leads automatically. v7.0 adds three per-card actions backed by `POST /api/leads/{id}/contacted` (stamps `contacted_at`, auto-promotes cold→warm), `POST /api/leads/{id}/follow-up` (sets `follow_up_date` after validating YYYY-MM-DD), and `POST /api/leads/{id}/message-draft` (returns a fixed-template message — no OpenAI — and stores it in `last_message`). The message is shown in the Command Output panel with a Copy button; the user copies and pastes into LinkedIn manually.
+### Safety surfaces (v6.5 → v7.0)
+
+These shipped before v8.0 and still ground every Hub action:
+
+- **Stop Hub** (v6.5) sends `SIGTERM` to the PID in `logs/hub.pid` only after validating the target is a `uvicorn hub.app` process — defense against PID reuse.
+- **Show Hub Diagnostics** (v6.6) runs the local hub doctor and redacts any `.env` value, OAuth code/state params, and Bearer tokens before display.
+- **Meta Readiness Center** (v6.7) shows Facebook + Instagram setup status with ✓/✗ for required env key *names* — **never values**. Backed by `GET /api/meta/readiness` which returns names only.
+- **Meta app approval notes** (v6.8) — free-text per-platform textarea, capped at 4000 chars, persisted atomically to `data/meta_app_state.json` (gitignored). Updates via `POST /api/meta/notes`.
+- **LinkedIn Leads** (v6.9 + v7.x) — outbound prospect tracker / CRM-lite. Pure local storage: no LinkedIn API, no auto-sync. Persisted atomically to `data/leads.json` (gitignored). CRUD via `GET/POST/PUT/DELETE /api/leads`. The follow-up queue (v7.0) adds `POST /api/leads/{id}/contacted`, `/follow-up`, and `/message-draft` — the message endpoint returns a fixed template (no OpenAI) and the user copy-pastes manually.
 
 ## Recent versions
 
