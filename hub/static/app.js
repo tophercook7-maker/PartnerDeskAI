@@ -2897,6 +2897,14 @@ function _renderMissionCard(m) {
             `data-action="mission-status" data-mission-id="${id}" ` +
             `data-target="skipped">Skip</button>`);
     }
+    // v8.2: bridge to the scout queue. Pre-fills the scout-add form
+    // with category + city/state + a back-reference to the search
+    // query, and auto-flips the mission to found_lead since the user
+    // is actively converting it.
+    if (status !== 'done' && status !== 'skipped') {
+        buttons.push(`<button type="button" class="row-action primary" ` +
+            `data-action="mission-to-scout" data-mission-id="${id}">+ Add to Scout</button>`);
+    }
     buttons.push(`<button type="button" class="row-action danger" ` +
         `data-action="mission-delete" data-mission-id="${id}">Delete</button>`);
 
@@ -3012,6 +3020,51 @@ if (_missionsListEl) {
                 const d = await r.json();
                 if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
                 await loadMissions();
+                return;
+            }
+            if (action === 'mission-to-scout') {
+                // v8.2: pre-fill scout-add form from the mission, flip
+                // the mission to found_lead, then open + scroll to the
+                // form so the user lands on it ready to type the
+                // business name they discovered.
+                const mission = _leadMissions.find(m => m.id === mid);
+                if (!mission) return;
+                // Auto-flip mission status — the user is actively
+                // converting it; this saves a click. If they cancel
+                // the scout form they can flip the mission back.
+                try {
+                    await fetch(
+                        `/api/lead-missions/${encodeURIComponent(mid)}`,
+                        {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status: 'found_lead' }),
+                        },
+                    );
+                    await loadMissions();
+                } catch (_) {
+                    // Non-fatal — proceed to pre-fill even if the
+                    // status update failed; user can flip manually.
+                }
+                const form = document.getElementById('scout-add-form');
+                if (!form) return;
+                const set = (name, val) => {
+                    const f = form.querySelector(`[name="${name}"]`);
+                    if (f) f.value = val || '';
+                };
+                set('business_name', '');
+                set('category',      mission.category);
+                set('city_state',    mission.city_state);
+                set('contact_source',
+                    `Auto Lead Generator mission (${mission.search_query})`);
+                if (mission.offer_angle) set('offer_angle', mission.offer_angle);
+                form.hidden = false;
+                form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                const first = form.querySelector('input[name="business_name"]');
+                if (first) first.focus();
+                document.getElementById('cmd-status').textContent =
+                    `Mission marked found_lead. Fill in the business name ` +
+                    `to capture it in the Scout Queue.`;
                 return;
             }
             if (action === 'mission-delete') {
