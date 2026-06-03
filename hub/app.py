@@ -50,6 +50,7 @@ import env_writer  # noqa: E402
 import leads as leads_mod  # noqa: E402
 import scout_queue as scout_mod  # noqa: E402
 import lead_missions as missions_mod  # noqa: E402
+import youtube_partner as yt_mod  # noqa: E402
 import linkedin_oauth  # noqa: E402
 import meta_app_state  # noqa: E402
 import social_posters  # noqa: E402
@@ -1141,6 +1142,33 @@ class DeadIn(BaseModel):
     reason: str
 
 
+class YouTubeChannelIn(BaseModel):
+    """v8.5: channel profile. All optional so PUT can patch a subset."""
+    channel_niche:    str | None = None
+    target_audience:  str | None = None
+    video_style:      str | None = None
+    tone:             str | None = None
+    main_offer_cta:   str | None = None
+    preferred_length: str | None = None
+    focus:            str | None = None  # "longform" | "shorts"
+
+
+class YouTubeGenerateIn(BaseModel):
+    """v8.5: generation request. content_type validated against
+    yt_mod.ALLOWED_CONTENT_TYPES."""
+    content_type: str
+    topic:        str | None = None
+    count:        int | None = None
+
+
+class YouTubePackageIn(BaseModel):
+    """v8.5: package update body. Only status/title/body editable
+    after creation."""
+    title:  str | None = None
+    status: str | None = None
+    body:   str | None = None
+
+
 class ScoutLeadIn(BaseModel):
     """v7.28: scout-queue input. All optional so PUT can omit fields.
     Server's scout_mod._clean enforces business_name required +
@@ -1352,6 +1380,72 @@ def api_leads_dead_reasons() -> dict:
     """Expose the allowed dead-reason list so the frontend picker
     stays in sync with leads.py without hardcoding."""
     return {"reasons": list(leads_mod.ALLOWED_DEAD_REASONS)}
+
+
+# --- v8.5: YouTube Growth Partner --------------------------------------
+# Local-template generation. NO OpenAI. NO YouTube API. NO uploads.
+# Connected Accounts are placeholders ('Coming soon'); nothing is wired
+# to any social API yet.
+
+@app.get("/api/youtube/channel")
+def api_youtube_channel_get() -> dict:
+    return yt_mod.load_channel()
+
+
+@app.put("/api/youtube/channel")
+def api_youtube_channel_put(body: YouTubeChannelIn) -> dict:
+    try:
+        return yt_mod.save_channel(body.model_dump(exclude_none=True))
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/youtube/packages")
+def api_youtube_packages_list() -> dict:
+    items = yt_mod.load_packages()
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/youtube/packages/generate")
+def api_youtube_packages_generate(body: YouTubeGenerateIn) -> dict:
+    try:
+        return yt_mod.generate_package(
+            content_type=body.content_type,
+            topic=body.topic or "",
+            count=body.count if body.count is not None else 10,
+        )
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/youtube/packages/{pkg_id}")
+def api_youtube_packages_update(pkg_id: str, body: YouTubePackageIn) -> dict:
+    try:
+        return yt_mod.update_package(pkg_id, body.model_dump(exclude_none=True))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Package {pkg_id!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/youtube/packages/{pkg_id}")
+def api_youtube_packages_delete(pkg_id: str) -> dict:
+    if not yt_mod.delete_package(pkg_id):
+        raise HTTPException(status_code=404, detail=f"Package {pkg_id!r} not found")
+    return {"ok": True, "id": pkg_id}
+
+
+@app.get("/api/connected-accounts")
+def api_connected_accounts() -> dict:
+    """v8.5: future-ready connected-accounts list. All cards render as
+    'Not connected' / 'Coming soon' — nothing is wired to a real social
+    API yet. Publishing will require account authorization and an
+    approval workflow before going live."""
+    return {
+        "accounts": list(yt_mod.CONNECTED_ACCOUNTS),
+        "note": "Publishing will require account authorization and "
+                "approval workflow.",
+    }
 
 
 @app.get("/api/leads/templates")
@@ -1883,6 +1977,22 @@ def api_partners() -> dict:
                     "prospects_tracked": len(all_leads),
                     "outreach_queue":    len(active_leads),
                     "scout_queue":       len(active_scouts),
+                },
+            },
+            {
+                # v8.5: new YouTube Growth Partner. Approval-based
+                # content package generator (local templates, NO
+                # OpenAI, NO YouTube API, NO uploads).
+                "key":    "youtube",
+                "name":   "YouTube Growth Partner",
+                "status": "active",
+                "role":   "YouTube content packages",
+                "metrics": {
+                    "packages":          len(yt_mod.load_packages()),
+                    "drafts":            sum(1 for p in yt_mod.load_packages()
+                                              if (p.get("status") or "draft") == "draft"),
+                    "approved":          sum(1 for p in yt_mod.load_packages()
+                                              if p.get("status") == "approved"),
                 },
             },
             {

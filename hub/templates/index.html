@@ -819,6 +819,104 @@
         .mission-priority-low       { background: #e2e8f0; color: #64748b; }
         .mission-priority-medium    { background: #cfe1ff; color: #2a6ec1; }
         .mission-priority-high      { background: #fde2e2; color: #b34a4a; }
+        /* v8.5: YouTube Growth Partner — channel profile, action grid,
+           output history, connected-accounts placeholders. */
+        .yt-h3 {
+            margin-top: 1.5rem; margin-bottom: 0.3rem;
+            padding-top: 0.7rem;
+            border-top: 1px solid #d8dde4;
+            font-size: 1rem;
+            display: flex; align-items: baseline; gap: 0.5rem;
+        }
+        .yt-actions {
+            display: grid; gap: 0.55rem;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            margin-bottom: 1rem;
+        }
+        .yt-actions button {
+            padding: 0.7rem 0.9rem; border: 1px solid #cbd5e1;
+            border-radius: 8px; background: #fff; color: #1f2937;
+            font-family: inherit; font-size: 0.88rem; font-weight: 600;
+            cursor: pointer;
+            transition: border-color 0.15s, transform 0.05s;
+        }
+        .yt-actions button:hover {
+            border-color: #2a6ec1;
+            background: linear-gradient(135deg, #fff 0%, #f0f7ff 100%);
+        }
+        .yt-actions button.primary {
+            background: linear-gradient(135deg, #2a6ec1 0%, #1c4f8f 100%);
+            color: #fff; border-color: #1c4f8f;
+        }
+        .yt-actions button.primary:hover {
+            background: linear-gradient(135deg, #245fa5 0%, #163e75 100%);
+        }
+        .yt-actions button:active { transform: translateY(1px); }
+        .yt-packages-list {
+            display: grid; gap: 0.55rem;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        }
+        .yt-pkg-card {
+            background: #fff; border: 1px solid #d8dde4;
+            border-radius: 6px; padding: 0.6rem 0.75rem;
+            display: flex; flex-direction: column; gap: 0.3rem;
+            font-size: 0.85rem;
+        }
+        .yt-pkg-card-title {
+            font-weight: 600; color: #1f2937; font-size: 0.9rem;
+        }
+        .yt-pkg-card-meta { color: #64748b; font-size: 0.78rem; }
+        .yt-pkg-card details {
+            margin-top: 0.3rem; font-size: 0.82rem;
+        }
+        .yt-pkg-card details summary {
+            cursor: pointer; color: #2a6ec1; font-weight: 500;
+        }
+        .yt-pkg-card details pre {
+            background: #f8fafc; padding: 0.55rem; border-radius: 4px;
+            white-space: pre-wrap; word-wrap: break-word;
+            max-height: 24rem; overflow: auto; margin: 0.3rem 0 0;
+            font-size: 0.78rem;
+        }
+        .yt-pkg-card-actions {
+            display: flex; gap: 0.3rem; margin-top: 0.35rem; flex-wrap: wrap;
+        }
+        .yt-pkg-status-badge {
+            display: inline-block; padding: 0.1rem 0.45rem;
+            border-radius: 999px; font-size: 0.7rem;
+            font-weight: 600; text-transform: lowercase;
+        }
+        .yt-pkg-status-draft    { background: #e2e8f0; color: #475569; }
+        .yt-pkg-status-approved { background: #cfe1ff; color: #1c4f8f; }
+        .yt-pkg-status-used     { background: #d8efd8; color: #2d6a3a; }
+        .yt-pkg-type-badge {
+            display: inline-block; padding: 0.1rem 0.45rem;
+            border-radius: 999px; font-size: 0.7rem;
+            font-weight: 600; background: #fff6e0; color: #8a6320;
+        }
+        .yt-connected-grid {
+            display: grid; gap: 0.5rem;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        }
+        .yt-conn-card {
+            background: linear-gradient(135deg, #fafbfc 0%, #f1f5f9 100%);
+            border: 1px solid #d8dde4; border-radius: 8px;
+            padding: 0.6rem 0.7rem; opacity: 0.85;
+            display: flex; flex-direction: column; gap: 0.25rem;
+        }
+        .yt-conn-card-name {
+            font-weight: 600; color: #1f2937; font-size: 0.9rem;
+        }
+        .yt-conn-card-status {
+            color: #64748b; font-size: 0.78rem;
+        }
+        .yt-conn-card-btn {
+            padding: 0.3rem 0.5rem; border: 1px solid #cbd5e1;
+            background: #fff; color: #94a3b8; border-radius: 4px;
+            font-size: 0.78rem; font-family: inherit;
+            cursor: not-allowed;
+            margin-top: 0.2rem;
+        }
         /* v8.4: Outreach Queue + Follow-Ups Due cards. */
         .outreach-h3, .followups-h3 {
             margin-top: 1.6rem; margin-bottom: 0.3rem;
@@ -1733,6 +1831,99 @@
                 pushes the date forward without changing status.
             </div>
             <div id="followups-list" class="followups-list">
+                <div class="muted">Loading…</div>
+            </div>
+        </section>
+    </details>
+
+    <!-- v8.5: YOUTUBE GROWTH PARTNER — approval-based content package
+         generator. Local templates only; NO OpenAI calls, NO YouTube
+         API, NO uploads. Connected Accounts panel is placeholder. -->
+    <details class="partner-details" id="youtube-details">
+        <summary class="partner-summary">
+            <span class="partner-summary-name">YouTube Growth Partner</span>
+            <span class="partner-summary-role">▶ Creates YouTube ideas, scripts, Shorts, thumbnails, and metadata for your business</span>
+            <span class="partner-summary-metrics" data-partner-metrics="youtube">—</span>
+        </summary>
+        <section>
+            <div class="muted" style="margin-bottom: 0.6rem; font-size: 0.85rem;">
+                Generates structured content packages from local templates.
+                <strong>Does not call OpenAI. Does not upload to YouTube.</strong>
+                Every package starts as a draft and requires manual review
+                before recording or publishing.
+            </div>
+
+            <!-- Channel Profile panel. Persisted to data/youtube_channel.json. -->
+            <h3 class="yt-h3">Channel Profile</h3>
+            <form id="yt-channel-form" class="leads-form"
+                  aria-label="YouTube channel profile">
+                <input class="leads-input" name="channel_niche"
+                       placeholder="Channel niche (e.g. small-business web design)">
+                <input class="leads-input" name="target_audience"
+                       placeholder="Target audience (e.g. local service owners)">
+                <input class="leads-input" name="video_style"
+                       placeholder="Video style (e.g. talking head + screen recording)">
+                <input class="leads-input" name="tone"
+                       placeholder="Tone (e.g. warm, direct, no fluff)">
+                <input class="leads-input" name="main_offer_cta"
+                       placeholder="Main offer / CTA (e.g. $150 starter web fix)">
+                <input class="leads-input" name="preferred_length"
+                       placeholder="Preferred video length (e.g. 6-9 minutes)">
+                <select class="leads-input" name="focus">
+                    <option value="longform">Focus: long-form</option>
+                    <option value="shorts">Focus: shorts</option>
+                </select>
+                <div class="leads-form-actions">
+                    <button type="submit" class="primary">Save Profile</button>
+                    <span id="yt-channel-status" class="muted"></span>
+                </div>
+            </form>
+
+            <!-- Action cards. Each generates a draft package. -->
+            <h3 class="yt-h3">Generate</h3>
+            <div class="muted" style="margin-bottom: 0.4rem; font-size: 0.82rem;">
+                All output saves as draft. <strong>Review required before publishing.</strong>
+                No OpenAI calls — these are structured local templates.
+            </div>
+            <div class="yt-actions">
+                <button type="button" class="primary" data-yt-action="generate-ideas">
+                    Generate 10 Video Ideas
+                </button>
+                <button type="button" data-yt-action="write-script">
+                    Write Full Script
+                </button>
+                <button type="button" data-yt-action="create-shorts">
+                    Create 5 Shorts
+                </button>
+                <button type="button" data-yt-action="generate-thumbnails">
+                    Thumbnail Concepts
+                </button>
+                <button type="button" data-yt-action="generate-metadata">
+                    Titles · Description · Tags
+                </button>
+                <button type="button" class="primary" data-yt-action="build-full">
+                    Build Full Video Package
+                </button>
+            </div>
+
+            <!-- Output history + approval queue (same list, status badge filters intent). -->
+            <h3 class="yt-h3">Output History
+                <span id="yt-packages-count" class="muted"></span>
+            </h3>
+            <div class="muted" style="margin-bottom: 0.4rem; font-size: 0.82rem;">
+                All generated packages live here. <strong>Review required before publishing.</strong>
+                Approve to move out of draft; Mark Used after you've recorded.
+            </div>
+            <div id="yt-packages-list" class="yt-packages-list">
+                <div class="muted">Loading…</div>
+            </div>
+
+            <!-- v8.5: Connected Accounts panel. Future-ready placeholders. -->
+            <h3 class="yt-h3">Connected Accounts</h3>
+            <div class="muted" style="margin-bottom: 0.4rem; font-size: 0.82rem;" id="yt-connected-note">
+                Publishing will require account authorization and approval workflow.
+            </div>
+            <div id="yt-connected-list" class="yt-connected-grid">
                 <div class="muted">Loading…</div>
             </div>
         </section>
