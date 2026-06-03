@@ -3438,8 +3438,17 @@ function renderVideoPackages() {
             : '';
     }
     if (_vpPackages.length === 0) {
-        el.innerHTML = '<div class="muted">No packages yet. ' +
-            'Use the action buttons above to generate one.</div>';
+        // v8.6.1: empty-state guidance — point at the right first button.
+        el.innerHTML =
+            '<div class="vp-callout vp-callout-info" style="margin-top: 0;">' +
+              '<strong>No video packages yet.</strong>' +
+              '<div style="margin-top: 0.35rem;">' +
+                'Recommended first step: ' +
+                'fill out your <strong>Business Profile</strong>, ' +
+                'then click <strong>"Build Full Video Campaign"</strong> ' +
+                'or <strong>"30-Day Video Calendar"</strong>.' +
+              '</div>' +
+            '</div>';
         return;
     }
     const rank = p => {
@@ -3494,11 +3503,30 @@ if (_vpProfileForm) {
     });
 }
 
-// Generate-button delegator. Scoped to #video-details so we don't
-// collide with the v8.5 yt-actions class.
+// Generate-button delegator. v8.6.1 — buttons moved from .yt-actions
+// into the new .vp-gen-grid card layout; selector updated. Prompts
+// now include example topics so the user isn't staring at a blank
+// "Topic:" with no idea what to type.
+const _VP_TOPIC_EXAMPLES = (
+    "Examples:\n" +
+    "- $150 starter website fix\n" +
+    "- spring lawn cleanup\n" +
+    "- roof inspection after storms\n" +
+    "- why your Google Business Profile matters\n" +
+    "- before and after pressure washing driveway"
+);
+const _VP_LABELS = {
+    calendar:     '30-Day Video Calendar',
+    short_script: 'Short Script',
+    ad_script:    'Local Business Ad Script',
+    shot_list:    'Shot List',
+    caption_pack: 'Caption Pack',
+    metadata:     'Titles / Description / Hashtags',
+    full:         'Full Video Campaign',
+};
 const _vpDetailsEl = document.getElementById('video-details');
 if (_vpDetailsEl) {
-    const actionsEl = _vpDetailsEl.querySelector('.yt-actions');
+    const actionsEl = _vpDetailsEl.querySelector('.vp-gen-grid');
     if (actionsEl) {
         actionsEl.addEventListener('click', async (e) => {
             const btn = e.target.closest('button[data-vp-action]');
@@ -3508,16 +3536,23 @@ if (_vpDetailsEl) {
             if (a === 'calendar') {
                 body = { content_type: 'calendar', count: 30 };
             } else if (a === 'caption_pack') {
-                const topic = prompt('Caption-pack topic / video title:');
+                const topic = prompt(
+                    `What is this video about?\n${_VP_TOPIC_EXAMPLES}`
+                );
                 if (topic === null) return;
                 body = { content_type: 'caption_pack', topic, count: 5 };
             } else if (a === 'full') {
-                const topic = prompt('Full-campaign topic / video title:');
+                const topic = prompt(
+                    `What is this video about?\n${_VP_TOPIC_EXAMPLES}`
+                );
                 if (topic === null) return;
                 body = { content_type: 'full', topic };
             } else {
                 // short_script, ad_script, shot_list, metadata — all topic-driven
-                const topic = prompt(`Topic for ${a.replace('_', ' ')}:`);
+                const label = _VP_LABELS[a] || a.replace('_', ' ');
+                const topic = prompt(
+                    `What is this ${label} about?\n${_VP_TOPIC_EXAMPLES}`
+                );
                 if (topic === null) return;
                 body = { content_type: a, topic };
             }

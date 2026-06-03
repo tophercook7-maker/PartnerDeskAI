@@ -819,6 +819,99 @@
         .mission-priority-low       { background: #e2e8f0; color: #64748b; }
         .mission-priority-medium    { background: #cfe1ff; color: #2a6ec1; }
         .mission-priority-high      { background: #fde2e2; color: #b34a4a; }
+        /* v8.6.1: Video Partner UX guidance — panels, callouts, helper
+           text, generator cards. All CSS only; no JS shape change. */
+        .vp-start-here, .vp-recommendation {
+            background: linear-gradient(135deg, #f0f7ff 0%, #e8f0fc 100%);
+            border: 1px solid #cfe1ff; border-radius: 8px;
+            padding: 0.9rem 1.1rem; margin-bottom: 0.9rem;
+        }
+        .vp-start-here h3, .vp-recommendation h3 {
+            margin: 0 0 0.5rem; padding: 0; border: none;
+            font-size: 1rem; color: #1c4f8f;
+            display: block;
+        }
+        .vp-start-here ol { margin: 0; padding-left: 1.4rem; font-size: 0.88rem; }
+        .vp-start-here ol li { margin-bottom: 0.15rem; color: #1f2937; }
+        .vp-recommendation ul {
+            margin: 0; padding-left: 1.2rem; font-size: 0.85rem;
+            display: grid; gap: 0.2rem;
+        }
+        .vp-recommendation ul li { color: #1f2937; }
+        .vp-callout {
+            border-radius: 6px; padding: 0.55rem 0.75rem;
+            font-size: 0.82rem; margin-top: 0.6rem;
+        }
+        .vp-callout-important {
+            background: #fde2e2; color: #7a2424; border: 1px solid #d88a8a;
+        }
+        .vp-callout-info {
+            background: #f0f7ff; color: #1c4f8f; border: 1px solid #cfe1ff;
+            margin-bottom: 0.7rem;
+        }
+        .vp-callout-warning {
+            background: #fff6e0; color: #6b4d1f; border: 1px solid #d8b97a;
+        }
+        .vp-profile-grid {
+            display: grid; gap: 0.7rem;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            padding: 0.85rem; border: 1px solid #cfe1ff;
+            border-radius: 6px; background: #f5f9ff;
+            margin-bottom: 0.8rem;
+        }
+        .vp-field {
+            display: flex; flex-direction: column; gap: 0.2rem;
+        }
+        .vp-field-label {
+            font-size: 0.75rem; font-weight: 600; color: #1f2937;
+            text-transform: uppercase; letter-spacing: 0.02em;
+        }
+        .vp-field-help {
+            font-size: 0.72rem; color: #64748b;
+        }
+        .vp-field-actions {
+            grid-column: 1 / -1;
+            display: flex; gap: 0.5rem; align-items: center;
+            margin-top: 0.2rem;
+        }
+        .vp-gen-grid {
+            display: grid; gap: 0.6rem;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            margin-bottom: 1rem;
+        }
+        .vp-gen-card {
+            background: #fff; border: 1px solid #cbd5e1;
+            border-radius: 8px; padding: 0.75rem 0.9rem;
+            font-family: inherit; cursor: pointer; text-align: left;
+            display: flex; flex-direction: column; gap: 0.35rem;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .vp-gen-card:hover {
+            border-color: #2a6ec1;
+            background: linear-gradient(135deg, #fff 0%, #f0f7ff 100%);
+            box-shadow: 0 2px 6px rgba(42, 110, 193, 0.10);
+        }
+        .vp-gen-card.primary {
+            background: linear-gradient(135deg, #2a6ec1 0%, #1c4f8f 100%);
+            color: #fff; border-color: #1c4f8f;
+        }
+        .vp-gen-card.primary:hover {
+            background: linear-gradient(135deg, #245fa5 0%, #163e75 100%);
+        }
+        .vp-gen-card.primary .vp-gen-desc,
+        .vp-gen-card.primary .vp-gen-best { color: #dde9f7; }
+        .vp-gen-card:active { transform: translateY(1px); }
+        .vp-gen-title {
+            font-size: 0.95rem; font-weight: 600; color: inherit;
+        }
+        .vp-gen-desc {
+            font-size: 0.78rem; color: #475569; line-height: 1.35;
+        }
+        .vp-gen-best {
+            font-size: 0.72rem; color: #64748b; margin-top: auto;
+        }
+        .vp-gen-best strong { color: #1c4f8f; }
+        .vp-gen-card.primary .vp-gen-best strong { color: #fff; }
         /* v8.5: YouTube Growth Partner — channel profile, action grid,
            output history, connected-accounts placeholders. */
         .yt-h3 {
@@ -1939,77 +2032,180 @@
             <span class="partner-summary-metrics" data-partner-metrics="video">—</span>
         </summary>
         <section>
-            <div class="muted" style="margin-bottom: 0.6rem; font-size: 0.85rem;">
-                Generates 30-day calendars, short-form scripts, local ad
-                scripts, shot lists, caption packs, and full campaign
-                packages from local templates.
-                <strong>Review required before publishing. This tool
-                prepares content only.</strong>
+            <!-- v8.6.1: Start Here panel. -->
+            <div class="vp-start-here">
+                <h3>Start Here</h3>
+                <ol>
+                    <li>Fill out your Business Profile first.</li>
+                    <li>Choose what kind of video help you need.</li>
+                    <li>Generate a draft package.</li>
+                    <li>Review and edit the package.</li>
+                    <li>Approve it only when it looks ready.</li>
+                    <li>Mark it Used after you actually post or use it somewhere.</li>
+                </ol>
+                <div class="vp-callout vp-callout-important">
+                    <strong>Important:</strong> Video Partner does not publish anything for you.
+                    It only prepares content for review.
+                </div>
+            </div>
+
+            <!-- v8.6.1: Best First Button recommendation box. -->
+            <div class="vp-recommendation">
+                <h3>Not sure where to start?</h3>
+                <ul>
+                    <li><strong>Full Video Campaign</strong> — if you want the complete package.</li>
+                    <li><strong>30-Day Video Calendar</strong> — if you need ideas.</li>
+                    <li><strong>Short Script</strong> — if you already know the topic.</li>
+                    <li><strong>Ad Script</strong> — if you are promoting an offer.</li>
+                    <li><strong>Shot List</strong> — if you are ready to film.</li>
+                    <li><strong>Caption Pack</strong> — after you already have a video idea.</li>
+                    <li><strong>Titles / Description / Hashtags</strong> — when preparing a YouTube, Facebook, Instagram, or TikTok post.</li>
+                </ul>
             </div>
 
             <h3 class="yt-h3">Video Profile</h3>
-            <form id="vp-profile-form" class="leads-form"
+            <div class="muted" style="margin-bottom: 0.5rem; font-size: 0.85rem;">
+                These fields shape every generated package. Save once;
+                used by all generators below.
+            </div>
+            <form id="vp-profile-form" class="vp-profile-grid"
                   aria-label="Video Partner business profile">
-                <input class="leads-input" name="business_name"
-                       placeholder="Business name">
-                <input class="leads-input" name="niche"
-                       placeholder="Niche (e.g. local web design)">
-                <input class="leads-input" name="target_customer"
-                       placeholder="Target customer (e.g. small-business owners)">
-                <input class="leads-input" name="offer"
-                       placeholder="Offer (e.g. $150 starter web fix)">
-                <input class="leads-input" name="tone"
-                       placeholder="Tone (e.g. warm, direct)">
-                <input class="leads-input" name="platforms"
-                       placeholder="Platforms (e.g. TikTok, Instagram, YouTube Shorts)">
-                <input class="leads-input" name="video_length"
-                       placeholder="Video length target (e.g. 30-60s shorts; 6-9 min long)">
-                <input class="leads-input" name="call_to_action"
-                       placeholder="Call to action (e.g. Book a free consult)">
-                <div class="leads-form-actions">
+                <label class="vp-field">
+                    <span class="vp-field-label">Business name</span>
+                    <input class="leads-input" name="business_name"
+                           placeholder="MixedMakerShop">
+                    <span class="vp-field-help">The name that should appear in generated content.</span>
+                </label>
+                <label class="vp-field">
+                    <span class="vp-field-label">Niche</span>
+                    <input class="leads-input" name="niche"
+                           placeholder="lawn care, web design, roofing, salon, food truck">
+                    <span class="vp-field-help">What kind of business this is. Example: lawn care, web design, roofing, salon, food truck.</span>
+                </label>
+                <label class="vp-field">
+                    <span class="vp-field-label">Target customer</span>
+                    <input class="leads-input" name="target_customer"
+                           placeholder="homeowners, small business owners, parents, church members">
+                    <span class="vp-field-help">Who the video should speak to. Example: homeowners, small business owners, parents, church members.</span>
+                </label>
+                <label class="vp-field">
+                    <span class="vp-field-label">Offer</span>
+                    <input class="leads-input" name="offer"
+                           placeholder="$150 starter web fix">
+                    <span class="vp-field-help">The main service, product, discount, or package you want people to care about.</span>
+                </label>
+                <label class="vp-field">
+                    <span class="vp-field-label">Tone</span>
+                    <input class="leads-input" name="tone"
+                           placeholder="friendly, bold, helpful, funny, professional">
+                    <span class="vp-field-help">How the content should sound. Example: friendly, bold, helpful, funny, professional.</span>
+                </label>
+                <label class="vp-field">
+                    <span class="vp-field-label">Platforms</span>
+                    <input class="leads-input" name="platforms"
+                           placeholder="Facebook, Instagram, TikTok, YouTube">
+                    <span class="vp-field-help">Where this content may be used. Example: Facebook, Instagram, TikTok, YouTube.</span>
+                </label>
+                <label class="vp-field">
+                    <span class="vp-field-label">Video length</span>
+                    <input class="leads-input" name="video_length"
+                           placeholder="30-60 seconds or 6-9 minutes">
+                    <span class="vp-field-help">How long the video should feel. Example: 30-60 seconds or 6-9 minutes.</span>
+                </label>
+                <label class="vp-field">
+                    <span class="vp-field-label">Call to action</span>
+                    <input class="leads-input" name="call_to_action"
+                           placeholder="call, message, visit website, book estimate">
+                    <span class="vp-field-help">What viewers should do next. Example: call, message, visit website, book estimate.</span>
+                </label>
+                <div class="vp-field vp-field-actions">
                     <button type="submit" class="primary">Save Profile</button>
                     <span id="vp-profile-status" class="muted"></span>
                 </div>
             </form>
 
             <h3 class="yt-h3">Generate</h3>
-            <div class="muted" style="margin-bottom: 0.4rem; font-size: 0.82rem;">
+            <div class="muted" style="margin-bottom: 0.6rem; font-size: 0.85rem;">
                 All output saves as draft. <strong>Review required before publishing.</strong>
                 No OpenAI calls — these are structured local templates.
             </div>
-            <div class="yt-actions">
-                <button type="button" class="primary" data-vp-action="calendar">
-                    30-Day Video Calendar
+            <!-- v8.6.1: each generator card carries a description +
+                 'Best for' tag so the button isn't naked. -->
+            <div class="vp-gen-grid">
+                <button type="button" class="vp-gen-card primary" data-vp-action="full">
+                    <span class="vp-gen-title">Build Full Video Campaign</span>
+                    <span class="vp-gen-desc">Creates the most complete package: hook, script, shot list, b-roll, thumbnail ideas, titles, description, hashtags, shorts ideas, and CTA.</span>
+                    <span class="vp-gen-best">Best for: <strong>planning + filming + posting</strong></span>
                 </button>
-                <button type="button" data-vp-action="short_script">
-                    Short-Form Script
+                <button type="button" class="vp-gen-card primary" data-vp-action="calendar">
+                    <span class="vp-gen-title">30-Day Video Calendar</span>
+                    <span class="vp-gen-desc">Creates a month of video ideas based on your business profile.</span>
+                    <span class="vp-gen-best">Best for: <strong>organizing ideas</strong></span>
                 </button>
-                <button type="button" data-vp-action="ad_script">
-                    Local Business Ad Script
+                <button type="button" class="vp-gen-card" data-vp-action="short_script">
+                    <span class="vp-gen-title">Short Script</span>
+                    <span class="vp-gen-desc">Creates a 30-60 second video script with hook, body, and call to action.</span>
+                    <span class="vp-gen-best">Best for: <strong>filming</strong></span>
                 </button>
-                <button type="button" data-vp-action="shot_list">
-                    Shot List
+                <button type="button" class="vp-gen-card" data-vp-action="ad_script">
+                    <span class="vp-gen-title">Local Business Ad Script</span>
+                    <span class="vp-gen-desc">Creates an ad-style script focused on a problem, solution, offer, and CTA.</span>
+                    <span class="vp-gen-best">Best for: <strong>selling + promoting</strong></span>
                 </button>
-                <button type="button" data-vp-action="caption_pack">
-                    Caption Pack (5)
+                <button type="button" class="vp-gen-card" data-vp-action="shot_list">
+                    <span class="vp-gen-title">Shot List</span>
+                    <span class="vp-gen-desc">Creates a filming checklist with scenes, camera suggestions, and b-roll ideas.</span>
+                    <span class="vp-gen-best">Best for: <strong>filming</strong></span>
                 </button>
-                <button type="button" data-vp-action="metadata">
-                    Title · Description · Hashtags
+                <button type="button" class="vp-gen-card" data-vp-action="caption_pack">
+                    <span class="vp-gen-title">Caption Pack (5)</span>
+                    <span class="vp-gen-desc">Creates platform captions for Facebook, Instagram, TikTok, and YouTube.</span>
+                    <span class="vp-gen-best">Best for: <strong>posting</strong></span>
                 </button>
-                <button type="button" class="primary" data-vp-action="full">
-                    Build Full Video Campaign
+                <button type="button" class="vp-gen-card" data-vp-action="metadata">
+                    <span class="vp-gen-title">Titles / Description / Hashtags</span>
+                    <span class="vp-gen-desc">Creates title ideas, one description, and hashtags for posting.</span>
+                    <span class="vp-gen-best">Best for: <strong>posting</strong></span>
                 </button>
             </div>
 
             <h3 class="yt-h3">Output History
                 <span id="vp-packages-count" class="muted"></span>
             </h3>
-            <div class="muted" style="margin-bottom: 0.4rem; font-size: 0.82rem;">
-                All generated packages live here. <strong>Review required before publishing.</strong>
-                Approve to move out of draft; Mark Used after you've recorded.
+
+            <!-- v8.6.1: Status legend explaining the draft → approved →
+                 used lifecycle, with explicit don'ts. -->
+            <div class="vp-callout vp-callout-info">
+                <strong>How to use Output History</strong>
+                <ul style="margin: 0.4rem 0 0; padding-left: 1.2rem;">
+                    <li><strong>Draft</strong> — generated but not reviewed yet.</li>
+                    <li><strong>Approved</strong> — you reviewed it and decided it is ready to use.</li>
+                    <li><strong>Used</strong> — you already posted it, filmed it, sent it, or used it somewhere.</li>
+                </ul>
+                <div style="margin-top: 0.5rem;">
+                    Do not mark something <strong>Approved</strong> unless you have read it.
+                    Do not mark something <strong>Used</strong> unless it has actually been used.
+                </div>
+                <div class="muted" style="margin-top: 0.4rem; font-size: 0.78rem;">
+                    Drafts = ideas waiting for review · Approved = ready-to-use packages · Used = already used content
+                </div>
             </div>
+
             <div id="vp-packages-list" class="yt-packages-list">
                 <div class="muted">Loading…</div>
+            </div>
+
+            <!-- v8.6.1: What not to do — sits at the bottom so it's the
+                 last thing the user sees in the section. -->
+            <div class="vp-callout vp-callout-warning" style="margin-top: 1rem;">
+                <strong>What not to do</strong>
+                <ul style="margin: 0.4rem 0 0; padding-left: 1.2rem;">
+                    <li>Do not post without reviewing.</li>
+                    <li>Do not treat generated content as final.</li>
+                    <li>Do not use the same caption everywhere without adjusting it.</li>
+                    <li>Do not mark packages <strong>Used</strong> just because they were generated.</li>
+                    <li>Do not enter private customer information.</li>
+                </ul>
             </div>
         </section>
     </details>
