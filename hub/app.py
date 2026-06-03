@@ -1131,6 +1131,16 @@ class MissionGenerateIn(BaseModel):
     website_status_target: str | None = None
 
 
+class SnoozeIn(BaseModel):
+    # v8.4: defaults to 3 to match the spec's "snooze 3 days" button.
+    days: int = 3
+
+
+class DeadIn(BaseModel):
+    # v8.4: dead_reason must be one of leads_mod.ALLOWED_DEAD_REASONS.
+    reason: str
+
+
 class ScoutLeadIn(BaseModel):
     """v7.28: scout-queue input. All optional so PUT can omit fields.
     Server's scout_mod._clean enforces business_name required +
@@ -1276,6 +1286,72 @@ def api_leads_message_draft(
         raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
     except (ValueError, OSError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# --- v8.4: Logan outreach pipeline ------------------------------------
+# NO emails sent. NO LinkedIn messages. NO OpenAI. Pure local writes
+# to data/leads.json. mark-sent only RECORDS that the user already
+# sent the message manually.
+
+@app.post("/api/leads/{lead_id}/prepare-outreach")
+def api_leads_prepare_outreach(lead_id: str) -> dict:
+    try:
+        return leads_mod.prepare_outreach(lead_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/leads/{lead_id}/mark-sent")
+def api_leads_mark_sent(lead_id: str) -> dict:
+    try:
+        return leads_mod.mark_outreach_sent(lead_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/leads/{lead_id}/write-follow-up")
+def api_leads_write_follow_up(lead_id: str) -> dict:
+    """Spec calls this /follow-up, but v7.0 already owns that path
+    (it sets follow_up_date). Renamed to /write-follow-up to keep
+    both behaviors available."""
+    try:
+        return leads_mod.write_follow_up(lead_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/leads/{lead_id}/snooze")
+def api_leads_snooze(lead_id: str, body: SnoozeIn | None = None) -> dict:
+    days = (body.days if body else 3)
+    try:
+        return leads_mod.snooze_follow_up(lead_id, days=days)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/leads/{lead_id}/dead")
+def api_leads_dead(lead_id: str, body: DeadIn) -> dict:
+    try:
+        return leads_mod.mark_dead(lead_id, body.reason)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/leads/dead-reasons")
+def api_leads_dead_reasons() -> dict:
+    """Expose the allowed dead-reason list so the frontend picker
+    stays in sync with leads.py without hardcoding."""
+    return {"reasons": list(leads_mod.ALLOWED_DEAD_REASONS)}
 
 
 @app.get("/api/leads/templates")

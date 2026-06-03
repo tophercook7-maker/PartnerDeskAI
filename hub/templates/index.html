@@ -819,6 +819,50 @@
         .mission-priority-low       { background: #e2e8f0; color: #64748b; }
         .mission-priority-medium    { background: #cfe1ff; color: #2a6ec1; }
         .mission-priority-high      { background: #fde2e2; color: #b34a4a; }
+        /* v8.4: Outreach Queue + Follow-Ups Due cards. */
+        .outreach-h3, .followups-h3 {
+            margin-top: 1.6rem; margin-bottom: 0.3rem;
+            padding-top: 0.8rem;
+            border-top: 1px solid #d8dde4;
+            font-size: 1.05rem;
+            display: flex; align-items: baseline; gap: 0.5rem;
+        }
+        .outreach-list, .followups-list {
+            display: grid; gap: 0.55rem;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        }
+        .outreach-card, .followup-card {
+            background: #fff; border: 1px solid #d8dde4;
+            border-radius: 6px; padding: 0.6rem 0.75rem;
+            display: flex; flex-direction: column; gap: 0.25rem;
+            font-size: 0.85rem;
+        }
+        .outreach-card-name, .followup-card-name {
+            font-weight: 600; color: #1f2937; font-size: 0.95rem;
+        }
+        .outreach-card-meta { color: #64748b; font-size: 0.78rem; }
+        .outreach-card-subject {
+            font-weight: 600; color: #1f2937;
+            background: #f8fafc; padding: 0.3rem 0.45rem;
+            border-radius: 4px;
+        }
+        .outreach-card-body {
+            background: #f8fafc; padding: 0.4rem 0.55rem;
+            border-radius: 4px; white-space: pre-wrap;
+            color: #475569; font-size: 0.82rem;
+            max-height: 8rem; overflow: auto;
+        }
+        .outreach-card-actions, .followup-card-actions {
+            display: flex; gap: 0.3rem; margin-top: 0.35rem; flex-wrap: wrap;
+        }
+        .followup-due-badge {
+            display: inline-block; padding: 0.1rem 0.45rem;
+            border-radius: 999px; font-size: 0.7rem;
+            font-weight: 600; background: #fff6e0; color: #8a6320;
+        }
+        .followup-due-badge.overdue {
+            background: #fde2e2; color: #b34a4a;
+        }
         /* v8.3: "→ in Scout Queue" — shown when a scout entry's
            contact_source already references this mission's query. */
         .mission-scout-badge {
@@ -1538,6 +1582,8 @@
                 <input class="leads-input" name="name"    placeholder="Name (required)" required>
                 <input class="leads-input" name="company" placeholder="Company">
                 <input class="leads-input" name="handle"  placeholder="LinkedIn URL or handle">
+                <input class="leads-input" name="email"   placeholder="Email (required for outreach pipeline)" type="email">
+                <input class="leads-input" name="evidence" placeholder="Evidence — what hint do you have that they need help?">
                 <input class="leads-input" name="source"  placeholder="Source (e.g. comment on 2026-05-28 post)">
                 <select class="leads-input" name="status">
                     <option value="cold">cold</option>
@@ -1655,6 +1701,38 @@
                 </div>
             </form>
             <div id="missions-list" class="missions-list">
+                <div class="muted">Loading…</div>
+            </div>
+
+            <!-- v8.4: Outreach Queue. Leads with outreach_status=
+                 'outreach_ready' — subject + body prepared, awaiting
+                 the user to copy & send manually. Mark Sent records
+                 the send and schedules a 3-day follow-up. -->
+            <h3 class="outreach-h3">Outreach Queue
+                <span id="outreach-count" class="muted"></span>
+            </h3>
+            <div class="muted" style="margin-bottom: 0.4rem; font-size: 0.85rem;">
+                Prepared messages waiting for you to send manually.
+                <strong>The Hub does not send anything</strong> — Copy Email
+                puts the subject + body on your clipboard, then Mark Sent
+                records that you sent it and schedules a follow-up in 3 days.
+            </div>
+            <div id="outreach-list" class="outreach-list">
+                <div class="muted">Loading…</div>
+            </div>
+
+            <!-- v8.4: Follow-Ups Due. Leads where next_follow_up_at <=
+                 today AND outreach_status != dead/won. -->
+            <h3 class="followups-h3">Follow-Ups Due
+                <span id="followups-count" class="muted"></span>
+            </h3>
+            <div class="muted" style="margin-bottom: 0.4rem; font-size: 0.85rem;">
+                Leads where the scheduled follow-up date has arrived.
+                Write Follow-Up prepares a check-in message; Mark Contacted
+                stamps the send + reschedules 3 days out; Snooze 3 days
+                pushes the date forward without changing status.
+            </div>
+            <div id="followups-list" class="followups-list">
                 <div class="muted">Loading…</div>
             </div>
         </section>

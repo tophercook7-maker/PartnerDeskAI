@@ -49,6 +49,32 @@ MAX_HANDLE_LEN  = 500
 MAX_SOURCE_LEN  = 500
 MAX_NOTES_LEN   = 4000
 
+# v8.4: outreach pipeline. outreach_status runs PARALLEL to the existing
+# v6.9 status enum (cold/warm/hot/closed/dropped) — the v7.23 pipeline
+# board, v7.24 dashboard, and v7.25 click-to-filter all continue to
+# read 'status'. The new pipeline UIs read 'outreach_status'.
+ALLOWED_OUTREACH_STATUSES = (
+    "not_started", "found", "qualified", "outreach_ready",
+    "contacted", "follow_up_due", "warm", "hot", "won", "dead",
+)
+DEFAULT_OUTREACH_STATUS = "not_started"
+ALLOWED_DEAD_REASONS = (
+    "no reply after 3 follow-ups",
+    "bad email",
+    "not a fit",
+    "already has good website",
+    "not interested",
+    "closed business",
+)
+MAX_EMAIL_LEN   = 200
+MAX_URL_LEN     = 1000
+MAX_STATUS_LEN  = 200
+MAX_EVIDENCE    = 2000
+MAX_OFFER_LEN   = 500
+MAX_SUBJECT_LEN = 200
+MAX_BODY_LEN    = 8000
+MAX_REASON_LEN  = 200
+
 
 def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -100,6 +126,20 @@ def _clean_lead(raw: dict, existing: dict | None = None) -> dict:
             return raw[key]
         return ex.get(key)
 
+    # v8.4: optional outreach_status with allowed-enum validation. We
+    # only check if a value was *explicitly* supplied — None / blank
+    # falls back to the existing value (or default).
+    outreach_status_raw = raw.get("outreach_status")
+    if outreach_status_raw is not None and outreach_status_raw != "":
+        ors = str(outreach_status_raw).strip()
+        if ors not in ALLOWED_OUTREACH_STATUSES:
+            raise ValueError(
+                f"outreach_status must be one of {ALLOWED_OUTREACH_STATUSES}, "
+                f"got {outreach_status_raw!r}"
+            )
+        outreach_status = ors
+    else:
+        outreach_status = ex.get("outreach_status") or DEFAULT_OUTREACH_STATUS
     return {
         "id":         ex.get("id") or raw.get("id"),
         "name":       name[:MAX_NAME_LEN],
@@ -119,6 +159,23 @@ def _clean_lead(raw: dict, existing: dict | None = None) -> dict:
         # key drifts away from the registry, the frontend just falls
         # back to Auto.
         "last_template_key": _pick("last_template_key"),
+        # --- v8.4: outreach pipeline fields ---
+        # All optional. Setdefault on load() keeps pre-v8.4 rows
+        # readable; this dict ensures new writes always include the
+        # whole shape.
+        "email":              str(raw.get("email")          or ex.get("email")          or "").strip()[:MAX_EMAIL_LEN],
+        "website_url":        str(raw.get("website_url")    or ex.get("website_url")    or "").strip()[:MAX_URL_LEN],
+        "website_status":     str(raw.get("website_status") or ex.get("website_status") or "").strip()[:MAX_STATUS_LEN],
+        "source_url":         str(raw.get("source_url")     or ex.get("source_url")     or "").strip()[:MAX_URL_LEN],
+        "evidence":           str(raw.get("evidence")       or ex.get("evidence")       or "")[:MAX_EVIDENCE],
+        "offer_angle":        str(raw.get("offer_angle")    or ex.get("offer_angle")    or "").strip()[:MAX_OFFER_LEN],
+        "outreach_status":    outreach_status,
+        "outreach_subject":   str(raw.get("outreach_subject") or ex.get("outreach_subject") or "")[:MAX_SUBJECT_LEN],
+        "outreach_body":      str(raw.get("outreach_body")    or ex.get("outreach_body")    or "")[:MAX_BODY_LEN],
+        "last_contacted_at":  _pick("last_contacted_at"),
+        "next_follow_up_at":  _pick("next_follow_up_at"),
+        "follow_up_count":    int(_pick("follow_up_count") or 0),
+        "dead_reason":        (str(_pick("dead_reason") or "")[:MAX_REASON_LEN]) or None,
     }
 
 
@@ -144,6 +201,20 @@ def load() -> list[dict]:
             item.setdefault("follow_up_date",    None)
             item.setdefault("last_message",      None)
             item.setdefault("last_template_key", None)  # v7.18
+            # --- v8.4: outreach pipeline back-compat defaults ---
+            item.setdefault("email",              "")
+            item.setdefault("website_url",        "")
+            item.setdefault("website_status",     "")
+            item.setdefault("source_url",         "")
+            item.setdefault("evidence",           "")
+            item.setdefault("offer_angle",        "")
+            item.setdefault("outreach_status",    DEFAULT_OUTREACH_STATUS)
+            item.setdefault("outreach_subject",   "")
+            item.setdefault("outreach_body",      "")
+            item.setdefault("last_contacted_at",  None)
+            item.setdefault("next_follow_up_at",  None)
+            item.setdefault("follow_up_count",    0)
+            item.setdefault("dead_reason",        None)
     return items
 
 
@@ -237,6 +308,129 @@ def parse_linkedin_input(line: str) -> dict | None:
         "handle": f"linkedin.com/in/{slug}",
         "name":   " ".join(name_words) or slug,
     }
+
+
+# --- v8.4: Logan autonomous outreach pipeline -------------------------
+# Pure local. NO emails sent. NO LinkedIn messages. NO OpenAI. NO web
+# fetches. Everything writes to data/leads.json only.
+
+from datetime import timedelta as _td
+
+_OUTREACH_SUBJECT_TMPL = "quick website/contact idea for {business_name}"
+
+_OUTREACH_BODY_TMPL = """Hi {business_name},
+
+I’m Topher with MixedMakerShop. I was looking at local businesses that could make it easier for customers to contact them from a phone, and I noticed {evidence}.
+
+I help small businesses set up simple websites, landing pages, and tap/contact hubs so people can call, message, book, or find them faster.
+
+I can send you 3 quick fixes I’d make for free. If you want me to handle the setup, my starter web fix begins at $150.
+
+Want me to send those 3 ideas?
+
+Topher
+MixedMakerShop"""
+
+_FOLLOW_UP_TMPL = """Hi {business_name},
+
+Just checking back on this — want me to send over the 3 quick website/contact fixes I noticed?
+
+No pressure either way.
+
+Topher
+MixedMakerShop"""
+
+
+def prepare_outreach(lead_id: str) -> dict:
+    """
+    Generate the outreach subject + body for a lead and flip
+    outreach_status to 'outreach_ready'. Requires the lead to have an
+    email — otherwise raises ValueError so the caller surfaces a 400.
+
+    Writes outreach_subject + outreach_body to the lead row. Does NOT
+    send anything; the user copies and pastes manually.
+    """
+    existing = _find(lead_id)
+    if not (existing.get("email") or "").strip():
+        raise ValueError("lead has no email — cannot prepare outreach")
+    name = (existing.get("name") or "there").strip() or "there"
+    evidence = (existing.get("evidence") or "").strip() or (
+        "your business could be easier to reach online"
+    )
+    subject = _OUTREACH_SUBJECT_TMPL.format(business_name=name)
+    body = _OUTREACH_BODY_TMPL.format(business_name=name, evidence=evidence)
+    return update(lead_id, {
+        "outreach_subject": subject,
+        "outreach_body":    body,
+        "outreach_status":  "outreach_ready",
+    })
+
+
+def mark_outreach_sent(lead_id: str) -> dict:
+    """
+    Record that the user manually sent the prepared outreach. Stamps
+    last_contacted_at + contacted_at = now, schedules
+    next_follow_up_at = today + 3 days, flips outreach_status to
+    'contacted'. NO email sent — the user already did that out of band.
+    """
+    now = datetime.now()
+    next_due = (now + _td(days=3)).strftime("%Y-%m-%d")
+    return update(lead_id, {
+        "last_contacted_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "contacted_at":      now.strftime("%Y-%m-%d %H:%M:%S"),
+        "next_follow_up_at": next_due,
+        "outreach_status":   "contacted",
+    })
+
+
+def write_follow_up(lead_id: str) -> dict:
+    """
+    Generate the follow-up message body and store it in
+    outreach_subject + outreach_body, increment follow_up_count, flip
+    outreach_status to 'follow_up_due' if not already 'dead'/'won'.
+    """
+    existing = _find(lead_id)
+    name = (existing.get("name") or "there").strip() or "there"
+    subject = "re: " + _OUTREACH_SUBJECT_TMPL.format(business_name=name)
+    body = _FOLLOW_UP_TMPL.format(business_name=name)
+    count = int(existing.get("follow_up_count") or 0) + 1
+    raw = {
+        "outreach_subject":   subject,
+        "outreach_body":      body,
+        "follow_up_count":    count,
+    }
+    cur = (existing.get("outreach_status") or "").lower()
+    if cur not in ("dead", "won"):
+        raw["outreach_status"] = "follow_up_due"
+    return update(lead_id, raw)
+
+
+def snooze_follow_up(lead_id: str, days: int = 3) -> dict:
+    """
+    Push next_follow_up_at out by N days. Days must be 1..30; values
+    outside that range raise ValueError.
+    """
+    if not isinstance(days, int) or days < 1 or days > 30:
+        raise ValueError("snooze days must be an integer in 1..30")
+    next_due = (datetime.now() + _td(days=days)).strftime("%Y-%m-%d")
+    return update(lead_id, {"next_follow_up_at": next_due})
+
+
+def mark_dead(lead_id: str, reason: str) -> dict:
+    """
+    Set outreach_status='dead' + dead_reason. Reason must be one of
+    ALLOWED_DEAD_REASONS — anything else raises ValueError.
+    """
+    reason = (reason or "").strip()
+    if reason not in ALLOWED_DEAD_REASONS:
+        raise ValueError(
+            f"dead_reason must be one of {ALLOWED_DEAD_REASONS}, got {reason!r}"
+        )
+    return update(lead_id, {
+        "outreach_status":   "dead",
+        "dead_reason":       reason,
+        "next_follow_up_at": None,
+    })
 
 
 def add_batch(lines: list[str]) -> dict:

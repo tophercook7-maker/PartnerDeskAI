@@ -2424,6 +2424,12 @@ function _renderLeadView(l) {
             _renderTemplateSelect(l.id) +
             `<button type="button" class="row-action primary" data-action="lead-message" ` +
               `data-lead-id="${_escape(l.id)}">Write Message</button>` +
+            // v8.4: Prepare Outreach (email-based pipeline). Greyed
+            // out when no email — server enforces this too with a 400.
+            `<button type="button" class="row-action" data-action="outreach-prepare" ` +
+              `data-lead-id="${_escape(l.id)}"` +
+              (!(l.email || '').trim() ? ' disabled title="Add an email to enable outreach"' : '') +
+              `>Prepare Outreach</button>` +
             `<button type="button" class="row-action" data-action="lead-contacted" ` +
               `data-lead-id="${_escape(l.id)}">Mark Contacted</button>` +
             `<button type="button" class="row-action" data-action="lead-followup-toggle" ` +
@@ -2744,12 +2750,16 @@ async function loadLeads() {
         renderLeads();
         renderLeadsBoard();      // v7.23
         renderLeadsDashboard();  // v7.24
+        renderOutreachQueue();   // v8.4
+        renderFollowUpsDue();    // v8.4
     } catch (err) {
         _leads = [];
         const el = document.getElementById('leads-list');
         if (el) el.innerHTML = '<div class="muted">Could not load leads.</div>';
         renderLeadsBoard();      // v7.23: render empty board on fetch failure too
         renderLeadsDashboard();  // v7.24: empty dashboard on failure too
+        renderOutreachQueue();   // v8.4
+        renderFollowUpsDue();    // v8.4
     }
 }
 
@@ -2862,6 +2872,230 @@ async function loadScoutLeads() {
         if (el) el.innerHTML = '<div class="muted">Could not load scout queue.</div>';
     }
 }
+
+// --- v8.4: Logan outreach pipeline ----------------------------------
+// Outreach Queue: leads with outreach_status === 'outreach_ready'.
+// Follow-Ups Due: leads where next_follow_up_at <= today AND
+// outreach_status not in ('dead','won').
+//
+// All actions hit endpoints under /api/leads/{id}/...; no email is ever
+// sent from the Hub. Copy Email puts subject + body on the clipboard.
+
+let _deadReasons = [];
+
+async function loadDeadReasons() {
+    try {
+        const r = await fetch('/api/leads/dead-reasons');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _deadReasons = d.reasons || [];
+    } catch (e) {
+        _deadReasons = [];
+    }
+}
+
+function _renderOutreachCard(lead) {
+    const id = _escape(lead.id);
+    const name = _escape(lead.name || '(unnamed)');
+    const email = _escape(lead.email || '');
+    const subj = _escape(lead.outreach_subject || '');
+    const body = _escape(lead.outreach_body || '');
+    return (
+        `<div class="outreach-card" data-lead-id="${id}">` +
+          `<div class="outreach-card-name">${name}</div>` +
+          (lead.company ? `<div class="outreach-card-meta">${_escape(lead.company)}</div>` : '') +
+          `<div class="outreach-card-meta">→ ${email}</div>` +
+          `<div class="outreach-card-subject">${subj}</div>` +
+          `<div class="outreach-card-body">${body}</div>` +
+          `<div class="outreach-card-actions">` +
+            `<button type="button" class="row-action primary" ` +
+              `data-action="outreach-copy" data-lead-id="${id}">Copy Email</button>` +
+            `<button type="button" class="row-action" ` +
+              `data-action="outreach-mark-sent" data-lead-id="${id}">Mark Sent</button>` +
+            `<button type="button" class="row-action" ` +
+              `data-action="outreach-snooze" data-lead-id="${id}">Snooze 3 days</button>` +
+            `<button type="button" class="row-action danger" ` +
+              `data-action="outreach-dead" data-lead-id="${id}">Mark Dead</button>` +
+          `</div>` +
+        `</div>`
+    );
+}
+
+function renderOutreachQueue() {
+    const el = document.getElementById('outreach-list');
+    const countEl = document.getElementById('outreach-count');
+    if (!el) return;
+    const items = _leads.filter(l =>
+        (l.outreach_status || '') === 'outreach_ready'
+    );
+    if (countEl) {
+        countEl.textContent = items.length
+            ? `${items.length} ready` : 'none ready';
+    }
+    if (items.length === 0) {
+        el.innerHTML = '<div class="muted">No outreach ready. ' +
+            'Prepare outreach on a qualified lead from the list above.</div>';
+        return;
+    }
+    el.innerHTML = items.map(_renderOutreachCard).join('');
+}
+
+function _renderFollowUpCard(lead) {
+    const id = _escape(lead.id);
+    const today = _todayStr();
+    const due = lead.next_follow_up_at || '';
+    const isOverdue = due && due < today;
+    const dueBadge = due
+        ? `<span class="followup-due-badge${isOverdue ? ' overdue' : ''}">` +
+          `Due ${_escape(due)}${isOverdue ? ' (overdue)' : ''}` +
+          `</span>` : '';
+    const count = lead.follow_up_count || 0;
+    return (
+        `<div class="followup-card" data-lead-id="${id}">` +
+          `<div class="followup-card-name">${_escape(lead.name || '(unnamed)')} ${dueBadge}</div>` +
+          (lead.company ? `<div class="outreach-card-meta">${_escape(lead.company)}</div>` : '') +
+          (lead.email   ? `<div class="outreach-card-meta">→ ${_escape(lead.email)}</div>` : '') +
+          `<div class="outreach-card-meta">Follow-ups sent: ${count}</div>` +
+          `<div class="followup-card-actions">` +
+            `<button type="button" class="row-action primary" ` +
+              `data-action="followup-write" data-lead-id="${id}">Write Follow-Up</button>` +
+            `<button type="button" class="row-action" ` +
+              `data-action="outreach-mark-sent" data-lead-id="${id}">Mark Contacted</button>` +
+            `<button type="button" class="row-action" ` +
+              `data-action="outreach-snooze" data-lead-id="${id}">Snooze 3 days</button>` +
+            `<button type="button" class="row-action" ` +
+              `data-action="followup-mark-warm" data-lead-id="${id}">Mark Warm</button>` +
+            `<button type="button" class="row-action danger" ` +
+              `data-action="outreach-dead" data-lead-id="${id}">Mark Dead</button>` +
+          `</div>` +
+        `</div>`
+    );
+}
+
+function renderFollowUpsDue() {
+    const el = document.getElementById('followups-list');
+    const countEl = document.getElementById('followups-count');
+    if (!el) return;
+    const today = _todayStr();
+    const items = _leads.filter(l => {
+        const due = l.next_follow_up_at || '';
+        const os = (l.outreach_status || '').toLowerCase();
+        return due && due <= today && os !== 'dead' && os !== 'won';
+    });
+    if (countEl) {
+        countEl.textContent = items.length
+            ? `${items.length} due` : 'none due';
+    }
+    if (items.length === 0) {
+        el.innerHTML = '<div class="muted">No follow-ups due. ' +
+            'Mark Sent on an outreach lead to schedule one.</div>';
+        return;
+    }
+    // Sort: overdue first, then due-today.
+    items.sort((a, b) => (a.next_follow_up_at || '').localeCompare(b.next_follow_up_at || ''));
+    el.innerHTML = items.map(_renderFollowUpCard).join('');
+}
+
+// Shared mutation helper for the new outreach endpoints. Re-renders
+// leads (which cascades into board/dashboard/outreach/followups).
+async function _outreachAction(leadId, path, opts = {}) {
+    try {
+        const r = await fetch(`/api/leads/${encodeURIComponent(leadId)}${path}`, {
+            method: 'POST',
+            headers: opts.body ? { 'Content-Type': 'application/json' } : {},
+            body: opts.body ? JSON.stringify(opts.body) : undefined,
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+        await loadLeads();
+        if (opts.onSuccess) opts.onSuccess(d);
+        return d;
+    } catch (err) {
+        _flashLeadToast(leadId, (opts.errorLabel || 'Action failed') + ': ' + err.message, 'error');
+        return null;
+    }
+}
+
+// Delegator for outreach + follow-up card clicks. Document-level so
+// clicks survive every re-render.
+document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const a = btn.dataset.action;
+    const id = btn.dataset.leadId;
+    if (!id) return;
+
+    if (a === 'outreach-copy') {
+        const lead = _leads.find(l => l.id === id);
+        if (!lead) return;
+        const text = `Subject: ${lead.outreach_subject || ''}\nTo: ${lead.email || ''}\n\n${lead.outreach_body || ''}`;
+        try {
+            await navigator.clipboard.writeText(text);
+            document.getElementById('cmd-status').textContent =
+                `Copied outreach for ${lead.name} to clipboard.`;
+        } catch (err) {
+            document.getElementById('cmd-status').textContent =
+                'Copy failed (browser blocked clipboard): ' + err.message;
+        }
+        return;
+    }
+    if (a === 'outreach-prepare') {
+        const r = await _outreachAction(id, '/prepare-outreach',
+            { errorLabel: 'Prepare outreach failed' });
+        if (r) document.getElementById('cmd-status').textContent =
+            `Outreach prepared for ${r.name}. See Outreach Queue.`;
+        return;
+    }
+    if (a === 'outreach-mark-sent') {
+        if (!confirm('Confirm: you have already sent this email manually. ' +
+                     'Hub will record the send and schedule a 3-day follow-up.')) return;
+        await _outreachAction(id, '/mark-sent', { errorLabel: 'Mark sent failed' });
+        return;
+    }
+    if (a === 'followup-write') {
+        await _outreachAction(id, '/write-follow-up',
+            { errorLabel: 'Write follow-up failed' });
+        return;
+    }
+    if (a === 'outreach-snooze') {
+        await _outreachAction(id, '/snooze', { body: { days: 3 },
+            errorLabel: 'Snooze failed' });
+        return;
+    }
+    if (a === 'followup-mark-warm') {
+        // Mark Warm uses the existing PUT /api/leads/{id} with status=warm.
+        try {
+            const r = await fetch(`/api/leads/${encodeURIComponent(id)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'warm' }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            await loadLeads();
+        } catch (err) {
+            _flashLeadToast(id, 'Mark warm failed: ' + err.message, 'error');
+        }
+        return;
+    }
+    if (a === 'outreach-dead') {
+        if (_deadReasons.length === 0) {
+            alert('Dead-reason list not loaded yet.'); return;
+        }
+        const labels = _deadReasons.map((r, i) => `${i + 1}. ${r}`).join('\n');
+        const raw = prompt(
+            `Mark dead — pick a reason (1-${_deadReasons.length}):\n\n${labels}`
+        );
+        if (raw === null) return;
+        const n = parseInt(raw, 10);
+        const reason = (n >= 1 && n <= _deadReasons.length)
+            ? _deadReasons[n - 1] : null;
+        if (!reason) { alert('Invalid pick — cancelled.'); return; }
+        await _outreachAction(id, '/dead', { body: { reason },
+            errorLabel: 'Mark dead failed' });
+        return;
+    }
+});
 
 // --- v8.1: Auto Lead Generator (missions) ---------------------------------
 // Mission = Google search query + URL. Hub never fetches the URL —
@@ -4412,6 +4646,7 @@ async function refreshAll() {
         ['loadScoutLeads',    loadScoutLeads],     // v7.28
         ['loadSummariesList', loadSummariesList],  // v7.31
         ['loadMissions',      loadMissions],       // v8.1
+        ['loadDeadReasons',   loadDeadReasons],    // v8.4
     ];
     const results1 = await Promise.all(batch1.map(([n, f]) => _runLoaderSafely(n, f)));
     const results2 = await Promise.all(batch2.map(([n, f]) => _runLoaderSafely(n, f)));
