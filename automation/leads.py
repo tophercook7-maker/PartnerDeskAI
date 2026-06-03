@@ -324,16 +324,16 @@ I’m Topher with MixedMakerShop. I was looking at local businesses that could m
 
 I help small businesses set up simple websites, landing pages, and tap/contact hubs so people can call, message, book, or find them faster.
 
-I can send you 3 quick fixes I’d make for free. If you want me to handle the setup, my starter web fix begins at $150.
+If you’re curious what a fresh homepage could look like for {business_name}, I’d be happy to put together a free mockup — no charge, no commitment. If you want me to actually build the site after seeing it, my starter website fix begins at $150.
 
-Want me to send those 3 ideas?
+Want me to send the mockup?
 
 Topher
 MixedMakerShop"""
 
 _FOLLOW_UP_TMPL = """Hi {business_name},
 
-Just checking back on this — want me to send over the 3 quick website/contact fixes I noticed?
+Just checking back on this — want me to put together that free homepage mockup I mentioned? Takes me about a day and there’s no charge to look.
 
 No pressure either way.
 
