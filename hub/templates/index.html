@@ -819,6 +819,298 @@
         .mission-priority-low       { background: #e2e8f0; color: #64748b; }
         .mission-priority-medium    { background: #cfe1ff; color: #2a6ec1; }
         .mission-priority-high      { background: #fde2e2; color: #b34a4a; }
+        /* v8.6.2: Video Partner Guided Mode — animated step flow. */
+        .vp-mode-bar {
+            display: flex; align-items: center; gap: 0.5rem;
+            margin-bottom: 0.9rem; flex-wrap: wrap;
+        }
+        .vp-mode-toggle {
+            display: inline-flex; background: #f1f5f9;
+            border: 1px solid #cbd5e1; border-radius: 999px;
+            padding: 2px; gap: 2px;
+        }
+        .vp-mode-btn {
+            padding: 0.35rem 0.85rem; border: none; background: transparent;
+            color: #64748b; font-family: inherit; font-size: 0.82rem;
+            font-weight: 600; cursor: pointer; border-radius: 999px;
+            transition: background 0.15s, color 0.15s;
+        }
+        .vp-mode-btn[aria-selected="true"] {
+            background: #fff; color: #1f2937;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+        }
+        .vp-start-fresh-btn {
+            margin-left: auto;
+            padding: 0.35rem 0.75rem; border: 1px solid #cbd5e1;
+            background: #fff; color: #475569;
+            font-family: inherit; font-size: 0.78rem;
+            border-radius: 6px; cursor: pointer;
+            transition: border-color 0.15s, color 0.15s;
+        }
+        .vp-start-fresh-btn:hover {
+            border-color: #b34a4a; color: #b34a4a;
+        }
+        /* Progress bar */
+        .vp-progress {
+            display: flex; gap: 0.4rem; flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+        .vp-progress-step {
+            flex: 1 1 0; min-width: 0;
+            display: flex; flex-direction: column; gap: 0.2rem;
+            padding: 0.5rem 0.6rem; border-radius: 8px;
+            border: 1px solid #e2e8f0; background: #fff;
+            font-size: 0.78rem; color: #64748b;
+            text-align: left;
+            transition: border-color 0.2s, background 0.2s, color 0.2s;
+        }
+        .vp-progress-step-num {
+            font-size: 0.72rem; font-weight: 700; color: #94a3b8;
+            letter-spacing: 0.05em;
+        }
+        .vp-progress-step-label {
+            font-weight: 600; color: inherit;
+        }
+        .vp-progress-step.is-done {
+            border-color: #4aa05c; background: #d8efd8; color: #2d6a3a;
+        }
+        .vp-progress-step.is-done .vp-progress-step-num { color: #2d6a3a; }
+        .vp-progress-step.is-active {
+            border-color: #2a6ec1; background: #f0f7ff; color: #1c4f8f;
+            animation: vp-pulse 1.8s ease-in-out infinite;
+        }
+        .vp-progress-step.is-active .vp-progress-step-num { color: #1c4f8f; }
+        @keyframes vp-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(42,110,193,0); }
+            50%      { box-shadow: 0 0 0 4px rgba(42,110,193,0.12); }
+        }
+        /* Stage area — current step content */
+        .vp-stage {
+            background: #fff; border: 1px solid #d8dde4;
+            border-radius: 10px; padding: 1.1rem 1.25rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            min-height: 14rem;
+        }
+        .vp-stage h3 {
+            margin: 0 0 0.5rem; padding: 0; border: none;
+            font-size: 1.15rem; color: #1f2937;
+        }
+        .vp-stage .vp-stage-helper {
+            color: #64748b; font-size: 0.85rem; margin-bottom: 0.9rem;
+        }
+        .vp-stage-actions {
+            display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap;
+            align-items: center;
+        }
+        .vp-stage-actions .vp-spacer { flex: 1; }
+        /* Step transitions */
+        .vp-stage-content {
+            animation: vp-fade-up 0.28s ease-out;
+        }
+        @keyframes vp-fade-up {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        /* Guided buttons */
+        .vp-btn {
+            padding: 0.55rem 1rem; border: 1px solid #cbd5e1;
+            background: #fff; color: #1f2937; border-radius: 8px;
+            font-family: inherit; font-size: 0.88rem; font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.08s, box-shadow 0.15s, border-color 0.15s,
+                        background 0.15s;
+        }
+        .vp-btn:hover {
+            border-color: #2a6ec1;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(42,110,193,0.10);
+        }
+        .vp-btn:active { transform: translateY(0); }
+        .vp-btn-primary {
+            background: linear-gradient(135deg, #2a6ec1 0%, #1c4f8f 100%);
+            color: #fff; border-color: #1c4f8f;
+        }
+        .vp-btn-primary:hover {
+            background: linear-gradient(135deg, #245fa5 0%, #163e75 100%);
+        }
+        .vp-btn-link {
+            border: none; background: transparent; color: #2a6ec1;
+            font-weight: 500; text-decoration: underline;
+            padding: 0.4rem 0.6rem;
+        }
+        .vp-btn-link:hover { color: #1c4f8f; transform: none; box-shadow: none; }
+        .vp-btn-danger {
+            border-color: #d88a8a; color: #8a1c1c;
+        }
+        .vp-btn-danger:hover {
+            background: #fde2e2; border-color: #b34a4a; color: #7a2424;
+        }
+        /* Profile card (one field at a time) */
+        .vp-profile-card label { display: block; }
+        .vp-profile-card .vp-stage-helper { margin-bottom: 0.7rem; }
+        .vp-profile-card input {
+            width: 100%; padding: 0.6rem 0.75rem;
+            border: 1px solid #cbd5e1; border-radius: 6px;
+            font-family: inherit; font-size: 0.95rem;
+            box-sizing: border-box;
+        }
+        .vp-profile-card input:focus {
+            outline: none; border-color: #2a6ec1;
+            box-shadow: 0 0 0 3px rgba(42,110,193,0.18);
+        }
+        .vp-profile-card .vp-example {
+            font-size: 0.78rem; color: #94a3b8;
+            margin-top: 0.35rem;
+            font-style: italic;
+        }
+        .vp-substep-progress {
+            font-size: 0.72rem; color: #94a3b8; margin-bottom: 0.5rem;
+            letter-spacing: 0.05em; text-transform: uppercase;
+        }
+        /* Goal cards */
+        .vp-goal-grid {
+            display: grid; gap: 0.7rem;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        }
+        .vp-goal-card {
+            background: #fff; border: 1px solid #cbd5e1;
+            border-radius: 10px; padding: 0.9rem;
+            font-family: inherit; cursor: pointer; text-align: left;
+            display: flex; flex-direction: column; gap: 0.3rem;
+            transition: transform 0.1s, box-shadow 0.15s, border-color 0.15s;
+        }
+        .vp-goal-card:hover {
+            border-color: #2a6ec1;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(42,110,193,0.12);
+        }
+        .vp-goal-card.is-selected {
+            border-color: #2a6ec1; background: #f0f7ff;
+            box-shadow: 0 0 0 2px rgba(42,110,193,0.20);
+            animation: vp-select 0.25s ease-out;
+        }
+        @keyframes vp-select {
+            0%   { transform: scale(0.97); }
+            60%  { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+        .vp-goal-title {
+            font-size: 1rem; font-weight: 700; color: #1f2937;
+        }
+        .vp-goal-desc {
+            font-size: 0.82rem; color: #475569; line-height: 1.4;
+        }
+        .vp-goal-best {
+            font-size: 0.72rem; color: #64748b; margin-top: auto;
+        }
+        .vp-goal-best strong { color: #1c4f8f; }
+        /* Topic chips */
+        .vp-topic-input {
+            width: 100%; padding: 0.65rem 0.8rem;
+            border: 1px solid #cbd5e1; border-radius: 8px;
+            font-family: inherit; font-size: 0.95rem;
+            box-sizing: border-box;
+        }
+        .vp-topic-input:focus {
+            outline: none; border-color: #2a6ec1;
+            box-shadow: 0 0 0 3px rgba(42,110,193,0.18);
+        }
+        .vp-chip-row {
+            display: flex; flex-wrap: wrap; gap: 0.35rem;
+            margin-top: 0.8rem;
+        }
+        .vp-chip {
+            padding: 0.3rem 0.7rem; border: 1px solid #cbd5e1;
+            background: #f8fafc; color: #475569;
+            border-radius: 999px; font-family: inherit; font-size: 0.78rem;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .vp-chip:hover {
+            background: #cfe1ff; color: #1c4f8f; border-color: #2a6ec1;
+        }
+        /* Generate confirm card */
+        .vp-confirm-card {
+            background: #f8fafc; border: 1px solid #e2e8f0;
+            border-radius: 8px; padding: 0.9rem 1rem;
+        }
+        .vp-confirm-row { margin-bottom: 0.5rem; }
+        .vp-confirm-label {
+            font-size: 0.72rem; color: #64748b;
+            text-transform: uppercase; letter-spacing: 0.05em;
+        }
+        .vp-confirm-value {
+            font-size: 0.95rem; color: #1f2937; font-weight: 600;
+        }
+        /* Loading + success */
+        .vp-loading {
+            display: flex; align-items: center; gap: 0.7rem;
+            color: #1c4f8f; font-weight: 600;
+        }
+        .vp-spinner {
+            width: 1.2rem; height: 1.2rem; border-radius: 50%;
+            border: 2px solid #cfe1ff; border-top-color: #2a6ec1;
+            animation: vp-spin 0.7s linear infinite;
+        }
+        @keyframes vp-spin { to { transform: rotate(360deg); } }
+        .vp-check {
+            width: 2rem; height: 2rem; border-radius: 50%;
+            background: #4aa05c; color: #fff;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 1.1rem; font-weight: 700;
+            animation: vp-pop 0.35s ease-out;
+        }
+        @keyframes vp-pop {
+            0%   { transform: scale(0); }
+            70%  { transform: scale(1.15); }
+            100% { transform: scale(1); }
+        }
+        /* Review */
+        .vp-review-body {
+            background: #fafbfc; border: 1px solid #e2e8f0;
+            border-radius: 8px; padding: 0.85rem 1rem;
+            max-height: 28rem; overflow: auto;
+            white-space: pre-wrap; word-wrap: break-word;
+            font-size: 0.85rem; color: #1f2937; line-height: 1.5;
+            font-family: ui-monospace, monospace;
+        }
+        .vp-status-pill {
+            display: inline-block; padding: 0.15rem 0.55rem;
+            border-radius: 999px; font-size: 0.72rem; font-weight: 700;
+            background: #e2e8f0; color: #475569;
+            text-transform: uppercase; letter-spacing: 0.03em;
+        }
+        /* Output History details */
+        .vp-history-details {
+            margin-top: 1rem; border: 1px solid #d8dde4;
+            border-radius: 8px;
+            background: #fafbfc;
+        }
+        .vp-history-details > summary {
+            cursor: pointer; padding: 0.7rem 0.9rem;
+            font-size: 0.9rem; color: #1f2937;
+            list-style: none;
+            display: flex; align-items: baseline; gap: 0.5rem;
+        }
+        .vp-history-details > summary::-webkit-details-marker { display: none; }
+        .vp-history-details > summary::before {
+            content: '▶'; font-size: 0.7rem; color: #64748b;
+            transition: transform 0.15s;
+        }
+        .vp-history-details[open] > summary::before { transform: rotate(90deg); }
+        .vp-history-details > *:not(summary) { padding: 0 0.9rem; }
+        .vp-history-details > *:not(summary):last-child { padding-bottom: 0.9rem; }
+
+        /* Honor prefers-reduced-motion: disable animations everywhere. */
+        @media (prefers-reduced-motion: reduce) {
+            .vp-progress-step.is-active,
+            .vp-stage-content, .vp-check, .vp-goal-card.is-selected,
+            .vp-spinner, .vp-btn, .vp-btn:hover, .vp-goal-card:hover {
+                animation: none !important;
+                transition: none !important;
+                transform: none !important;
+            }
+        }
         /* v8.6.1: Video Partner UX guidance — panels, callouts, helper
            text, generator cards. All CSS only; no JS shape change. */
         .vp-start-here, .vp-recommendation {
@@ -2032,6 +2324,35 @@
             <span class="partner-summary-metrics" data-partner-metrics="video">—</span>
         </summary>
         <section>
+            <!-- v8.6.2: mode toggle + start-fresh. Persist mode in
+                 localStorage so power users stay in Classic.
+                 The v8.6.1 layout is preserved as Classic Mode below. -->
+            <div class="vp-mode-bar">
+                <div class="vp-mode-toggle" role="tablist" aria-label="Video Partner mode">
+                    <button type="button" data-vp-mode="guided"
+                            class="vp-mode-btn" role="tab"
+                            aria-selected="true">Guided Mode</button>
+                    <button type="button" data-vp-mode="classic"
+                            class="vp-mode-btn" role="tab"
+                            aria-selected="false">Classic Mode</button>
+                </div>
+                <button type="button" id="vp-start-fresh-btn"
+                        class="vp-start-fresh-btn">Start Fresh</button>
+            </div>
+
+            <!-- v8.6.2: Guided Mode. State-driven; JS renders the
+                 active step into #vp-stage. -->
+            <div id="vp-guided" class="vp-guided">
+                <div id="vp-progress" class="vp-progress"
+                     role="navigation" aria-label="Guided flow progress"></div>
+                <div id="vp-stage" class="vp-stage"
+                     aria-live="polite"></div>
+            </div>
+
+            <!-- v8.6.1 layout preserved as Classic Mode, hidden by
+                 default. Output History block extracted out so both
+                 modes share one render. -->
+            <div id="vp-classic" hidden>
             <!-- v8.6.1: Start Here panel. -->
             <div class="vp-start-here">
                 <h3>Start Here</h3>
@@ -2168,32 +2489,34 @@
                     <span class="vp-gen-best">Best for: <strong>posting</strong></span>
                 </button>
             </div>
+            </div><!-- /#vp-classic -->
 
-            <h3 class="yt-h3">Output History
-                <span id="vp-packages-count" class="muted"></span>
-            </h3>
-
-            <!-- v8.6.1: Status legend explaining the draft → approved →
-                 used lifecycle, with explicit don'ts. -->
-            <div class="vp-callout vp-callout-info">
-                <strong>How to use Output History</strong>
-                <ul style="margin: 0.4rem 0 0; padding-left: 1.2rem;">
-                    <li><strong>Draft</strong> — generated but not reviewed yet.</li>
-                    <li><strong>Approved</strong> — you reviewed it and decided it is ready to use.</li>
-                    <li><strong>Used</strong> — you already posted it, filmed it, sent it, or used it somewhere.</li>
-                </ul>
-                <div style="margin-top: 0.5rem;">
-                    Do not mark something <strong>Approved</strong> unless you have read it.
-                    Do not mark something <strong>Used</strong> unless it has actually been used.
+            <!-- v8.6.2: Output History — shared between guided + classic
+                 modes, collapsed by default. -->
+            <details class="vp-history-details" id="vp-history-details">
+                <summary>
+                    <strong>View past video packages</strong>
+                    <span id="vp-packages-count" class="muted"></span>
+                </summary>
+                <div class="vp-callout vp-callout-info" style="margin-top: 0.6rem;">
+                    <strong>How to use Output History</strong>
+                    <ul style="margin: 0.4rem 0 0; padding-left: 1.2rem;">
+                        <li><strong>Draft</strong> — generated but not reviewed yet.</li>
+                        <li><strong>Approved</strong> — you reviewed it and decided it is ready to use.</li>
+                        <li><strong>Used</strong> — you already posted it, filmed it, sent it, or used it somewhere.</li>
+                    </ul>
+                    <div style="margin-top: 0.5rem;">
+                        Do not mark something <strong>Approved</strong> unless you have read it.
+                        Do not mark something <strong>Used</strong> unless it has actually been used.
+                    </div>
+                    <div class="muted" style="margin-top: 0.4rem; font-size: 0.78rem;">
+                        Drafts = ideas waiting for review · Approved = ready-to-use packages · Used = already used content
+                    </div>
                 </div>
-                <div class="muted" style="margin-top: 0.4rem; font-size: 0.78rem;">
-                    Drafts = ideas waiting for review · Approved = ready-to-use packages · Used = already used content
+                <div id="vp-packages-list" class="yt-packages-list">
+                    <div class="muted">Loading…</div>
                 </div>
-            </div>
-
-            <div id="vp-packages-list" class="yt-packages-list">
-                <div class="muted">Loading…</div>
-            </div>
+            </details>
 
             <!-- v8.6.1: What not to do — sits at the bottom so it's the
                  last thing the user sees in the section. -->

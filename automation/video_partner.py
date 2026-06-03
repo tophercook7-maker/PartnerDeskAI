@@ -219,9 +219,25 @@ def delete_package(pkg_id: str) -> bool:
 
 # --- Generators (all local, NO OpenAI, NO web calls) ----------------
 
-def _pp(profile: dict, key: str, fallback: str) -> str:
+def _pp(profile: dict, key: str, fallback: str = "") -> str:
+    """Pick from profile; fall back to spec's friendly defaults when the
+    user has skipped the field. Keeps generated content readable instead
+    of stuck on placeholder phrases like 'your business'."""
+    _DEFAULTS = {
+        "business_name":   "Your Business",
+        "niche":            "local service business",
+        "target_customer":  "local customers",
+        "offer":             "your main service",
+        "tone":              "friendly and helpful",
+        "platforms":         "Facebook, Instagram, TikTok, YouTube",
+        "video_length":      "30-60 seconds",
+        "call_to_action":    "Contact us today",
+    }
     v = (profile or {}).get(key) or ""
-    return v.strip() or fallback
+    v = v.strip()
+    if v:
+        return v
+    return fallback or _DEFAULTS.get(key, fallback)
 
 
 def generate_calendar(profile: dict, count: int = 30) -> str:

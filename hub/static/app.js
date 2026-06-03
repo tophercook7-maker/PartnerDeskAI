@@ -3478,6 +3478,524 @@ async function loadVideoPackages() {
 }
 
 // Profile-form submit.
+// --- v8.6.2: Video Partner Guided Mode -----------------------------
+// State machine for a 6-step guided flow. All UI; no new endpoints.
+// Mode preference persists in localStorage so power users stay in
+// Classic Mode across page loads.
+
+const _VP_MODE_KEY = 'partnerdesk.vpMode';
+const _VP_GOALS = [
+    { key: 'full',         title: 'I want everything',           desc: 'The most complete package: hook, script, shot list, b-roll, thumbnails, titles, description, hashtags, shorts, CTA.', best: 'planning + filming + posting' },
+    { key: 'calendar',     title: 'I need ideas',                desc: 'A month of video ideas based on your business profile.',                                                              best: 'organizing ideas' },
+    { key: 'short_script', title: 'I want a quick video script', desc: 'A 30-60 second video script with hook, body, and call to action.',                                                    best: 'filming' },
+    { key: 'ad_script',    title: 'I want to promote an offer',  desc: 'An ad-style script focused on a problem, solution, offer, and CTA.',                                                  best: 'selling + promoting' },
+    { key: 'shot_list',    title: "I'm ready to film",           desc: 'A filming checklist with scenes, camera suggestions, and b-roll ideas.',                                              best: 'filming' },
+    { key: 'caption_pack', title: 'I already have a video',      desc: 'Platform captions for Facebook, Instagram, TikTok, and YouTube.',                                                     best: 'posting' },
+    { key: 'metadata',     title: "I'm preparing a post",        desc: 'Title ideas, one description, and hashtags for posting.',                                                             best: 'posting' },
+];
+const _VP_GOAL_BY_KEY = Object.fromEntries(_VP_GOALS.map(g => [g.key, g]));
+const _VP_PROFILE_FIELDS = [
+    { name: 'business_name',   q: 'What is your business name?',     placeholder: 'MixedMakerShop',                                  example: 'Example: MixedMakerShop',                                          deflt: 'Your Business' },
+    { name: 'niche',           q: 'What type of business is it?',    placeholder: 'lawn care, web design, roofing, salon, food truck', example: 'Examples: lawn care · web design · roofing · salon · food truck', deflt: 'local service business' },
+    { name: 'target_customer', q: 'Who are you trying to reach?',    placeholder: 'homeowners, small business owners, parents',      example: 'Examples: homeowners · small business owners · parents · church members', deflt: 'local customers' },
+    { name: 'offer',           q: 'What are you offering?',          placeholder: '$150 starter web fix',                            example: 'Example: $150 starter web fix, pay once',                          deflt: 'your main service' },
+    { name: 'tone',            q: 'What tone should the video have?',placeholder: 'friendly, bold, helpful, funny, professional',    example: 'Examples: friendly · bold · helpful · funny · professional',       deflt: 'friendly and helpful' },
+    { name: 'platforms',       q: 'Where might you post it?',        placeholder: 'Facebook, Instagram, TikTok, YouTube',            example: 'Examples: Facebook · Instagram · TikTok · YouTube',                deflt: 'Facebook, Instagram, TikTok, YouTube' },
+    { name: 'video_length',    q: 'How long should the video be?',   placeholder: '30-60 seconds or 6-9 minutes',                    example: 'Examples: 30-60 seconds (Shorts) · 6-9 minutes (long-form)',       deflt: '30-60 seconds' },
+    { name: 'call_to_action',  q: 'What should people do next?',     placeholder: 'call, message, visit website, book estimate',     example: 'Examples: call · message · visit website · book estimate',         deflt: 'Contact us today' },
+];
+const _VP_TOPIC_CHIPS = [
+    '$150 starter website fix',
+    'spring lawn cleanup',
+    'roof inspection after storms',
+    'before and after driveway cleaning',
+    'why your Google Business Profile matters',
+    'weekly special',
+    'customer question',
+    'service area announcement',
+];
+const _VP_STEPS = ['Business', 'Goal', 'Topic', 'Generate', 'Review', 'Finish'];
+
+let _vpGuided = {
+    mode:           'guided',  // 'guided' | 'classic'
+    step:           1,
+    profileStep:    1,
+    selectedGoal:   null,
+    topic:          '',
+    currentPackage: null,
+    isGenerating:   false,
+};
+
+function _vpInitMode() {
+    try {
+        const saved = localStorage.getItem(_VP_MODE_KEY);
+        if (saved === 'classic' || saved === 'guided') _vpGuided.mode = saved;
+    } catch (_) {}
+}
+
+function _vpApplyMode() {
+    const guidedEl  = document.getElementById('vp-guided');
+    const classicEl = document.getElementById('vp-classic');
+    if (guidedEl)  guidedEl.hidden  = (_vpGuided.mode !== 'guided');
+    if (classicEl) classicEl.hidden = (_vpGuided.mode !== 'classic');
+    document.querySelectorAll('button[data-vp-mode]').forEach(b => {
+        b.setAttribute('aria-selected',
+            b.dataset.vpMode === _vpGuided.mode ? 'true' : 'false');
+    });
+}
+
+function _vpRenderProgress() {
+    const el = document.getElementById('vp-progress');
+    if (!el) return;
+    el.innerHTML = _VP_STEPS.map((label, i) => {
+        const n = i + 1;
+        const cls = n < _vpGuided.step ? 'is-done'
+                   : n === _vpGuided.step ? 'is-active' : '';
+        return (
+            `<div class="vp-progress-step ${cls}">` +
+              `<span class="vp-progress-step-num">${n}</span>` +
+              `<span class="vp-progress-step-label">${_escape(label)}</span>` +
+            `</div>`
+        );
+    }).join('');
+}
+
+function _vpRenderStage() {
+    const el = document.getElementById('vp-stage');
+    if (!el) return;
+    let html = '';
+    switch (_vpGuided.step) {
+        case 1: html = _vpRenderProfileStep();   break;
+        case 2: html = _vpRenderGoalStep();      break;
+        case 3: html = _vpRenderTopicStep();     break;
+        case 4: html = _vpRenderGenerateStep();  break;
+        case 5: html = _vpRenderReviewStep();    break;
+        case 6: html = _vpRenderFinishStep();    break;
+    }
+    el.innerHTML = `<div class="vp-stage-content">${html}</div>`;
+}
+
+function _vpRenderProfileStep() {
+    const idx = _vpGuided.profileStep - 1;
+    const field = _VP_PROFILE_FIELDS[idx];
+    const current = _vpProfile ? (_vpProfile[field.name] || '') : '';
+    const profileHasCore = _vpProfile && _vpProfile.business_name && _vpProfile.niche;
+    const skipBtn = idx === 0 && profileHasCore
+        ? `<button type="button" class="vp-btn vp-btn-link" data-vp-nav="skip-profile">Use what I already have →</button>`
+        : '';
+    const backBtn = idx === 0 ? ''
+        : `<button type="button" class="vp-btn" data-vp-nav="profile-back">Back</button>`;
+    const isLast = idx === _VP_PROFILE_FIELDS.length - 1;
+    const nextLabel = isLast ? 'Save Business Info' : 'Next';
+    return (
+        `<div class="vp-substep-progress">Step 1 of 6 · Business Setup · ${idx + 1}/${_VP_PROFILE_FIELDS.length}</div>` +
+        `<h3>${_escape(field.q)}</h3>` +
+        `<div class="vp-stage-helper">We use this to make the script sound like it belongs to your business.</div>` +
+        `<div class="vp-profile-card">` +
+          `<input type="text" id="vp-profile-input" ` +
+                  `placeholder="${_escape(field.placeholder)}" ` +
+                  `value="${_escape(current)}" autocomplete="off">` +
+          `<div class="vp-example">${_escape(field.example)}</div>` +
+        `</div>` +
+        `<div class="vp-stage-actions">` +
+          backBtn +
+          `<button type="button" class="vp-btn vp-btn-link" data-vp-nav="profile-skip">Skip for now</button>` +
+          `<div class="vp-spacer"></div>` +
+          skipBtn +
+          `<button type="button" class="vp-btn vp-btn-primary" data-vp-nav="profile-next">${_escape(nextLabel)}</button>` +
+        `</div>`
+    );
+}
+
+function _vpRenderGoalStep() {
+    return (
+        `<div class="vp-substep-progress">Step 2 of 6 · Choose Goal</div>` +
+        `<h3>Pick the kind of help you need right now.</h3>` +
+        `<div class="vp-stage-helper">You can come back and pick a different goal later.</div>` +
+        `<div class="vp-goal-grid">` +
+          _VP_GOALS.map(g => {
+              const sel = (_vpGuided.selectedGoal === g.key) ? ' is-selected' : '';
+              return (
+                  `<button type="button" class="vp-goal-card${sel}" ` +
+                          `data-vp-goal="${_escape(g.key)}">` +
+                    `<span class="vp-goal-title">${_escape(g.title)}</span>` +
+                    `<span class="vp-goal-desc">${_escape(g.desc)}</span>` +
+                    `<span class="vp-goal-best">Best for: <strong>${_escape(g.best)}</strong></span>` +
+                  `</button>`
+              );
+          }).join('') +
+        `</div>` +
+        `<div class="vp-stage-actions">` +
+          `<button type="button" class="vp-btn" data-vp-nav="goto-1">Back</button>` +
+          `<div class="vp-spacer"></div>` +
+          (_vpGuided.selectedGoal
+              ? `<button type="button" class="vp-btn vp-btn-primary" data-vp-nav="goto-3">Choose This Goal</button>`
+              : '') +
+        `</div>`
+    );
+}
+
+function _vpRenderTopicStep() {
+    const goal = _VP_GOAL_BY_KEY[_vpGuided.selectedGoal] || { title: '', key: '' };
+    const isCalendar = goal.key === 'calendar';
+    const optionalNote = isCalendar
+        ? `<div class="vp-stage-helper">If left blank, we'll create ideas from your business profile.</div>`
+        : `<div class="vp-stage-helper">A specific topic gives better results, but you can start broad.</div>`;
+    return (
+        `<div class="vp-substep-progress">Step 3 of 6 · Topic</div>` +
+        `<h3>What should this be about?</h3>` +
+        optionalNote +
+        `<input type="text" id="vp-topic-input" class="vp-topic-input" ` +
+                `placeholder="${isCalendar ? 'Optional — leave blank for general ideas' : 'e.g. $150 starter website fix'}" ` +
+                `value="${_escape(_vpGuided.topic)}" autocomplete="off">` +
+        `<div class="vp-chip-row">` +
+          _VP_TOPIC_CHIPS.map(c =>
+              `<button type="button" class="vp-chip" data-vp-chip="${_escape(c)}">${_escape(c)}</button>`
+          ).join('') +
+        `</div>` +
+        `<div class="vp-stage-actions">` +
+          `<button type="button" class="vp-btn" data-vp-nav="goto-2">Back</button>` +
+          `<div class="vp-spacer"></div>` +
+          `<button type="button" class="vp-btn vp-btn-primary" data-vp-nav="goto-4">Use This Topic</button>` +
+        `</div>`
+    );
+}
+
+function _vpRenderGenerateStep() {
+    const goal = _VP_GOAL_BY_KEY[_vpGuided.selectedGoal] || {};
+    const biz  = (_vpProfile && _vpProfile.business_name) || 'Your Business';
+    const topicDisplay = _vpGuided.topic
+        ? _escape(_vpGuided.topic)
+        : '<em>Based on your profile</em>';
+    if (_vpGuided.isGenerating) {
+        return (
+            `<div class="vp-substep-progress">Step 4 of 6 · Generate</div>` +
+            `<h3>Building your draft package…</h3>` +
+            `<div class="vp-loading">` +
+              `<span class="vp-spinner" aria-hidden="true"></span>` +
+              `<span>Composing structured template from your profile…</span>` +
+            `</div>`
+        );
+    }
+    return (
+        `<div class="vp-substep-progress">Step 4 of 6 · Generate</div>` +
+        `<h3>You're about to create:</h3>` +
+        `<div class="vp-stage-helper">This creates a draft only. Nothing is posted.</div>` +
+        `<div class="vp-confirm-card">` +
+          `<div class="vp-confirm-row">` +
+            `<div class="vp-confirm-label">Goal</div>` +
+            `<div class="vp-confirm-value">${_escape(goal.title || '')}</div>` +
+          `</div>` +
+          `<div class="vp-confirm-row">` +
+            `<div class="vp-confirm-label">For</div>` +
+            `<div class="vp-confirm-value">${_escape(biz)}</div>` +
+          `</div>` +
+          `<div class="vp-confirm-row">` +
+            `<div class="vp-confirm-label">Topic</div>` +
+            `<div class="vp-confirm-value">${topicDisplay}</div>` +
+          `</div>` +
+        `</div>` +
+        `<div class="vp-stage-actions">` +
+          `<button type="button" class="vp-btn" data-vp-nav="goto-3">Back</button>` +
+          `<div class="vp-spacer"></div>` +
+          `<button type="button" class="vp-btn vp-btn-primary" data-vp-nav="generate">Generate Draft</button>` +
+        `</div>`
+    );
+}
+
+function _vpRenderReviewStep() {
+    const pkg = _vpGuided.currentPackage;
+    if (!pkg) {
+        return (
+            `<div class="vp-substep-progress">Step 5 of 6 · Review</div>` +
+            `<h3>No package to review yet.</h3>` +
+            `<div class="vp-stage-actions">` +
+              `<button type="button" class="vp-btn" data-vp-nav="goto-2">Choose a Goal</button>` +
+            `</div>`
+        );
+    }
+    const status = (pkg.status || 'draft').toLowerCase();
+    return (
+        `<div class="vp-substep-progress">Step 5 of 6 · Review</div>` +
+        `<h3>${_escape(pkg.title)} <span class="vp-status-pill">${_escape(status)}</span></h3>` +
+        `<div class="vp-stage-helper"><strong>Read this first.</strong> ` +
+          `Read before approving. You can copy, save, approve, or delete.</div>` +
+        `<div class="vp-review-body">${_escape(pkg.body || '')}</div>` +
+        `<div class="vp-callout vp-callout-warning" style="margin-top: 0.7rem;">` +
+          `Only approve this after you read it and decide it is ready.` +
+        `</div>` +
+        `<div class="vp-stage-actions">` +
+          `<button type="button" class="vp-btn" data-vp-nav="review-copy">Copy</button>` +
+          `<button type="button" class="vp-btn" data-vp-nav="review-keep-draft">Keep as Draft</button>` +
+          `<div class="vp-spacer"></div>` +
+          `<button type="button" class="vp-btn vp-btn-danger" data-vp-nav="review-delete">Delete</button>` +
+          `<button type="button" class="vp-btn" data-vp-nav="goto-1">Start New Package</button>` +
+          `<button type="button" class="vp-btn vp-btn-primary" data-vp-nav="review-approve">Approve This Draft</button>` +
+        `</div>`
+    );
+}
+
+function _vpRenderFinishStep() {
+    const pkg = _vpGuided.currentPackage;
+    const isApproved = pkg && pkg.status === 'approved';
+    return (
+        `<div class="vp-substep-progress">Step 6 of 6 · Finish</div>` +
+        `<div style="display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.7rem;">` +
+          `<span class="vp-check" aria-hidden="true">✓</span>` +
+          `<h3 style="margin: 0;">${isApproved ? 'Approved.' : 'Draft saved.'}</h3>` +
+        `</div>` +
+        `<div class="vp-stage-helper">You're done with this package. Start another or review history.</div>` +
+        `<div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.9rem 1rem;">` +
+          `<strong>Next recommended action</strong>` +
+          `<ul style="margin: 0.4rem 0 0; padding-left: 1.2rem; font-size: 0.85rem; color: #475569;">` +
+            `<li>Read it carefully.</li>` +
+            `<li>Edit anything that sounds off.</li>` +
+            `<li>Approve it when ready.</li>` +
+            `<li><strong>Mark Used only after you actually post, film, or send it.</strong></li>` +
+          `</ul>` +
+        `</div>` +
+        `<div class="vp-stage-actions">` +
+          `<button type="button" class="vp-btn" data-vp-nav="finish-history">View History</button>` +
+          `<div class="vp-spacer"></div>` +
+          `<button type="button" class="vp-btn" data-vp-nav="finish-hub">Back to Hub</button>` +
+          `<button type="button" class="vp-btn vp-btn-primary" data-vp-nav="goto-2">Create Another</button>` +
+        `</div>`
+    );
+}
+
+function _vpGuidedRender() {
+    _vpRenderProgress();
+    _vpRenderStage();
+}
+
+function _vpStartFresh() {
+    _vpGuided.step = 1;
+    _vpGuided.profileStep = 1;
+    _vpGuided.selectedGoal = null;
+    _vpGuided.topic = '';
+    _vpGuided.currentPackage = null;
+    _vpGuided.isGenerating = false;
+    _vpGuidedRender();
+}
+
+// Save the current profile-card input value and advance.
+async function _vpHandleProfileNext(skip) {
+    const idx = _vpGuided.profileStep - 1;
+    const field = _VP_PROFILE_FIELDS[idx];
+    if (!skip) {
+        const inputEl = document.getElementById('vp-profile-input');
+        const val = inputEl ? inputEl.value.trim() : '';
+        if (val) {
+            // Persist this single field immediately.
+            try {
+                const r = await fetch('/api/video/profile', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [field.name]: val }),
+                });
+                if (r.ok) _vpProfile = await r.json();
+            } catch (e) { /* non-fatal */ }
+        }
+    }
+    if (idx + 1 < _VP_PROFILE_FIELDS.length) {
+        _vpGuided.profileStep = idx + 2;
+        _vpGuidedRender();
+    } else {
+        // Last card → advance to Goal.
+        _vpGuided.step = 2;
+        _vpGuidedRender();
+    }
+}
+
+async function _vpHandleGenerate() {
+    const goal = _vpGuided.selectedGoal;
+    if (!goal) {
+        _vpGuided.step = 2;
+        _vpGuidedRender();
+        return;
+    }
+    _vpGuided.isGenerating = true;
+    _vpGuidedRender();
+    const body = { content_type: goal, topic: _vpGuided.topic || '' };
+    if (goal === 'calendar')     body.count = 30;
+    if (goal === 'caption_pack') body.count = 5;
+    try {
+        const r = await fetch('/api/video/packages/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+        _vpGuided.currentPackage = d;
+        _vpGuided.isGenerating = false;
+        _vpGuided.step = 5;
+        _vpGuidedRender();
+        await loadVideoPackages();
+    } catch (err) {
+        _vpGuided.isGenerating = false;
+        document.getElementById('cmd-status').textContent =
+            'Generate failed: ' + (err.message || err);
+        _vpGuidedRender();
+    }
+}
+
+async function _vpHandleReviewAction(action) {
+    const pkg = _vpGuided.currentPackage;
+    if (!pkg) return;
+    if (action === 'review-copy') {
+        try {
+            await navigator.clipboard.writeText(pkg.body || '');
+            document.getElementById('cmd-status').textContent =
+                `Copied "${pkg.title}" to clipboard.`;
+        } catch (err) {
+            document.getElementById('cmd-status').textContent =
+                'Copy failed: ' + err.message;
+        }
+        return;
+    }
+    if (action === 'review-keep-draft') {
+        _vpGuided.step = 6;
+        _vpGuidedRender();
+        return;
+    }
+    if (action === 'review-approve') {
+        try {
+            const r = await fetch(`/api/video/packages/${encodeURIComponent(pkg.id)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'approved' }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            _vpGuided.currentPackage = d;
+            _vpGuided.step = 6;
+            _vpGuidedRender();
+            await loadVideoPackages();
+        } catch (err) {
+            document.getElementById('cmd-status').textContent =
+                'Approve failed: ' + (err.message || err);
+        }
+        return;
+    }
+    if (action === 'review-delete') {
+        if (!confirm(`Delete package "${pkg.title}"? This cannot be undone.`)) return;
+        try {
+            const r = await fetch(`/api/video/packages/${encodeURIComponent(pkg.id)}`, { method: 'DELETE' });
+            if (!r.ok) {
+                const d = await r.json().catch(() => ({}));
+                throw new Error(d.detail || 'http ' + r.status);
+            }
+            _vpGuided.currentPackage = null;
+            _vpGuided.step = 1;
+            _vpGuided.profileStep = 1;
+            _vpGuidedRender();
+            await loadVideoPackages();
+        } catch (err) {
+            document.getElementById('cmd-status').textContent =
+                'Delete failed: ' + (err.message || err);
+        }
+        return;
+    }
+}
+
+// Single click delegator for #video-details, scoped to guided UI by
+// data attributes so it doesn't collide with the classic click handlers
+// already bound earlier in the file.
+const _vpVideoDetailsEl = document.getElementById('video-details');
+if (_vpVideoDetailsEl) {
+    _vpVideoDetailsEl.addEventListener('click', async (e) => {
+        // Mode toggle.
+        const modeBtn = e.target.closest('button[data-vp-mode]');
+        if (modeBtn) {
+            const mode = modeBtn.dataset.vpMode;
+            if (mode === 'guided' || mode === 'classic') {
+                _vpGuided.mode = mode;
+                try { localStorage.setItem(_VP_MODE_KEY, mode); } catch (_) {}
+                _vpApplyMode();
+            }
+            return;
+        }
+        // Start fresh.
+        if (e.target.closest('#vp-start-fresh-btn')) {
+            _vpStartFresh();
+            return;
+        }
+        // Goal selection.
+        const goalBtn = e.target.closest('button[data-vp-goal]');
+        if (goalBtn) {
+            _vpGuided.selectedGoal = goalBtn.dataset.vpGoal;
+            _vpRenderStage();  // re-render so the selected state shows
+            return;
+        }
+        // Topic chip.
+        const chipBtn = e.target.closest('button[data-vp-chip]');
+        if (chipBtn) {
+            const inp = document.getElementById('vp-topic-input');
+            if (inp) inp.value = chipBtn.dataset.vpChip;
+            _vpGuided.topic = chipBtn.dataset.vpChip;
+            return;
+        }
+        // Navigation buttons.
+        const navBtn = e.target.closest('button[data-vp-nav]');
+        if (!navBtn) return;
+        const nav = navBtn.dataset.vpNav;
+        if (nav.startsWith('goto-')) {
+            const target = parseInt(nav.slice(5), 10);
+            // If moving past Topic, capture the input.
+            if (_vpGuided.step === 3) {
+                const inp = document.getElementById('vp-topic-input');
+                if (inp) _vpGuided.topic = inp.value.trim();
+            }
+            _vpGuided.step = target;
+            _vpGuidedRender();
+            return;
+        }
+        if (nav === 'profile-next')  return _vpHandleProfileNext(false);
+        if (nav === 'profile-skip')  return _vpHandleProfileNext(true);
+        if (nav === 'skip-profile') {
+            _vpGuided.step = 2;
+            _vpGuidedRender();
+            return;
+        }
+        if (nav === 'profile-back') {
+            if (_vpGuided.profileStep > 1) {
+                _vpGuided.profileStep -= 1;
+                _vpGuidedRender();
+            }
+            return;
+        }
+        if (nav === 'generate')  return _vpHandleGenerate();
+        if (nav === 'finish-history') {
+            const h = document.getElementById('vp-history-details');
+            if (h) {
+                h.open = true;
+                h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            return;
+        }
+        if (nav === 'finish-hub') {
+            const top = document.getElementById('today-section');
+            if (top) top.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
+        if (nav.startsWith('review-'))  return _vpHandleReviewAction(nav);
+    });
+}
+
+// Re-render guided UI whenever profile or packages refresh, so the
+// state reflects current data after a refreshAll cycle.
+const _vpOrigLoadProfile = loadVideoProfile;
+loadVideoProfile = async function () {
+    await _vpOrigLoadProfile();
+    if (_vpGuided.mode === 'guided') _vpGuidedRender();
+};
+
+// Initialize on first script run. Module-level — runs once at load.
+_vpInitMode();
+_vpApplyMode();
+_vpGuidedRender();
+
 const _vpProfileForm = document.getElementById('vp-profile-form');
 if (_vpProfileForm) {
     _vpProfileForm.addEventListener('submit', async (e) => {
