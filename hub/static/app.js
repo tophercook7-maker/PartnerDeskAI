@@ -3368,6 +3368,245 @@ if (_ytPackagesEl) {
     });
 }
 
+// --- v8.6: Video Partner ----------------------------------------------
+// Sibling to v8.5 YouTube Growth Partner. Same UI shape and safety
+// perimeter — local templates only, no API publishing.
+
+let _vpPackages = [];
+let _vpProfile = null;
+
+async function loadVideoProfile() {
+    try {
+        const r = await fetch('/api/video/profile');
+        if (!r.ok) throw new Error('http ' + r.status);
+        _vpProfile = await r.json();
+        const form = document.getElementById('vp-profile-form');
+        if (form) {
+            for (const k of Object.keys(_vpProfile)) {
+                const f = form.querySelector(`[name="${k}"]`);
+                if (f) f.value = _vpProfile[k] || '';
+            }
+        }
+    } catch (e) {
+        _vpProfile = null;
+    }
+}
+
+function _renderVpPackageCard(pkg) {
+    const id = _escape(pkg.id);
+    const title = _escape(pkg.title || '(untitled)');
+    const ct = _escape(pkg.content_type || 'calendar');
+    const status = (pkg.status || 'draft').toLowerCase();
+    const created = _escape((pkg.created_at || '').slice(0, 16));
+    const buttons = [];
+    if (status !== 'approved' && status !== 'used') {
+        buttons.push(`<button type="button" class="row-action primary" ` +
+            `data-vp-pkg-action="approve" data-pkg-id="${id}">Approve</button>`);
+    }
+    if (status === 'approved') {
+        buttons.push(`<button type="button" class="row-action primary" ` +
+            `data-vp-pkg-action="used" data-pkg-id="${id}">Mark Used</button>`);
+    }
+    buttons.push(`<button type="button" class="row-action" ` +
+        `data-vp-pkg-action="copy" data-pkg-id="${id}">Copy Body</button>`);
+    buttons.push(`<button type="button" class="row-action danger" ` +
+        `data-vp-pkg-action="delete" data-pkg-id="${id}">Delete</button>`);
+    return (
+        `<div class="yt-pkg-card" data-pkg-id="${id}">` +
+          `<div class="yt-pkg-card-title">${title}</div>` +
+          `<div>` +
+            `<span class="yt-pkg-type-badge">${ct}</span> ` +
+            `<span class="yt-pkg-status-badge yt-pkg-status-${_escape(status)}">${_escape(status)}</span>` +
+          `</div>` +
+          `<div class="yt-pkg-card-meta">Created ${created}</div>` +
+          `<details><summary>View package body</summary>` +
+            `<pre>${_escape(pkg.body || '')}</pre>` +
+          `</details>` +
+          `<div class="yt-pkg-card-actions">${buttons.join('')}</div>` +
+        `</div>`
+    );
+}
+
+function renderVideoPackages() {
+    const el = document.getElementById('vp-packages-list');
+    const countEl = document.getElementById('vp-packages-count');
+    if (!el) return;
+    if (countEl) {
+        const drafts = _vpPackages.filter(p => (p.status || 'draft') === 'draft').length;
+        countEl.textContent = _vpPackages.length
+            ? `${_vpPackages.length} total · ${drafts} draft`
+            : '';
+    }
+    if (_vpPackages.length === 0) {
+        el.innerHTML = '<div class="muted">No packages yet. ' +
+            'Use the action buttons above to generate one.</div>';
+        return;
+    }
+    const rank = p => {
+        const s = (p.status || 'draft').toLowerCase();
+        return s === 'draft' ? 0 : (s === 'approved' ? 1 : 2);
+    };
+    const sorted = _vpPackages.slice().sort((a, b) => {
+        const r = rank(a) - rank(b);
+        if (r !== 0) return r;
+        return (b.updated_at || '').localeCompare(a.updated_at || '');
+    });
+    el.innerHTML = sorted.map(_renderVpPackageCard).join('');
+}
+
+async function loadVideoPackages() {
+    try {
+        const r = await fetch('/api/video/packages');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _vpPackages = d.items || [];
+        renderVideoPackages();
+    } catch (e) {
+        _vpPackages = [];
+        const el = document.getElementById('vp-packages-list');
+        if (el) el.innerHTML = '<div class="muted">Could not load packages.</div>';
+    }
+}
+
+// Profile-form submit.
+const _vpProfileForm = document.getElementById('vp-profile-form');
+if (_vpProfileForm) {
+    _vpProfileForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(_vpProfileForm).entries());
+        const statusEl = document.getElementById('vp-profile-status');
+        try {
+            const r = await fetch('/api/video/profile', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            _vpProfile = d;
+            if (statusEl) {
+                statusEl.textContent = 'Profile saved.';
+                setTimeout(() => { statusEl.textContent = ''; }, 2500);
+            }
+        } catch (err) {
+            if (statusEl) statusEl.textContent = 'Save failed: ' + err.message;
+        }
+    });
+}
+
+// Generate-button delegator. Scoped to #video-details so we don't
+// collide with the v8.5 yt-actions class.
+const _vpDetailsEl = document.getElementById('video-details');
+if (_vpDetailsEl) {
+    const actionsEl = _vpDetailsEl.querySelector('.yt-actions');
+    if (actionsEl) {
+        actionsEl.addEventListener('click', async (e) => {
+            const btn = e.target.closest('button[data-vp-action]');
+            if (!btn) return;
+            const a = btn.dataset.vpAction;
+            let body = null;
+            if (a === 'calendar') {
+                body = { content_type: 'calendar', count: 30 };
+            } else if (a === 'caption_pack') {
+                const topic = prompt('Caption-pack topic / video title:');
+                if (topic === null) return;
+                body = { content_type: 'caption_pack', topic, count: 5 };
+            } else if (a === 'full') {
+                const topic = prompt('Full-campaign topic / video title:');
+                if (topic === null) return;
+                body = { content_type: 'full', topic };
+            } else {
+                // short_script, ad_script, shot_list, metadata — all topic-driven
+                const topic = prompt(`Topic for ${a.replace('_', ' ')}:`);
+                if (topic === null) return;
+                body = { content_type: a, topic };
+            }
+            btn.disabled = true;
+            try {
+                const r = await fetch('/api/video/packages/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                document.getElementById('cmd-status').textContent =
+                    `Generated "${d.title}" (status: draft). Review before publishing.`;
+                await loadVideoPackages();
+            } catch (err) {
+                document.getElementById('cmd-status').textContent =
+                    'Generate failed: ' + (err.message || err);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    }
+}
+
+// Package-card delegator.
+const _vpPackagesEl = document.getElementById('vp-packages-list');
+if (_vpPackagesEl) {
+    _vpPackagesEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-vp-pkg-action]');
+        if (!btn) return;
+        const a = btn.dataset.vpPkgAction;
+        const pid = btn.dataset.pkgId;
+        if (!pid) return;
+        if (a === 'copy') {
+            const pkg = _vpPackages.find(p => p.id === pid);
+            if (!pkg) return;
+            try {
+                await navigator.clipboard.writeText(pkg.body || '');
+                document.getElementById('cmd-status').textContent =
+                    `Copied "${pkg.title}" body to clipboard.`;
+            } catch (err) {
+                document.getElementById('cmd-status').textContent =
+                    'Copy failed: ' + err.message;
+            }
+            return;
+        }
+        if (a === 'approve' || a === 'used') {
+            const target = a === 'approve' ? 'approved' : 'used';
+            const ok = a === 'used' ? confirm(
+                'Mark this package as used? This means you have recorded ' +
+                'and (manually) published the video.'
+            ) : true;
+            if (!ok) return;
+            try {
+                const r = await fetch(`/api/video/packages/${encodeURIComponent(pid)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: target }),
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadVideoPackages();
+            } catch (err) {
+                document.getElementById('cmd-status').textContent =
+                    'Status update failed: ' + (err.message || err);
+            }
+            return;
+        }
+        if (a === 'delete') {
+            const pkg = _vpPackages.find(p => p.id === pid);
+            const label = pkg ? pkg.title : pid;
+            if (!confirm(`Delete package "${label}"?`)) return;
+            try {
+                const r = await fetch(`/api/video/packages/${encodeURIComponent(pid)}`, { method: 'DELETE' });
+                if (!r.ok) {
+                    const d = await r.json().catch(() => ({}));
+                    throw new Error(d.detail || 'http ' + r.status);
+                }
+                await loadVideoPackages();
+            } catch (err) {
+                document.getElementById('cmd-status').textContent =
+                    'Delete failed: ' + (err.message || err);
+            }
+            return;
+        }
+    });
+}
+
 // --- v8.1: Auto Lead Generator (missions) ---------------------------------
 // Mission = Google search query + URL. Hub never fetches the URL —
 // Topher opens it manually. Per-card actions only mutate local state
@@ -4921,6 +5160,8 @@ async function refreshAll() {
         ['loadYouTubeChannel',    loadYouTubeChannel],    // v8.5
         ['loadYouTubePackages',   loadYouTubePackages],   // v8.5
         ['loadConnectedAccounts', loadConnectedAccounts], // v8.5
+        ['loadVideoProfile',      loadVideoProfile],      // v8.6
+        ['loadVideoPackages',     loadVideoPackages],     // v8.6
     ];
     const results1 = await Promise.all(batch1.map(([n, f]) => _runLoaderSafely(n, f)));
     const results2 = await Promise.all(batch2.map(([n, f]) => _runLoaderSafely(n, f)));

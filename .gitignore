@@ -36,6 +36,10 @@ data/youtube_channel.json
 data/.youtube_channel.*.tmp
 data/youtube_packages.json
 data/.youtube_packages.*.tmp
+data/video_profile.json
+data/.video_profile.*.tmp
+data/video_packages.json
+data/.video_packages.*.tmp
 reports/*.md
 
 # OS

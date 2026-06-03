@@ -51,6 +51,7 @@ import leads as leads_mod  # noqa: E402
 import scout_queue as scout_mod  # noqa: E402
 import lead_missions as missions_mod  # noqa: E402
 import youtube_partner as yt_mod  # noqa: E402
+import video_partner as vp_mod  # noqa: E402
 import linkedin_oauth  # noqa: E402
 import meta_app_state  # noqa: E402
 import social_posters  # noqa: E402
@@ -1169,6 +1170,30 @@ class YouTubePackageIn(BaseModel):
     body:   str | None = None
 
 
+class VideoProfileIn(BaseModel):
+    """v8.6: Video Partner profile. All optional."""
+    business_name:   str | None = None
+    niche:           str | None = None
+    target_customer: str | None = None
+    offer:           str | None = None
+    tone:            str | None = None
+    platforms:       str | None = None
+    video_length:    str | None = None
+    call_to_action:  str | None = None
+
+
+class VideoGenerateIn(BaseModel):
+    content_type: str
+    topic:        str | None = None
+    count:        int | None = None
+
+
+class VideoPackageIn(BaseModel):
+    title:  str | None = None
+    status: str | None = None
+    body:   str | None = None
+
+
 class ScoutLeadIn(BaseModel):
     """v7.28: scout-queue input. All optional so PUT can omit fields.
     Server's scout_mod._clean enforces business_name required +
@@ -1431,6 +1456,60 @@ def api_youtube_packages_update(pkg_id: str, body: YouTubePackageIn) -> dict:
 @app.delete("/api/youtube/packages/{pkg_id}")
 def api_youtube_packages_delete(pkg_id: str) -> dict:
     if not yt_mod.delete_package(pkg_id):
+        raise HTTPException(status_code=404, detail=f"Package {pkg_id!r} not found")
+    return {"ok": True, "id": pkg_id}
+
+
+# --- v8.6: PartnerDeskAI Video Partner ----------------------------------
+# Sibling to v8.5 YouTube Growth Partner. Local-business video creation +
+# marketing assistant. Same safety perimeter: NO OpenAI, NO YouTube/
+# TikTok/Instagram/Facebook API, NO uploads. Every package starts as
+# draft; review required before publishing.
+
+@app.get("/api/video/profile")
+def api_video_profile_get() -> dict:
+    return vp_mod.load_profile()
+
+
+@app.put("/api/video/profile")
+def api_video_profile_put(body: VideoProfileIn) -> dict:
+    try:
+        return vp_mod.save_profile(body.model_dump(exclude_none=True))
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/video/packages")
+def api_video_packages_list() -> dict:
+    items = vp_mod.load_packages()
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/video/packages/generate")
+def api_video_packages_generate(body: VideoGenerateIn) -> dict:
+    try:
+        return vp_mod.generate_package(
+            content_type=body.content_type,
+            topic=body.topic or "",
+            count=body.count if body.count is not None else 30,
+        )
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/video/packages/{pkg_id}")
+def api_video_packages_update(pkg_id: str, body: VideoPackageIn) -> dict:
+    try:
+        return vp_mod.update_package(pkg_id, body.model_dump(exclude_none=True))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Package {pkg_id!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/video/packages/{pkg_id}")
+def api_video_packages_delete(pkg_id: str) -> dict:
+    if not vp_mod.delete_package(pkg_id):
         raise HTTPException(status_code=404, detail=f"Package {pkg_id!r} not found")
     return {"ok": True, "id": pkg_id}
 
@@ -1993,6 +2072,21 @@ def api_partners() -> dict:
                                               if (p.get("status") or "draft") == "draft"),
                     "approved":          sum(1 for p in yt_mod.load_packages()
                                               if p.get("status") == "approved"),
+                },
+            },
+            {
+                # v8.6: sibling Video Partner — local-business video
+                # creation + marketing. Same safety perimeter as v8.5.
+                "key":    "video",
+                "name":   "Video Partner",
+                "status": "active",
+                "role":   "Local-business video campaigns",
+                "metrics": {
+                    "packages": len(vp_mod.load_packages()),
+                    "drafts":   sum(1 for p in vp_mod.load_packages()
+                                     if (p.get("status") or "draft") == "draft"),
+                    "approved": sum(1 for p in vp_mod.load_packages()
+                                     if p.get("status") == "approved"),
                 },
             },
             {
