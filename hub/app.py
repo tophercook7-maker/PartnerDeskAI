@@ -1091,13 +1091,33 @@ def api_meta_notes(body: MetaNotesUpdate) -> dict:
 class LeadIn(BaseModel):
     """Accepts partial input — leads_mod._clean_lead enforces what's
     required and clamps/validates each field. Marking everything
-    optional here lets PUT requests omit fields they don't change."""
+    optional here lets PUT requests omit fields they don't change.
+
+    v8.4.1: extended with the v8.4 outreach-pipeline fields so they
+    can flow through POST /api/leads and PUT /api/leads/{id}. FastAPI
+    silently drops fields not declared here, which previously made the
+    pipeline unreachable from the browser even though the schema in
+    leads.py::_clean_lead already supported them."""
     name:    str | None = None
     company: str | None = None
     handle:  str | None = None
     source:  str | None = None
     status:  str | None = None
     notes:   str | None = None
+    # v8.4 outreach pipeline fields
+    email:              str | None = None
+    website_url:        str | None = None
+    website_status:     str | None = None
+    source_url:         str | None = None
+    evidence:           str | None = None
+    offer_angle:        str | None = None
+    outreach_status:    str | None = None
+    outreach_subject:   str | None = None
+    outreach_body:      str | None = None
+    last_contacted_at:  str | None = None
+    next_follow_up_at:  str | None = None
+    follow_up_count:    int | None = None
+    dead_reason:        str | None = None
 
 
 class LeadBatchIn(BaseModel):
