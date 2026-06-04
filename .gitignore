@@ -32,6 +32,8 @@ data/scout_queue.json
 data/.scout_queue.*.tmp
 data/lead_missions.json
 data/.lead_missions.*.tmp
+data/lead_candidates.json
+data/.lead_candidates.*.tmp
 data/youtube_channel.json
 data/.youtube_channel.*.tmp
 data/youtube_packages.json

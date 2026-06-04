@@ -52,6 +52,7 @@ import scout_queue as scout_mod  # noqa: E402
 import lead_missions as missions_mod  # noqa: E402
 import youtube_partner as yt_mod  # noqa: E402
 import video_partner as vp_mod  # noqa: E402
+import lead_candidates as cand_mod  # noqa: E402
 import linkedin_oauth  # noqa: E402
 import meta_app_state  # noqa: E402
 import social_posters  # noqa: E402
@@ -1682,6 +1683,41 @@ def api_missions_delete(mission_id: str) -> dict:
     return {"ok": True, "id": mission_id}
 
 
+class CandidateIn(BaseModel):
+    """v8.8: lead candidate update body. All optional so PUT can
+    patch a subset. lead_candidates._clean validates / clamps."""
+    business_name:          str | None = None
+    category:               str | None = None
+    city_state:             str | None = None
+    website_url:            str | None = None
+    website_status:         str | None = None
+    email:                  str | None = None
+    phone:                  str | None = None
+    source_url:             str | None = None
+    search_url:             str | None = None
+    evidence_notes:         str | None = None
+    suggested_offer_angle:  str | None = None
+    is_local_service:       bool | None = None
+    is_active:              bool | None = None
+    is_corporate:           bool | None = None
+    approval_status:        str | None = None
+    notes:                  str | None = None
+
+
+class CandidateFindIn(BaseModel):
+    """v8.8: 'Find Leads For Me' input."""
+    category:              str
+    city_state:            str
+    count:                 int = 10
+    website_status_target: str | None = None
+
+
+class CandidateBulkIn(BaseModel):
+    """v8.8: bulk action on selected candidate ids."""
+    action: str        # 'approve' | 'reject' | 'needs_research' | 'delete' | 'convert'
+    ids:    list[str]
+
+
 class MissionCaptureIn(BaseModel):
     """v8.7: mini-form capture submitted from the Lead Found card.
     All optional except business_name (enforced by convert_to_lead)."""
@@ -1707,6 +1743,105 @@ def api_missions_convert(mission_id: str, body: MissionCaptureIn) -> dict:
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Mission {mission_id!r} not found")
     except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# --- v8.8: Lead Candidate Queue ----------------------------------------
+# Reviewable possible-leads queue. NO scraping, NO paid APIs. Logan
+# generates candidate stubs the user fills in; scoring runs server-side
+# from the spec's exact rule set. Convert path creates a v8.4 lead with
+# outreach_status='not_started' — the user still clicks Prepare Outreach
+# manually before anything outbound happens.
+
+@app.get("/api/lead-candidates")
+def api_candidates_list() -> dict:
+    items = cand_mod.load()
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/lead-candidates")
+def api_candidates_add(body: CandidateIn) -> dict:
+    try:
+        return cand_mod.add(body.model_dump(exclude_none=True))
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/lead-candidates/find")
+def api_candidates_find(body: CandidateFindIn) -> dict:
+    """v8.8 'Find Leads For Me': generates N candidate stubs scoped to
+    category + city + web-status target. Each stub has its own targeted
+    Google search URL — the user opens search, finds a business, fills
+    the candidate. Scoring updates automatically on save. NOT a
+    scraper; honest framing of what's reachable without paid APIs."""
+    try:
+        rows = cand_mod.find_for_me(
+            category=body.category,
+            city_state=body.city_state,
+            count=body.count,
+            website_status_target=body.website_status_target or "no website found",
+        )
+        return {"added": rows, "count": len(rows)}
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/lead-candidates/{cid}")
+def api_candidates_update(cid: str, body: CandidateIn) -> dict:
+    try:
+        return cand_mod.update(cid, body.model_dump(exclude_none=True))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Candidate {cid!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/lead-candidates/{cid}")
+def api_candidates_delete(cid: str) -> dict:
+    if not cand_mod.delete(cid):
+        raise HTTPException(status_code=404, detail=f"Candidate {cid!r} not found")
+    return {"ok": True, "id": cid}
+
+
+@app.post("/api/lead-candidates/{cid}/approve")
+def api_candidates_approve(cid: str) -> dict:
+    try:
+        return cand_mod.approve(cid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Candidate {cid!r} not found")
+
+
+@app.post("/api/lead-candidates/{cid}/reject")
+def api_candidates_reject(cid: str) -> dict:
+    try:
+        return cand_mod.reject(cid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Candidate {cid!r} not found")
+
+
+@app.post("/api/lead-candidates/{cid}/needs-research")
+def api_candidates_needs_research(cid: str) -> dict:
+    try:
+        return cand_mod.needs_research(cid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Candidate {cid!r} not found")
+
+
+@app.post("/api/lead-candidates/{cid}/convert")
+def api_candidates_convert(cid: str) -> dict:
+    try:
+        return cand_mod.convert(cid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Candidate {cid!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/lead-candidates/bulk")
+def api_candidates_bulk(body: CandidateBulkIn) -> dict:
+    try:
+        return cand_mod.bulk_action(body.action, body.ids)
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 

@@ -4160,6 +4160,377 @@ if (_vpPackagesEl) {
     });
 }
 
+// --- v8.8: Lead Candidate Queue (Possible Leads) ----------------------
+// Reviewable candidates queue. Logan generates stubs the user fills
+// in; scoring + bulk actions + convert-to-Logan-lead live here. NO
+// scraping. NO paid APIs. Outreach still requires manual click on
+// Prepare Outreach against the converted lead.
+
+let _candidates = [];
+const _candSelected = new Set();
+let _candFilter = 'all';  // 'all' | 'Hot' | 'Warm' | 'Research' | 'Reject' | 'converted'
+
+function _renderCandidateCard(c) {
+    const id = _escape(c.id);
+    const conf = c.confidence || 'Research';
+    const approval = c.approval_status || 'pending';
+    const selected = _candSelected.has(c.id);
+    const cardCls = [
+        'cand-card',
+        selected ? 'is-selected' : '',
+        approval === 'converted' ? 'is-converted' : '',
+        approval === 'rejected'  ? 'is-rejected'  : '',
+    ].filter(Boolean).join(' ');
+    const name = c.business_name && c.business_name.trim()
+        ? _escape(c.business_name)
+        : '<span class="cand-name-placeholder">— empty slot — fill via Open Search</span>';
+    const convertedLink = c.converted_lead_id
+        ? `<div class="cand-field"><span class="cand-field-label">Lead</span>` +
+          `<span class="cand-field-value">→ ${_escape(c.converted_lead_id)}</span></div>`
+        : '';
+    // Buttons depend on approval state. Converted = read-only.
+    const buttons = [];
+    if (c.search_url) {
+        buttons.push(`<a class="row-action primary" target="_blank" rel="noopener noreferrer" ` +
+            `href="${_escape(c.search_url)}">🔎 Open Search</a>`);
+    }
+    if (approval !== 'converted' && approval !== 'rejected') {
+        buttons.push(`<button type="button" class="row-action" data-cand-action="save" data-cand-id="${id}">Save</button>`);
+    }
+    if (approval === 'pending' || approval === 'needs_research') {
+        buttons.push(`<button type="button" class="row-action" data-cand-action="approve" data-cand-id="${id}">Approve</button>`);
+        buttons.push(`<button type="button" class="row-action" data-cand-action="needs_research" data-cand-id="${id}">Needs Research</button>`);
+        buttons.push(`<button type="button" class="row-action" data-cand-action="reject" data-cand-id="${id}">Reject</button>`);
+    }
+    if (approval === 'approved') {
+        buttons.push(`<button type="button" class="row-action primary" data-cand-action="convert" data-cand-id="${id}">Use This Lead → Logan</button>`);
+        buttons.push(`<button type="button" class="row-action" data-cand-action="reject" data-cand-id="${id}">Reject</button>`);
+    }
+    buttons.push(`<button type="button" class="row-action danger" data-cand-action="delete" data-cand-id="${id}">Delete</button>`);
+
+    return (
+        `<div class="${cardCls}" data-cand-id="${id}">` +
+          `<div class="cand-card-header">` +
+            `<input type="checkbox" class="cand-checkbox" data-cand-id="${id}"` +
+              (selected ? ' checked' : '') + '>' +
+            `<div class="cand-name">${name}</div>` +
+            `<div class="cand-badges">` +
+              `<span class="cand-score-badge cand-score-${_escape(conf)}">${_escape(conf)} · ${c.score}</span>` +
+              `<span class="cand-approval-badge cand-approval-${_escape(approval)}">${_escape(approval)}</span>` +
+            `</div>` +
+          `</div>` +
+          // Editable fields. Score recomputes server-side on Save.
+          `<div class="cand-field"><span class="cand-field-label">Business</span>` +
+            `<span class="cand-field-value"><input type="text" data-cand-field="business_name" ` +
+            `placeholder="e.g. Black Pearl Coffee" value="${_escape(c.business_name || '')}"></span></div>` +
+          `<div class="cand-field"><span class="cand-field-label">Where</span>` +
+            `<span class="cand-field-value">${_escape(c.category)} · ${_escape(c.city_state)}</span></div>` +
+          `<div class="cand-field"><span class="cand-field-label">Web</span>` +
+            `<span class="cand-field-value">` +
+              `<select data-cand-field="website_status">` +
+                ['', 'no website found', 'weak web presence', 'has website but needs cleanup', 'has website (good)'].map(s =>
+                    `<option value="${_escape(s)}"${(c.website_status||'') === s ? ' selected' : ''}>${_escape(s || '— pick —')}</option>`
+                ).join('') +
+              `</select>` +
+            `</span></div>` +
+          `<div class="cand-field"><span class="cand-field-label">Email</span>` +
+            `<span class="cand-field-value"><input type="email" data-cand-field="email" placeholder="info@example.com" value="${_escape(c.email || '')}"></span></div>` +
+          `<div class="cand-field"><span class="cand-field-label">Phone</span>` +
+            `<span class="cand-field-value"><input type="text" data-cand-field="phone" placeholder="(555) 555-0123" value="${_escape(c.phone || '')}"></span></div>` +
+          `<div class="cand-field"><span class="cand-field-label">Source</span>` +
+            `<span class="cand-field-value"><input type="text" data-cand-field="source_url" placeholder="https://…" value="${_escape(c.source_url || '')}"></span></div>` +
+          `<div class="cand-field"><span class="cand-field-label">Evidence</span>` +
+            `<span class="cand-field-value"><textarea data-cand-field="evidence_notes" placeholder="What told you this is a fit?">${_escape(c.evidence_notes || '')}</textarea></span></div>` +
+          `<div class="cand-field"><span class="cand-field-label">Offer</span>` +
+            `<span class="cand-field-value">${_escape(c.suggested_offer_angle || '')}</span></div>` +
+          convertedLink +
+          `<div class="cand-actions">${buttons.join('')}</div>` +
+        `</div>`
+    );
+}
+
+function _candPassesFilter(c) {
+    if (_candFilter === 'all') return true;
+    if (_candFilter === 'converted') return c.approval_status === 'converted';
+    return c.confidence === _candFilter;
+}
+
+function renderCandidates() {
+    const el = document.getElementById('candidates-list');
+    const countEl = document.getElementById('candidates-count');
+    if (!el) return;
+    const total = _candidates.length;
+    if (countEl) {
+        if (total === 0) {
+            countEl.textContent = '';
+        } else {
+            const counts = {Hot: 0, Warm: 0, Research: 0, Reject: 0, converted: 0};
+            for (const c of _candidates) {
+                if (c.approval_status === 'converted') counts.converted++;
+                else if (c.confidence in counts) counts[c.confidence]++;
+            }
+            const parts = [];
+            if (counts.Hot)       parts.push(`${counts.Hot} hot`);
+            if (counts.Warm)      parts.push(`${counts.Warm} warm`);
+            if (counts.Research)  parts.push(`${counts.Research} research`);
+            if (counts.converted) parts.push(`${counts.converted} converted`);
+            countEl.textContent = parts.length ? `${total} total · ${parts.join(' · ')}` : `${total} total`;
+        }
+    }
+    if (total === 0) {
+        el.innerHTML =
+            '<div class="vp-callout vp-callout-info" style="margin: 0;">' +
+              '<strong>No candidates yet.</strong> Fill the form above with a ' +
+              'category (e.g. <code>coffee shops</code>) and city, then click ' +
+              '<strong>Find Leads For Me</strong>. Logan will generate ' +
+              'candidate slots you can fill in as you research.' +
+            '</div>';
+        return;
+    }
+    // Filter + sort: score desc within bucket, converted to bottom.
+    const filtered = _candidates.filter(_candPassesFilter);
+    const rank = c => (c.approval_status === 'converted' ? 1 : 0);
+    filtered.sort((a, b) => {
+        const r = rank(a) - rank(b);
+        if (r !== 0) return r;
+        return (b.score || 0) - (a.score || 0);
+    });
+    if (filtered.length === 0) {
+        el.innerHTML = `<div class="muted">No candidates match the "${_escape(_candFilter)}" filter.</div>`;
+        return;
+    }
+    el.innerHTML = filtered.map(_renderCandidateCard).join('');
+}
+
+function _renderCandidatesBulkBar() {
+    const bar = document.getElementById('candidates-bulk');
+    const cnt = document.getElementById('candidates-selected-count');
+    if (!bar) return;
+    bar.hidden = _candSelected.size === 0;
+    if (cnt) cnt.textContent = `${_candSelected.size} selected`;
+}
+
+async function loadCandidates() {
+    try {
+        const r = await fetch('/api/lead-candidates');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _candidates = d.items || [];
+        // Prune selection of ids no longer present.
+        const alive = new Set(_candidates.map(c => c.id));
+        for (const id of [..._candSelected]) if (!alive.has(id)) _candSelected.delete(id);
+        renderCandidates();
+        _renderCandidatesBulkBar();
+    } catch (err) {
+        _candidates = [];
+        const el = document.getElementById('candidates-list');
+        if (el) el.innerHTML = '<div class="muted">Could not load candidates.</div>';
+    }
+}
+
+// "Find Leads For Me" form submit.
+const _candidatesFindForm = document.getElementById('candidates-find-form');
+if (_candidatesFindForm) {
+    _candidatesFindForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(_candidatesFindForm).entries());
+        const body = {
+            category:              data.category,
+            city_state:            data.city_state,
+            count:                 parseInt(data.count, 10) || 10,
+            website_status_target: data.website_status_target,
+        };
+        try {
+            const r = await fetch('/api/lead-candidates/find', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            document.getElementById('cmd-status').textContent =
+                `Generated ${d.count} candidate${d.count === 1 ? '' : 's'} for ` +
+                `${body.category} in ${body.city_state}. Open search on each to fill them in.`;
+            await loadCandidates();
+        } catch (err) {
+            document.getElementById('cmd-status').textContent =
+                'Find leads failed: ' + (err.message || err);
+        }
+    });
+}
+
+// Filter chips.
+const _candidatesFiltersEl = document.getElementById('candidates-filters');
+if (_candidatesFiltersEl) {
+    _candidatesFiltersEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-cand-filter]');
+        if (!btn) return;
+        _candFilter = btn.dataset.candFilter;
+        _candidatesFiltersEl.querySelectorAll('.cand-filter').forEach(b =>
+            b.classList.toggle('is-active', b.dataset.candFilter === _candFilter)
+        );
+        renderCandidates();
+    });
+}
+
+// Per-card delegator + selection checkbox.
+const _candidatesListEl = document.getElementById('candidates-list');
+if (_candidatesListEl) {
+    // Checkboxes (change event, not click — works with keyboard too).
+    _candidatesListEl.addEventListener('change', (e) => {
+        const cb = e.target.closest('input.cand-checkbox[data-cand-id]');
+        if (!cb) return;
+        const id = cb.dataset.candId;
+        if (cb.checked) _candSelected.add(id); else _candSelected.delete(id);
+        // Update just this card's selected class without full re-render.
+        const card = _candidatesListEl.querySelector(`.cand-card[data-cand-id="${id}"]`);
+        if (card) card.classList.toggle('is-selected', cb.checked);
+        _renderCandidatesBulkBar();
+    });
+
+    // Card-level action buttons.
+    _candidatesListEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-cand-action]');
+        if (!btn) return;
+        const action = btn.dataset.candAction;
+        const cid = btn.dataset.candId;
+        if (!cid) return;
+        const card = _candidatesListEl.querySelector(`.cand-card[data-cand-id="${cid}"]`);
+        // Gather current field values from the card's inputs so a save
+        // sweep doesn't lose what the user just typed.
+        const readFields = () => {
+            const out = {};
+            if (!card) return out;
+            card.querySelectorAll('[data-cand-field]').forEach(f => {
+                out[f.dataset.candField] = f.value;
+            });
+            return out;
+        };
+        try {
+            if (action === 'save') {
+                const r = await fetch(`/api/lead-candidates/${encodeURIComponent(cid)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(readFields()),
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadCandidates();
+                document.getElementById('cmd-status').textContent =
+                    `Saved. Score: ${d.score} ${d.confidence}.`;
+                return;
+            }
+            if (action === 'approve' || action === 'reject' || action === 'needs_research') {
+                // First save current edits, then flip approval.
+                const fields = readFields();
+                if (Object.values(fields).some(v => v && v.length > 0)) {
+                    await fetch(`/api/lead-candidates/${encodeURIComponent(cid)}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(fields),
+                    });
+                }
+                const path = action === 'needs_research' ? 'needs-research' : action;
+                const r = await fetch(`/api/lead-candidates/${encodeURIComponent(cid)}/${path}`, { method: 'POST' });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadCandidates();
+                document.getElementById('cmd-status').textContent =
+                    `Candidate ${action.replace('_',' ')}.`;
+                return;
+            }
+            if (action === 'convert') {
+                const cand = _candidates.find(c => c.id === cid);
+                const label = cand && cand.business_name ? cand.business_name : '(this candidate)';
+                if (!confirm(
+                    `Convert "${label}" into a Logan lead?\n\n` +
+                    `Creates a cold lead with source=Logan. ` +
+                    `Prepare Outreach is still a separate manual step.`
+                )) return;
+                const r = await fetch(`/api/lead-candidates/${encodeURIComponent(cid)}/convert`, { method: 'POST' });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadCandidates();
+                await loadLeads();
+                document.getElementById('cmd-status').textContent =
+                    `Lead added. Go prepare outreach (scroll up to LinkedIn Leads → ${d.lead.name}).`;
+                return;
+            }
+            if (action === 'delete') {
+                const cand = _candidates.find(c => c.id === cid);
+                const label = cand && cand.business_name ? cand.business_name : cid;
+                if (!confirm(`Delete candidate "${label}"?`)) return;
+                const r = await fetch(`/api/lead-candidates/${encodeURIComponent(cid)}`, { method: 'DELETE' });
+                if (!r.ok) {
+                    const d = await r.json().catch(() => ({}));
+                    throw new Error(d.detail || 'http ' + r.status);
+                }
+                _candSelected.delete(cid);
+                await loadCandidates();
+                return;
+            }
+        } catch (err) {
+            document.getElementById('cmd-status').textContent =
+                'Candidate action failed: ' + (err.message || err);
+        }
+    });
+}
+
+// Bulk-action toolbar.
+const _candidatesBulkEl = document.getElementById('candidates-bulk');
+if (_candidatesBulkEl) {
+    _candidatesBulkEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-candidates-bulk]');
+        if (!btn) return;
+        const action = btn.dataset.candidatesBulk;
+        if (_candSelected.size === 0) {
+            document.getElementById('cmd-status').textContent =
+                'Select at least one candidate first.';
+            return;
+        }
+        // Export = client-side JSON download. No API needed.
+        if (action === 'export') {
+            const rows = _candidates.filter(c => _candSelected.has(c.id));
+            const blob = new Blob([JSON.stringify(rows, null, 2)],
+                                  { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `lead_candidates_${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+            document.getElementById('cmd-status').textContent =
+                `Exported ${rows.length} candidate${rows.length === 1 ? '' : 's'}.`;
+            return;
+        }
+        // Confirm destructive actions.
+        const n = _candSelected.size;
+        if ((action === 'delete' || action === 'reject' || action === 'convert')
+            && !confirm(`${action} ${n} candidate${n === 1 ? '' : 's'}?`)) return;
+        try {
+            const r = await fetch('/api/lead-candidates/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, ids: [..._candSelected] }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            // Clear selection after destructive ops.
+            if (action === 'delete' || action === 'convert') _candSelected.clear();
+            await loadCandidates();
+            if (action === 'convert') await loadLeads();
+            const parts = [`${d.processed.length} processed`];
+            if (d.skipped.length) parts.push(`${d.skipped.length} skipped`);
+            if (d.leads && d.leads.length) parts.push(`${d.leads.length} new leads`);
+            document.getElementById('cmd-status').textContent =
+                `Bulk ${action}: ${parts.join(', ')}.`;
+        } catch (err) {
+            document.getElementById('cmd-status').textContent =
+                'Bulk action failed: ' + (err.message || err);
+        }
+    });
+}
+
 // --- v8.1: Auto Lead Generator (missions) ---------------------------------
 // Mission = Google search query + URL. Hub never fetches the URL —
 // Topher opens it manually. Per-card actions only mutate local state
@@ -6004,6 +6375,7 @@ async function refreshAll() {
         ['loadScoutLeads',    loadScoutLeads],     // v7.28
         ['loadSummariesList', loadSummariesList],  // v7.31
         ['loadMissions',      loadMissions],       // v8.1
+        ['loadCandidates',    loadCandidates],     // v8.8
         ['loadDeadReasons',       loadDeadReasons],       // v8.4
         ['loadYouTubeChannel',    loadYouTubeChannel],    // v8.5
         ['loadYouTubePackages',   loadYouTubePackages],   // v8.5

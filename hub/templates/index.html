@@ -1204,6 +1204,127 @@
         }
         .vp-gen-best strong { color: #1c4f8f; }
         .vp-gen-card.primary .vp-gen-best strong { color: #fff; }
+        /* ===== v8.8: Possible Leads queue — reviewable candidates ====== */
+        .candidates-bulk {
+            display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center;
+            background: #f0f7ff; border: 1px solid #cfe1ff;
+            border-radius: 8px; padding: 0.5rem 0.7rem;
+            margin: 0.6rem 0;
+            animation: cand-bulk-in 0.2s ease-out;
+        }
+        @keyframes cand-bulk-in {
+            from { opacity: 0; transform: translateY(-4px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .candidates-filters {
+            display: flex; flex-wrap: wrap; gap: 0.3rem;
+            margin: 0.4rem 0 0.6rem;
+        }
+        .cand-filter {
+            padding: 0.25rem 0.7rem; border: 1px solid #cbd5e1;
+            border-radius: 999px; background: #f8fafc;
+            font-family: inherit; font-size: 0.78rem; color: #475569;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .cand-filter:hover {
+            background: #cfe1ff; color: #1c4f8f; border-color: #2a6ec1;
+        }
+        .cand-filter.is-active {
+            background: #1f2937; color: #fff; border-color: #1f2937;
+        }
+        .candidates-list {
+            display: grid; gap: 0.55rem;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        }
+        .cand-card {
+            background: #fff; border: 1px solid #d8dde4;
+            border-radius: 10px; padding: 0.7rem 0.85rem;
+            display: flex; flex-direction: column; gap: 0.4rem;
+            font-size: 0.88rem;
+            transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+        }
+        .cand-card:hover {
+            border-color: #2a6ec1;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(42,110,193,0.08);
+        }
+        .cand-card.is-selected {
+            border-color: #2a6ec1;
+            background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+            box-shadow: 0 0 0 2px rgba(42,110,193,0.20);
+        }
+        .cand-card.is-converted { opacity: 0.7; }
+        .cand-card.is-rejected  { opacity: 0.55; }
+
+        .cand-card-header {
+            display: flex; gap: 0.5rem; align-items: flex-start;
+        }
+        .cand-checkbox {
+            margin-top: 0.18rem; width: 1rem; height: 1rem; cursor: pointer;
+        }
+        .cand-name {
+            flex: 1 1 auto; font-weight: 700; color: #1f2937;
+            font-size: 0.95rem; line-height: 1.3;
+        }
+        .cand-name-placeholder {
+            color: #94a3b8; font-style: italic; font-weight: 500;
+        }
+        .cand-badges {
+            display: flex; gap: 0.3rem; flex-wrap: wrap;
+        }
+        .cand-score-badge {
+            display: inline-flex; align-items: center; gap: 0.2rem;
+            padding: 0.12rem 0.5rem; border-radius: 999px;
+            font-size: 0.72rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .cand-score-Hot      { background: #fde2e2; color: #b34a4a; }
+        .cand-score-Warm     { background: #fff6e0; color: #8a6320; }
+        .cand-score-Research { background: #cfe1ff; color: #1c4f8f; }
+        .cand-score-Reject   { background: #e2e8f0; color: #64748b; }
+
+        .cand-approval-badge {
+            display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px;
+            font-size: 0.7rem; font-weight: 600; text-transform: lowercase;
+        }
+        .cand-approval-pending        { background: #e2e8f0; color: #475569; }
+        .cand-approval-approved       { background: #cfe1ff; color: #1c4f8f; }
+        .cand-approval-rejected       { background: #f1d4d4; color: #7a2424; }
+        .cand-approval-needs_research { background: #fff6e0; color: #8a6320; }
+        .cand-approval-converted      { background: #d8efd8; color: #2d6a3a; }
+
+        .cand-field {
+            display: flex; gap: 0.5rem; align-items: baseline;
+            font-size: 0.82rem;
+        }
+        .cand-field-label {
+            color: #94a3b8; font-size: 0.7rem; min-width: 5rem;
+            text-transform: uppercase; letter-spacing: 0.04em;
+            flex-shrink: 0;
+        }
+        .cand-field-value { color: #1f2937; word-break: break-word; }
+        .cand-field-value input,
+        .cand-field-value select,
+        .cand-field-value textarea {
+            width: 100%; padding: 0.3rem 0.5rem;
+            border: 1px solid #cbd5e1; border-radius: 5px;
+            font-family: inherit; font-size: 0.82rem; background: #fff;
+            box-sizing: border-box;
+        }
+        .cand-field-value textarea { resize: vertical; min-height: 2rem; }
+        .cand-actions {
+            display: flex; flex-wrap: wrap; gap: 0.3rem;
+            margin-top: 0.25rem; padding-top: 0.4rem;
+            border-top: 1px solid #f1f5f9;
+        }
+        @media (max-width: 720px) {
+            .cand-field { flex-direction: column; gap: 0.1rem; }
+            .cand-field-label { min-width: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .candidates-bulk, .cand-card:hover { animation: none !important; transform: none !important; }
+        }
         /* ===== v8.7: Logan Mission cards — guided, animated, mobile ====== */
         .mission-card {
             background: linear-gradient(135deg, #ffffff 0%, #fafbff 100%);
@@ -2350,17 +2471,81 @@
                 <div class="muted">Loading…</div>
             </div>
 
-            <!-- v8.1: Auto Lead Generator. Creates Google search
-                 MISSIONS (strings + URLs) for Topher to open manually.
-                 No scraping, no outbound HTTP, no contact actions. -->
-            <h3 class="missions-h3">Auto Lead Generator
-                <span id="missions-count" class="muted"></span>
+            <!-- v8.8: Possible Leads — primary discovery flow. Logan
+                 generates candidate STUBS scoped to category + city +
+                 web-status target; user opens search, finds businesses,
+                 fills fields, scoring updates server-side. Review →
+                 approve → convert into Logan leads.
+
+                 NO scraping. NO paid APIs. NO automated outreach. The
+                 user still clicks Prepare Outreach manually on the
+                 converted lead. -->
+            <h3 class="missions-h3">Possible Leads
+                <span id="candidates-count" class="muted"></span>
             </h3>
-            <div class="muted" style="margin-bottom: 0.5rem; font-size: 0.85rem;">
-                Generates Google search query missions. <strong>Does not</strong>
-                browse the web or contact anyone. Open a mission's
-                search button to research a query, then capture any
-                businesses you find via the Scout Queue above.
+            <div class="vp-callout vp-callout-warning" style="margin-bottom: 0.6rem; font-size: 0.85rem;">
+                <strong>Logan can collect possible leads, but you must
+                review them before outreach.</strong> Approved
+                candidates convert to a cold Logan lead with
+                <code>outreach_status=not_started</code> — Prepare
+                Outreach is still a manual click.
+            </div>
+            <form id="candidates-find-form" class="leads-form"
+                  aria-label="Find leads for me">
+                <input class="leads-input" name="category"
+                       placeholder="Category (e.g. coffee shops, landscapers)" required>
+                <input class="leads-input" name="city_state"
+                       placeholder="City/State (e.g. Hot Springs AR)" required>
+                <input class="leads-input" name="count" type="number"
+                       min="1" max="25" value="10"
+                       placeholder="Number of candidates (1-25)">
+                <select class="leads-input" name="website_status_target">
+                    <option value="no website found" selected>no website found</option>
+                    <option value="weak web presence">weak web presence</option>
+                    <option value="any local business">any local business</option>
+                </select>
+                <div class="leads-form-actions">
+                    <button type="submit" class="primary">Find Leads For Me</button>
+                </div>
+            </form>
+            <!-- Bulk action toolbar. Visible always; selection state
+                 is per-card via checkboxes. -->
+            <div id="candidates-bulk" class="candidates-bulk" hidden>
+                <span id="candidates-selected-count" class="muted">0 selected</span>
+                <button type="button" class="row-action" data-candidates-bulk="approve">Approve selected</button>
+                <button type="button" class="row-action" data-candidates-bulk="reject">Reject selected</button>
+                <button type="button" class="row-action" data-candidates-bulk="needs_research">Mark needs research</button>
+                <button type="button" class="row-action primary" data-candidates-bulk="convert">Convert to leads</button>
+                <button type="button" class="row-action danger" data-candidates-bulk="delete">Delete</button>
+                <button type="button" class="row-action" data-candidates-bulk="export">Export</button>
+            </div>
+            <!-- Filter chips by confidence band. -->
+            <div id="candidates-filters" class="candidates-filters"
+                 role="toolbar" aria-label="Filter by quality">
+                <button type="button" class="cand-filter is-active" data-cand-filter="all">All</button>
+                <button type="button" class="cand-filter" data-cand-filter="Hot">🔥 Hot</button>
+                <button type="button" class="cand-filter" data-cand-filter="Warm">🌤️ Warm</button>
+                <button type="button" class="cand-filter" data-cand-filter="Research">🔍 Research</button>
+                <button type="button" class="cand-filter" data-cand-filter="Reject">✗ Reject</button>
+                <button type="button" class="cand-filter" data-cand-filter="converted">✓ Converted</button>
+            </div>
+            <div id="candidates-list" class="candidates-list">
+                <div class="muted">Loading…</div>
+            </div>
+
+            <!-- v8.1: Auto Lead Generator → renamed v8.8 to "Manual
+                 Search Mission" so the new Find-Leads-For-Me flow above
+                 is the primary path. Same backend, same UI body. -->
+            <details class="vp-history-details" id="missions-manual-details">
+              <summary>
+                <strong>Manual Search Mission (advanced)</strong>
+                <span id="missions-count" class="muted"></span>
+              </summary>
+            <div class="muted" style="margin: 0.6rem 0 0.5rem; font-size: 0.85rem;">
+                Generates Google search query missions for hand-research.
+                <strong>Does not</strong> browse the web or contact anyone.
+                Use this when you want to drive your own SERP exploration
+                instead of letting Logan stub out candidates above.
             </div>
             <form id="missions-generate-form" class="leads-form"
                   aria-label="Generate lead-search missions">
@@ -2385,6 +2570,7 @@
             <div id="missions-list" class="missions-list">
                 <div class="muted">Loading…</div>
             </div>
+            </details><!-- /#missions-manual-details -->
 
             <!-- v8.4: Outreach Queue. Leads with outreach_status=
                  'outreach_ready' — subject + body prepared, awaiting
