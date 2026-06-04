@@ -41,7 +41,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 MISSIONS_PATH = ROOT / "data" / "lead_missions.json"
 
-ALLOWED_STATUSES = ("new", "researching", "found_lead", "skipped", "done")
+ALLOWED_STATUSES = ("new", "researching", "found_lead", "outreach_ready", "skipped", "done")
 ALLOWED_PRIORITIES = ("low", "medium", "high")
 DEFAULT_STATUS = "new"
 DEFAULT_PRIORITY = "medium"
@@ -122,6 +122,68 @@ _HIGH_PRIO_TARGETS = ("no website found", "facebook-only")
 _HIGH_PRIO_HINTS   = ("no website", "facebook")  # in the query
 
 
+# --- v8.7: richer mission content -------------------------------------
+# Each mission gets a long-form Target line, an evidence-collection
+# checklist, a suggested first-message angle, and a "next action"
+# instruction. Templates substitute {category} and {city_state}.
+
+_TARGET_TMPL = "{category} in {city_state} with weak or missing websites."
+
+_EVIDENCE_TMPL = """- Gmail/Yahoo/Outlook email instead of a domain email
+- Facebook page but no website link
+- Google listing with phone but no website
+- Directory listing only
+- Recent reviews/photos showing the business is active
+- No clear online menu, order link, booking/contact page, or hours page"""
+
+_FIRST_MESSAGE_TMPL = (
+    "I noticed your shop shows up locally, but it looks like customers "
+    "may not have a simple website link to check hours, menu, photos, "
+    "and contact info from their phone."
+)
+
+_NEXT_ACTION_TMPL = (
+    "Open the search, find one qualified business, collect business "
+    "name + contact info + evidence, then convert it into a Logan lead."
+)
+
+# Category → emoji-style badge. Falls back to a generic icon when the
+# category isn't in the map. Keeps the UI scannable without an image
+# asset pipeline.
+CATEGORY_ICONS = {
+    "coffee shops":     "☕",
+    "cafe":             "☕",
+    "restaurant":       "🍽️",
+    "food truck":       "🌮",
+    "landscaping":      "🌿",
+    "lawn care":        "🌱",
+    "pressure washing": "💦",
+    "handyman":         "🔧",
+    "auto detailing":   "🚗",
+    "cleaners":         "🧹",
+    "plumber":          "🚰",
+    "salon":            "✂️",
+    "barber":           "✂️",
+    "pet groomer":      "🐾",
+    "church":           "⛪",
+    "photographer":     "📷",
+    "roofing":          "🏠",
+}
+
+
+def _category_icon(category: str) -> str:
+    if not category:
+        return "📋"
+    cat = category.strip().lower()
+    if cat in CATEGORY_ICONS:
+        return CATEGORY_ICONS[cat]
+    # Try a loose contains-match for plurals / variations.
+    for key, icon in CATEGORY_ICONS.items():
+        if key in cat or cat in key:
+            return icon
+    return "📋"
+
+
 def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -157,6 +219,16 @@ def _clean(raw: dict, existing: dict | None = None) -> dict:
         raise ValueError(
             f"priority must be one of {ALLOWED_PRIORITIES}, got {priority!r}"
         )
+    # v8.7: richer-content fields. Captured_lead is the mini-form data
+    # snapshot from the Lead Found stage; preserved through PUT updates
+    # via _pick so explicit None clears it.
+    def _pick(key):
+        if key in raw:
+            return raw[key]
+        return ex.get(key)
+    captured = _pick("captured_lead")
+    if captured is not None and not isinstance(captured, dict):
+        captured = None
     return {
         "id":              ex.get("id") or raw.get("id"),
         "category":        category[:MAX_CATEGORY],
@@ -169,6 +241,12 @@ def _clean(raw: dict, existing: dict | None = None) -> dict:
         "status":          status,
         "notes":           str(raw.get("notes")        or ex.get("notes")        or "")[:MAX_NOTES_LEN],
         "website_status_target": str(raw.get("website_status_target") or ex.get("website_status_target") or "")[:MAX_TARGET_LEN],
+        # v8.7 richer fields
+        "target":          str(raw.get("target")               or ex.get("target")               or "")[:500],
+        "evidence_template":str(raw.get("evidence_template")    or ex.get("evidence_template")    or "")[:2000],
+        "first_message_angle":str(raw.get("first_message_angle") or ex.get("first_message_angle") or "")[:1000],
+        "next_action":     str(raw.get("next_action")          or ex.get("next_action")          or "")[:500],
+        "captured_lead":   captured,
         "created_at":      ex.get("created_at") or _now(),
         "updated_at":      _now(),
     }
@@ -184,7 +262,18 @@ def load() -> list[dict]:
     if not isinstance(data, dict):
         return []
     items = data.get("items")
-    return items if isinstance(items, list) else []
+    if not isinstance(items, list):
+        return []
+    # v8.7: setdefault the new richer fields on legacy rows so the
+    # frontend can read them without crashes.
+    for item in items:
+        if isinstance(item, dict):
+            item.setdefault("target",              "")
+            item.setdefault("evidence_template",   "")
+            item.setdefault("first_message_angle", "")
+            item.setdefault("next_action",         "")
+            item.setdefault("captured_lead",       None)
+    return items
 
 
 def _save(items: list[dict]) -> None:
@@ -267,6 +356,13 @@ def generate(
     items = load()
     look_for    = _LOOK_FOR.get(target, _GENERIC_LOOK)
     offer_angle = _OFFER_ANGLES.get(target, _GENERIC_OFFER)
+    # v8.7: each mission now carries a long-form Target line, a multi-
+    # bullet evidence template, a suggested first-message angle, and a
+    # next-action instruction. All editable per-row via PUT.
+    target_line     = _TARGET_TMPL.format(category=category, city_state=city_state)
+    evidence_tmpl   = _EVIDENCE_TMPL
+    first_message   = _FIRST_MESSAGE_TMPL
+    next_action     = _NEXT_ACTION_TMPL
     new_rows: list[dict] = []
     for i in range(count):
         tmpl = _QUERY_TEMPLATES[i % len(_QUERY_TEMPLATES)]
@@ -282,6 +378,10 @@ def generate(
             "priority":              _pick_priority(query, target),
             "status":                DEFAULT_STATUS,
             "website_status_target": target,
+            "target":                target_line,
+            "evidence_template":     evidence_tmpl,
+            "first_message_angle":   first_message,
+            "next_action":           next_action,
         })
         cleaned["id"] = _next_id(items + new_rows)
         cleaned["created_at"] = _now()
@@ -292,3 +392,69 @@ def generate(
         items.extend(new_rows)
         _save(items)
     return new_rows
+
+
+# --- v8.7: convert mission → Logan lead --------------------------------
+
+import leads as _leads_mod  # local-only; no network
+
+
+def _find(mission_id: str) -> dict:
+    for it in load():
+        if it.get("id") == mission_id:
+            return it
+    raise KeyError(mission_id)
+
+
+def convert_to_lead(mission_id: str, captured: dict | None = None) -> dict:
+    """
+    Promote a mission into a Logan lead. The captured payload (from the
+    Lead Found mini-form) overrides any previously-stored capture on
+    the mission. After creating the lead, the mission status flips to
+    'outreach_ready' so the user knows it's ready for the v8.4 outreach
+    pipeline. Returns {mission, lead}.
+
+    Local-only — writes to data/lead_missions.json + data/leads.json.
+    NO external calls.
+    """
+    mission = _find(mission_id)
+    # Use the just-passed capture if provided, else fall back to the
+    # row's stored captured_lead. business_name is required either way.
+    cap = captured if isinstance(captured, dict) else (mission.get("captured_lead") or {})
+    if not isinstance(cap, dict):
+        cap = {}
+    business_name = (cap.get("business_name") or "").strip()
+    if not business_name:
+        raise ValueError(
+            "captured business_name is required to convert mission to a lead"
+        )
+
+    # Map mission + capture → leads.add() shape (v8.4 schema).
+    notes_lines = []
+    if cap.get("evidence_notes"):     notes_lines.append(cap["evidence_notes"])
+    if cap.get("phone"):              notes_lines.append(f"Phone: {cap['phone']}")
+    if cap.get("current_web_presence"): notes_lines.append(f"Web presence: {cap['current_web_presence']}")
+    notes = "\n\n".join(notes_lines)
+
+    new_lead = _leads_mod.add({
+        "name":           business_name[:200],
+        "company":        f"{mission.get('category','')} — {mission.get('city_state','')}".strip(" —"),
+        "email":          (cap.get("contact_email") or "")[:200],
+        "source":         "Logan",
+        "source_url":     (cap.get("source_url") or mission.get("search_url") or "")[:1000],
+        "status":         "cold",
+        "notes":          notes[:4000],
+        "evidence":       (cap.get("evidence_notes") or "")[:2000],
+        "offer_angle":    (mission.get("offer_angle") or "")[:500],
+        "website_status": (cap.get("website_status") or mission.get("website_status_target") or "")[:200],
+        # v8.4 outreach pipeline: leave at default not_started so the
+        # user explicitly clicks Prepare Outreach when ready.
+    })
+
+    # Stash the capture back on the mission and bump its status.
+    updated_mission = update(mission_id, {
+        "captured_lead":   cap,
+        "status":          "outreach_ready",
+        "notes":           f"Converted to lead {new_lead['id']}",
+    })
+    return {"mission": updated_mission, "lead": new_lead}

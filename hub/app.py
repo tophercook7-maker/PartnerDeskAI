@@ -1130,7 +1130,9 @@ class LeadBatchIn(BaseModel):
 
 class MissionIn(BaseModel):
     """v8.1: mission update body. All optional so PUT can patch a
-    subset; lead_missions._clean enforces what's required."""
+    subset; lead_missions._clean enforces what's required.
+    v8.7: extended with target / evidence_template / first_message_angle
+    / next_action / captured_lead so the live API can patch those too."""
     category:              str | None = None
     city_state:            str | None = None
     search_query:          str | None = None
@@ -1141,6 +1143,11 @@ class MissionIn(BaseModel):
     status:                str | None = None
     notes:                 str | None = None
     website_status_target: str | None = None
+    target:                str | None = None
+    evidence_template:     str | None = None
+    first_message_angle:   str | None = None
+    next_action:           str | None = None
+    captured_lead:         dict | None = None
 
 
 class MissionGenerateIn(BaseModel):
@@ -1673,6 +1680,34 @@ def api_missions_delete(mission_id: str) -> dict:
     if not missions_mod.delete(mission_id):
         raise HTTPException(status_code=404, detail=f"Mission {mission_id!r} not found")
     return {"ok": True, "id": mission_id}
+
+
+class MissionCaptureIn(BaseModel):
+    """v8.7: mini-form capture submitted from the Lead Found card.
+    All optional except business_name (enforced by convert_to_lead)."""
+    business_name:        str | None = None
+    contact_email:        str | None = None
+    phone:                str | None = None
+    current_web_presence: str | None = None
+    website_status:       str | None = None  # 'no website found' | 'weak web presence' | 'has website but needs cleanup'
+    evidence_notes:       str | None = None
+    source_url:           str | None = None
+    priority:             str | None = None  # 'high' | 'medium' | 'verify before sending'
+
+
+@app.post("/api/lead-missions/{mission_id}/convert-to-lead")
+def api_missions_convert(mission_id: str, body: MissionCaptureIn) -> dict:
+    """v8.7: Convert a mission's captured business info into a Logan
+    lead (v8.4 schema). Flips mission status to 'outreach_ready' so
+    the user knows it's ready for the outreach pipeline. Returns
+    {mission, lead}. Local-only — no external calls."""
+    try:
+        cap = body.model_dump(exclude_none=True)
+        return missions_mod.convert_to_lead(mission_id, captured=cap)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Mission {mission_id!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/api/connections")

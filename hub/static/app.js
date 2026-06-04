@@ -4179,38 +4179,183 @@ function _scoutEntryForMission(mission) {
     ) || null;
 }
 
+// v8.7: richer guided mission card — progress rail, sections, capture
+// form, copy buttons, convert-to-lead, animated active pulse.
+
+const _MISSION_RAIL = [
+    { key: 'new',            label: 'New' },
+    { key: 'researching',    label: 'Searching' },
+    { key: 'found_lead',     label: 'Lead Found' },
+    { key: 'outreach_ready', label: 'Outreach Ready' },
+    { key: 'done',           label: 'Done' },
+];
+const _MISSION_RAIL_KEYS = _MISSION_RAIL.map(s => s.key);
+const _CATEGORY_ICONS = {
+    'coffee shops':     '☕', 'cafe':             '☕',
+    'restaurant':       '🍽️', 'food truck':       '🌮',
+    'landscaping':      '🌿', 'lawn care':        '🌱',
+    'pressure washing': '💦', 'handyman':         '🔧',
+    'auto detailing':   '🚗', 'cleaners':         '🧹',
+    'plumber':          '🚰', 'salon':            '✂️',
+    'barber':           '✂️', 'pet groomer':      '🐾',
+    'church':           '⛪', 'photographer':     '📷',
+    'roofing':          '🏠',
+};
+function _missionCategoryIcon(cat) {
+    if (!cat) return '📋';
+    const c = cat.trim().toLowerCase();
+    if (_CATEGORY_ICONS[c]) return _CATEGORY_ICONS[c];
+    for (const [k, v] of Object.entries(_CATEGORY_ICONS)) {
+        if (k.includes(c) || c.includes(k)) return v;
+    }
+    return '📋';
+}
+
+// "Logan says" lines vary by current status — friendly, specific.
+function _missionLoganLine(m, status) {
+    if (status === 'new') {
+        return `<strong>Start here.</strong> Open the search and skim the first 2 pages. Look for one shop you'd actually be glad to help. Quality over quantity.`;
+    }
+    if (status === 'researching') {
+        return `<strong>Take your time.</strong> When you find a real candidate, click <em>Mark Found Lead</em> and fill in what you saw. We don't need perfect — just truthful.`;
+    }
+    if (status === 'found_lead') {
+        return `<strong>Capture what you found below.</strong> When the business name is filled in, click <em>Convert to Logan Lead</em>. That moves them into the outreach pipeline.`;
+    }
+    if (status === 'outreach_ready') {
+        return `<strong>Lead created.</strong> Scroll up to <em>LinkedIn Leads</em>, find this prospect, and click <em>Prepare Outreach</em> to draft the free-mockup email.`;
+    }
+    if (status === 'done') {
+        return `Done. Keep this around for the audit trail or delete if it's cluttering the view.`;
+    }
+    if (status === 'skipped') {
+        return `Skipped. You can mark it researching again any time.`;
+    }
+    return ``;
+}
+
+function _renderMissionRail(currentStatus) {
+    // Skipped sits off-rail; render the 5 stages normally.
+    const currentIdx = _MISSION_RAIL_KEYS.indexOf(currentStatus);
+    return (
+        `<div class="mission-rail" role="list">` +
+          _MISSION_RAIL.map((s, i) => {
+              let cls = '';
+              if (currentStatus === 'skipped') {
+                  // No active highlight when skipped; show all as muted.
+              } else if (currentIdx < 0) {
+                  // Unknown status: nothing highlighted.
+              } else if (i < currentIdx) {
+                  cls = ' is-done';
+              } else if (i === currentIdx) {
+                  cls = ' is-current';
+              }
+              return (
+                  `<div class="mission-rail-step${cls}" role="listitem">` +
+                    `<span class="mission-rail-num">${i + 1}</span>` +
+                    `<span>${_escape(s.label)}</span>` +
+                  `</div>`
+              );
+          }).join('') +
+        `</div>`
+    );
+}
+
+function _renderMissionCaptureForm(m) {
+    // Restore any previously captured values so the form is sticky
+    // across re-renders / page reloads.
+    const c = m.captured_lead || {};
+    const id = _escape(m.id);
+    return (
+        `<div class="mission-capture" data-mission-id="${id}">` +
+          `<div class="mission-capture-title">📝 Capture what you found</div>` +
+          `<div class="mission-capture-grid">` +
+            `<label>Business name *` +
+              `<input type="text" name="business_name" required placeholder="e.g. Black Pearl Coffee" value="${_escape(c.business_name || '')}">` +
+            `</label>` +
+            `<label>Contact email` +
+              `<input type="email" name="contact_email" placeholder="contact@gmail.com" value="${_escape(c.contact_email || '')}">` +
+            `</label>` +
+            `<label>Phone` +
+              `<input type="text" name="phone" placeholder="(555) 555-0123" value="${_escape(c.phone || '')}">` +
+            `</label>` +
+            `<label>Current web presence` +
+              `<input type="text" name="current_web_presence" placeholder="Facebook page only" value="${_escape(c.current_web_presence || '')}">` +
+            `</label>` +
+            `<label>Website status` +
+              `<select name="website_status">` +
+                `<option value="">— pick one —</option>` +
+                `<option value="no website found"${c.website_status === 'no website found' ? ' selected' : ''}>no website found</option>` +
+                `<option value="weak web presence"${c.website_status === 'weak web presence' ? ' selected' : ''}>weak web presence</option>` +
+                `<option value="has website but needs cleanup"${c.website_status === 'has website but needs cleanup' ? ' selected' : ''}>has website but needs cleanup</option>` +
+              `</select>` +
+            `</label>` +
+            `<label>Source URL` +
+              `<input type="text" name="source_url" placeholder="facebook.com/…" value="${_escape(c.source_url || '')}">` +
+            `</label>` +
+            `<label style="grid-column: 1 / -1;">Evidence notes` +
+              `<textarea name="evidence_notes" placeholder="What told you they could use help?">${_escape(c.evidence_notes || '')}</textarea>` +
+            `</label>` +
+            `<label>Priority` +
+              `<select name="priority">` +
+                `<option value="medium"${(!c.priority || c.priority === 'medium') ? ' selected' : ''}>medium</option>` +
+                `<option value="high"${c.priority === 'high' ? ' selected' : ''}>high</option>` +
+                `<option value="verify before sending"${c.priority === 'verify before sending' ? ' selected' : ''}>verify before sending</option>` +
+              `</select>` +
+            `</label>` +
+          `</div>` +
+          `<div class="mission-capture-actions">` +
+            `<button type="button" class="row-action" ` +
+              `data-action="mission-capture-save" data-mission-id="${id}">Save Capture</button>` +
+            `<button type="button" class="row-action primary" ` +
+              `data-action="mission-convert-to-lead" data-mission-id="${id}">Convert to Logan Lead</button>` +
+          `</div>` +
+        `</div>`
+    );
+}
+
 function _renderMissionCard(m) {
     const id = _escape(m.id);
     const status = (m.status || 'new').toLowerCase();
     const prio = (m.priority || 'medium').toLowerCase();
-    const notesLine = m.notes
-        ? `<div class="mission-meta">Notes: ${_escape(m.notes)}</div>` : '';
-    // v8.3: if a scout entry already exists for this mission, surface
-    // it as a small badge and suppress the duplicate-create button.
+    const icon = _missionCategoryIcon(m.category || '');
+    // Active = the user's "do this next" state. Pulse on new + researching.
+    const cardCls = [
+        'mission-card',
+        (status === 'new' || status === 'researching') ? 'is-active' : '',
+        status === 'done'    ? 'is-done'    : '',
+        status === 'skipped' ? 'is-skipped' : '',
+    ].filter(Boolean).join(' ');
+
     const scoutLink = _scoutEntryForMission(m);
     const scoutBadge = scoutLink
-        ? ` <span class="mission-scout-badge" ` +
+        ? `<span class="mission-scout-badge" ` +
           `title="${_escape(scoutLink.business_name || '(unnamed)')} ` +
           `— status: ${_escape(scoutLink.status || 'new')}">` +
-          `→ in Scout Queue` +
-          `</span>`
+          `→ in Scout Queue</span>`
         : '';
-    // Buttons: Open Search always; status transitions hide their
-    // current state to avoid no-op clicks.
+
+    // Action buttons row.
     const buttons = [];
     buttons.push(`<a class="row-action primary" target="_blank" ` +
-        `rel="noopener noreferrer" href="${_escape(m.search_url)}">Open Search</a>`);
-    if (status !== 'researching' && status !== 'done') {
+        `rel="noopener noreferrer" href="${_escape(m.search_url)}">🔎 Open Search</a>`);
+    buttons.push(`<button type="button" class="row-action copy-btn" ` +
+        `data-action="mission-copy-query" data-mission-id="${id}">Copy Query</button>`);
+    if (m.evidence_template) {
+        buttons.push(`<button type="button" class="row-action copy-btn" ` +
+            `data-action="mission-copy-evidence" data-mission-id="${id}">Copy Evidence Template</button>`);
+    }
+    if (status === 'new') {
         buttons.push(`<button type="button" class="row-action" ` +
             `data-action="mission-status" data-mission-id="${id}" ` +
-            `data-target="researching">Mark Researching</button>`);
+            `data-target="researching">Mark Searching</button>`);
     }
-    if (status !== 'found_lead' && status !== 'done') {
-        buttons.push(`<button type="button" class="row-action" ` +
+    if (status === 'researching' || status === 'new') {
+        buttons.push(`<button type="button" class="row-action primary" ` +
             `data-action="mission-status" data-mission-id="${id}" ` +
-            `data-target="found_lead">Mark Found Lead</button>`);
+            `data-target="found_lead">I Found a Lead</button>`);
     }
-    if (status !== 'done') {
+    if (status !== 'done' && status !== 'skipped') {
         buttons.push(`<button type="button" class="row-action" ` +
             `data-action="mission-status" data-mission-id="${id}" ` +
             `data-target="done">Done</button>`);
@@ -4220,31 +4365,81 @@ function _renderMissionCard(m) {
             `data-action="mission-status" data-mission-id="${id}" ` +
             `data-target="skipped">Skip</button>`);
     }
-    // v8.2: bridge to the scout queue. Pre-fills the scout-add form
-    // with category + city/state + a back-reference to the search
-    // query, and auto-flips the mission to found_lead since the user
-    // is actively converting it. v8.3 hides the button when the
-    // mission already has a scout entry — prevents accidental dupes.
     if (status !== 'done' && status !== 'skipped' && !scoutLink) {
-        buttons.push(`<button type="button" class="row-action primary" ` +
+        buttons.push(`<button type="button" class="row-action" ` +
             `data-action="mission-to-scout" data-mission-id="${id}">+ Add to Scout</button>`);
     }
     buttons.push(`<button type="button" class="row-action danger" ` +
         `data-action="mission-delete" data-mission-id="${id}">Delete</button>`);
 
+    // Mini capture form: only visible at found_lead stage.
+    const captureForm = (status === 'found_lead')
+        ? _renderMissionCaptureForm(m) : '';
+
+    const targetLine = (m.target && m.target.trim())
+        || `${m.category} in ${m.city_state} with weak or missing websites.`;
+
     return (
-        `<div class="mission-card" data-mission-id="${id}">` +
-          `<div>` +
-            `<strong>${_escape(m.category)}</strong> · ` +
-            `${_escape(m.city_state)} ` +
-            `<span class="mission-status-badge mission-status-${_escape(status)}">${_escape(status)}</span> ` +
-            `<span class="mission-priority-badge mission-priority-${_escape(prio)}">${_escape(prio)}</span>` +
+        `<div class="${cardCls}" data-mission-id="${id}">` +
+          `<div class="mission-header">` +
+            `<span class="mission-icon" aria-hidden="true">${icon}</span>` +
+            `<span class="mission-meta-strong">${_escape(m.category)}</span>` +
+            `<span class="mission-loc-badge">📍 ${_escape(m.city_state)}</span>` +
+            `<span class="mission-prio-badge mission-prio-${_escape(prio)}">${_escape(prio)}</span>` +
             scoutBadge +
           `</div>` +
-          `<div class="mission-query">${_escape(m.search_query)}</div>` +
-          (m.look_for    ? `<div class="mission-look">Look for: ${_escape(m.look_for)}</div>`    : '') +
-          (m.offer_angle ? `<div class="mission-offer">Offer: ${_escape(m.offer_angle)}</div>` : '') +
-          notesLine +
+          _renderMissionRail(status) +
+          `<div class="mission-logan">` +
+            `<span class="mission-logan-avatar" aria-hidden="true">🧭</span>` +
+            `<div><strong>Logan says:</strong> ${_missionLoganLine(m, status)}</div>` +
+          `</div>` +
+          `<div class="mission-section">` +
+            `<span class="mission-section-label">Target</span>` +
+            `<span class="mission-section-value">${_escape(targetLine)}</span>` +
+          `</div>` +
+          `<div class="mission-section">` +
+            `<span class="mission-section-label">Search query</span>` +
+            `<div class="mission-query-block">` +
+              `<code class="mission-query">${_escape(m.search_query)}</code>` +
+            `</div>` +
+          `</div>` +
+          (m.look_for ? (
+            `<div class="mission-section">` +
+              `<span class="mission-section-label">What to look for</span>` +
+              `<span class="mission-section-value">${_escape(m.look_for)}</span>` +
+            `</div>`
+          ) : '') +
+          (m.offer_angle ? (
+            `<div class="mission-section">` +
+              `<span class="mission-section-label">Best offer angle</span>` +
+              `<span class="mission-section-value">${_escape(m.offer_angle)}</span>` +
+            `</div>`
+          ) : '') +
+          (m.evidence_template ? (
+            `<div class="mission-section">` +
+              `<span class="mission-section-label">Evidence to collect</span>` +
+              `<pre class="mission-section-pre">${_escape(m.evidence_template)}</pre>` +
+            `</div>`
+          ) : '') +
+          (m.first_message_angle ? (
+            `<div class="mission-section">` +
+              `<span class="mission-section-label">Suggested first-message angle</span>` +
+              `<span class="mission-section-value"><em>${_escape(m.first_message_angle)}</em></span>` +
+            `</div>`
+          ) : '') +
+          (m.next_action ? (
+            `<div class="mission-section">` +
+              `<span class="mission-section-label">Next action</span>` +
+              `<span class="mission-section-value">${_escape(m.next_action)}</span>` +
+            `</div>`
+          ) : '') +
+          (m.notes ? (
+            `<div class="mission-section">` +
+              `<span class="mission-section-label">Notes</span>` +
+              `<span class="mission-section-value">${_escape(m.notes)}</span>` +
+            `</div>`
+          ) : '') +
+          captureForm +
           `<div class="mission-actions">${buttons.join('')}</div>` +
         `</div>`
     );
@@ -4260,8 +4455,17 @@ function renderMissions() {
             : '';
     }
     if (_leadMissions.length === 0) {
-        el.innerHTML = '<div class="muted">No missions yet. Fill the form ' +
-            'above and click Generate Search Missions.</div>';
+        // v8.7: friendlier empty state.
+        el.innerHTML =
+            '<div class="vp-callout vp-callout-info" style="margin-top: 0;">' +
+              '<strong>Logan is built for finding real local businesses</strong> ' +
+              'that could benefit from a simple, useful web presence. ' +
+              'Start with one good lead, not a giant messy list.' +
+              '<div style="margin-top: 0.5rem;">' +
+                'Fill the form above (try <code>coffee shops</code> in your city) ' +
+                'and click <strong>Generate Search Missions</strong> to get going.' +
+              '</div>' +
+            '</div>';
         return;
     }
     // Sort: 'done' and 'skipped' to the bottom, then newest updated first.
@@ -4405,6 +4609,97 @@ if (_missionsListEl) {
                     throw new Error(d.detail || 'http ' + r.status);
                 }
                 await loadMissions();
+                return;
+            }
+            // v8.7: copy search query
+            if (action === 'mission-copy-query') {
+                const mission = _leadMissions.find(m => m.id === mid);
+                if (!mission) return;
+                try {
+                    await navigator.clipboard.writeText(mission.search_query || '');
+                    document.getElementById('cmd-status').textContent =
+                        `Copied search query.`;
+                } catch (err) {
+                    document.getElementById('cmd-status').textContent =
+                        'Copy failed: ' + (err.message || err);
+                }
+                return;
+            }
+            // v8.7: copy evidence template
+            if (action === 'mission-copy-evidence') {
+                const mission = _leadMissions.find(m => m.id === mid);
+                if (!mission) return;
+                try {
+                    await navigator.clipboard.writeText(mission.evidence_template || '');
+                    document.getElementById('cmd-status').textContent =
+                        `Copied evidence template.`;
+                } catch (err) {
+                    document.getElementById('cmd-status').textContent =
+                        'Copy failed: ' + (err.message || err);
+                }
+                return;
+            }
+            // v8.7: save the mini-capture form data onto the mission
+            if (action === 'mission-capture-save') {
+                const form = document.querySelector(
+                    `.mission-capture[data-mission-id="${mid}"]`
+                );
+                if (!form) return;
+                const cap = {};
+                form.querySelectorAll('input, select, textarea').forEach(f => {
+                    if (f.name && f.value.trim()) cap[f.name] = f.value.trim();
+                });
+                const r = await fetch(
+                    `/api/lead-missions/${encodeURIComponent(mid)}`,
+                    {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ captured_lead: cap }),
+                    },
+                );
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadMissions();
+                document.getElementById('cmd-status').textContent =
+                    'Capture saved.';
+                return;
+            }
+            // v8.7: convert mission → Logan lead via /convert-to-lead
+            if (action === 'mission-convert-to-lead') {
+                const form = document.querySelector(
+                    `.mission-capture[data-mission-id="${mid}"]`
+                );
+                const cap = {};
+                if (form) {
+                    form.querySelectorAll('input, select, textarea').forEach(f => {
+                        if (f.name && f.value.trim()) cap[f.name] = f.value.trim();
+                    });
+                }
+                if (!cap.business_name) {
+                    document.getElementById('cmd-status').textContent =
+                        'Business name is required to convert to a Logan lead.';
+                    return;
+                }
+                if (!confirm(
+                    `Convert "${cap.business_name}" into a Logan lead?\n\n` +
+                    `Creates a new cold lead with source=Logan. Mission ` +
+                    `status flips to outreach_ready. No outreach is sent.`
+                )) return;
+                const r = await fetch(
+                    `/api/lead-missions/${encodeURIComponent(mid)}/convert-to-lead`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(cap),
+                    },
+                );
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadMissions();
+                await loadLeads();
+                document.getElementById('cmd-status').textContent =
+                    `Converted "${cap.business_name}" → Logan lead ${d.lead.id}. ` +
+                    `Scroll up to LinkedIn Leads → Prepare Outreach when ready.`;
                 return;
             }
         } catch (err) {
