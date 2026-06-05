@@ -2471,41 +2471,59 @@
                 <div class="muted">Loading…</div>
             </div>
 
-            <!-- v8.8: Possible Leads — primary discovery flow. Logan
-                 generates candidate STUBS scoped to category + city +
-                 web-status target; user opens search, finds businesses,
-                 fills fields, scoring updates server-side. Review →
-                 approve → convert into Logan leads.
-
-                 NO scraping. NO paid APIs. NO automated outreach. The
-                 user still clicks Prepare Outreach manually on the
-                 converted lead. -->
+            <!-- v8.9: Possible Leads — Logan COLLECTS, Topher APPROVES.
+                 Two collection modes:
+                   1. Discover (primary): Logan queries OpenStreetMap
+                      via the public Overpass API for real local
+                      businesses. One read-only HTTPS POST per click.
+                      Free, no auth, no scraping. Returns real names,
+                      sometimes phone/website/hours.
+                   2. Generate stubs (v8.8 fallback): one row per
+                      prospective business slot, each with its own
+                      Google search URL — kept for when OSM coverage
+                      is thin in an area.
+                 Both populate the same queue. Both land as 'pending'.
+                 Topher reviews → approves → converts to a Logan lead
+                 with outreach_status='not_started' — Prepare Outreach
+                 is still a manual click. NO automated outreach. -->
             <h3 class="missions-h3">Possible Leads
                 <span id="candidates-count" class="muted"></span>
             </h3>
-            <div class="vp-callout vp-callout-warning" style="margin-bottom: 0.6rem; font-size: 0.85rem;">
-                <strong>Logan can collect possible leads, but you must
-                review them before outreach.</strong> Approved
-                candidates convert to a cold Logan lead with
-                <code>outreach_status=not_started</code> — Prepare
-                Outreach is still a manual click.
+            <div class="vp-callout vp-callout-info" style="margin-bottom: 0.6rem; font-size: 0.85rem;">
+                <strong>Logan collects candidates. You approve them.</strong>
+                Click <strong>🌍 Discover</strong> and Logan queries
+                OpenStreetMap for real local businesses in the area —
+                no scraping, no paid APIs, just OSM's free public query
+                endpoint. You review the queue, approve the keepers,
+                and convert them into Logan leads. Coverage varies by
+                area: well-mapped metros return 10-30; thin areas may
+                return fewer.
             </div>
             <form id="candidates-find-form" class="leads-form"
-                  aria-label="Find leads for me">
+                  aria-label="Discover or generate possible leads">
                 <input class="leads-input" name="category"
                        placeholder="Category (e.g. coffee shops, landscapers)" required>
                 <input class="leads-input" name="city_state"
-                       placeholder="City/State (e.g. Hot Springs AR)" required>
+                       placeholder="City, State (e.g. Hot Springs, AR)" required>
                 <input class="leads-input" name="count" type="number"
                        min="1" max="25" value="10"
                        placeholder="Number of candidates (1-25)">
                 <select class="leads-input" name="website_status_target">
-                    <option value="no website found" selected>no website found</option>
+                    <option value="any local business" selected>any local business</option>
+                    <option value="no website found">no website found</option>
                     <option value="weak web presence">weak web presence</option>
-                    <option value="any local business">any local business</option>
                 </select>
                 <div class="leads-form-actions">
-                    <button type="submit" class="primary">Find Leads For Me</button>
+                    <button type="submit" name="cand_action" value="discover"
+                            class="primary"
+                            title="Query OpenStreetMap for real local businesses">
+                        🌍 Discover Real Businesses (OSM)
+                    </button>
+                    <button type="submit" name="cand_action" value="find"
+                            class="row-action"
+                            title="Generate empty stubs with Google search URLs to fill in manually">
+                        📋 Generate stubs (advanced)
+                    </button>
                 </div>
             </form>
             <!-- Bulk action toolbar. Visible always; selection state

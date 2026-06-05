@@ -377,6 +377,79 @@ def find_for_me(
     return new_rows
 
 
+# --- v8.9: Discover via OpenStreetMap Overpass ------------------------
+
+import overpass_discovery as _overpass_mod  # one outbound HTTPS POST per call
+
+
+def discover_via_overpass(
+    category: str,
+    city_state: str,
+    count: int = 10,
+    website_status_target: str = "any local business",
+) -> dict:
+    """
+    Logan asks OpenStreetMap (via the public Overpass API) for real
+    local businesses matching (category, city_state) and queues them
+    as pending candidates for Topher to review.
+
+    - One read-only HTTPS POST to overpass-api.de per call.
+    - No auth, no key, no paid plan, no scraping.
+    - Dedupes against existing candidates by (lowered name, lowered city_state)
+      so re-running the same query is idempotent.
+    - Returns however many OSM actually had, up to count. Never pads.
+    - Candidates land with approval_status='pending' — Topher still
+      approves + converts manually before anything outbound happens.
+
+    Returns: {added: [rows], added_count, found, skipped_duplicates, message}
+    """
+    if not isinstance(count, int) or count < 1:
+        raise ValueError("count must be a positive integer")
+    if count > MAX_FIND_COUNT:
+        raise ValueError(
+            f"count {count} exceeds limit of {MAX_FIND_COUNT}"
+        )
+    result = _overpass_mod.discover(
+        category=category,
+        city_state=city_state,
+        count=count,
+        website_status_target=website_status_target,
+    )
+    items = load()
+    existing_keys = {
+        ((it.get("business_name") or "").strip().lower(),
+         (it.get("city_state") or "").strip().lower())
+        for it in items
+    }
+    added: list[dict] = []
+    skipped_duplicates = 0
+    for cand in result["candidates"]:
+        key = (cand["business_name"].strip().lower(),
+               cand["city_state"].strip().lower())
+        if key in existing_keys:
+            skipped_duplicates += 1
+            continue
+        existing_keys.add(key)
+        cleaned = _clean(cand)
+        cleaned["id"] = _next_id(items + added)
+        cleaned["created_at"] = _now()
+        cleaned["updated_at"] = cleaned["created_at"]
+        added.append(cleaned)
+    if added:
+        items.extend(added)
+        _save(items)
+    return {
+        "added":              added,
+        "added_count":        len(added),
+        "found":              result["total_found"],
+        "skipped_duplicates": skipped_duplicates,
+        "resolved_city":      result.get("resolved_city", ""),
+        "resolved_state":     result.get("resolved_state", ""),
+        "display_name":       result.get("display_name", ""),
+        "message":            result["message"],
+    }
+
+
 # --- Approval / conversion --------------------------------------------
 
 import leads as _leads_mod  # local-only, no network

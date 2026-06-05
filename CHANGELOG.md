@@ -1,10 +1,127 @@
 # PartnerDeskAI Changelog
 
-Newest first. v8.0 is the current shipped version.
+Newest first. v8.9 is the current shipped version.
 
 ---
 
-## v8.0 — current
+## v8.9 — Logan actually discovers (OpenStreetMap)
+
+The v8.8 "Possible Leads" queue was the right shape, but the wrong premise:
+it asked Topher to do the hunting one stub at a time. v8.9 flips it. Logan
+now actually finds real local businesses by querying OpenStreetMap, and
+Topher just approves them.
+
+**Two outbound HTTPS calls per "Discover" click**, both to OSM:
+
+1. `nominatim.openstreetmap.org` — resolves "City, State" to a specific
+   OSM relation_id. Required because multiple US cities share names
+   (Hot Springs exists in AR, SD, MT, NC, VA) — name-only filters in
+   Overpass alone produced cross-state leaks during testing.
+2. `overpass-api.de` — Overpass QL query scoped to that exact relation_id,
+   returning real businesses matching the category tag pair.
+
+Both endpoints are part of the OpenStreetMap project. Free, public, no
+auth, no key, no paid plan, no scraping. UA identifies the tool by name
++ version, no PII. One read-only call to each, no writes.
+
+**New module: `automation/overpass_discovery.py`** (+450 LOC).
+
+- `CATEGORY_TO_OSM` — 80+ entries mapping user category words to OSM
+  tag pairs (`coffee shops → [amenity=cafe, shop=coffee]`,
+  `plumbers → [craft=plumber]`, `dentists → [amenity=dentist, healthcare=dentist]`,
+  etc.). Unknown categories fall back to `shop=<word>` + `amenity=<word>`.
+- `US_STATE_NAMES` — accepts both `AR` and `Arkansas` input forms.
+- `_parse_city_state("Hot Springs, AR")` → `("Hot Springs", "Arkansas")`,
+  with friendly errors for unparseable / unknown inputs.
+- `_call_nominatim()` — geocodes the city, returns the OSM osm_type + osm_id.
+- `_overpass_area_id()` — converts osm_type/osm_id to Overpass's
+  `3600000000 + relation_id` (or `2400000000 + way_id`) area ID format.
+- `_build_overpass_query_by_area_id()` — primary path for cities resolved
+  to a polygon (relations / ways).
+- `_build_overpass_query_by_bbox()` — fallback when Nominatim returns a
+  node (no polygon); queries within 8 km radius.
+- `_map_to_candidate()` — extracts name, contact:phone/phone,
+  contact:email/email, contact:website/website, addr:*, opening_hours.
+  Sets `is_corporate=True` iff `brand` tag present (chain heuristic).
+  Sets `is_active=False` iff any tag has `disused:` / `abandoned:` /
+  `closed:` / `demolished:` prefix. Skips unnamed elements.
+  Source URL links back to the OSM node/way for verification.
+- `discover()` — orchestrates Nominatim → Overpass, dedupes by name,
+  returns up to `count` real businesses. Never pads.
+
+**`automation/lead_candidates.py`** — new `discover_via_overpass()` wrapper.
+Calls `overpass_discovery.discover()`, dedupes against existing queue
+rows by lowered (name, city_state) so re-running the same query is
+idempotent, upserts with computed score, returns
+`{added, added_count, found, skipped_duplicates, display_name, message}`.
+
+**`hub/app.py`** — new `POST /api/lead-candidates/discover` endpoint
+reusing the `CandidateFindIn` model. Maps `ValueError` → 400 and
+`OverpassError` → 502 (helpful detail: "Nominatim found no city named
+'Asdfqwerty' in Arkansas. Try a larger nearby city or check spelling.").
+
+**`hub/templates/index.html`** — Possible Leads panel restructured:
+- New primary button **🌍 Discover Real Businesses (OSM)**
+- Secondary button **📋 Generate stubs (advanced)** keeps the v8.8 path
+  for thin-coverage areas where OSM has nothing
+- Both buttons share one form (category, city, count, web-status target)
+  and route by `name="cand_action"` submitter value
+- Warning callout rewritten — Logan now *can* collect; Topher reviews
+- Help text honest about OSM coverage variance (well-mapped metros
+  return 10–30; thin areas may return fewer or zero)
+
+**`hub/static/app.js`** — form handler routes by `e.submitter.value`:
+- `discover` → `POST /api/lead-candidates/discover`
+- `find` → `POST /api/lead-candidates/find` (v8.8 stub path)
+Optimistic in-flight status ("Asking OpenStreetMap…"), submit buttons
+locked mid-flight to prevent double-fire, OSM error responses surface
+the 502 detail to `#cmd-status` ("OSM rate-limited (429). Wait a
+minute and try again.").
+
+**Live verification:**
+
+```
+1. Discover coffee shops in Hot Springs, AR (count=8)
+   → display_name: 'Hot Springs, Garland County, Arkansas, United States'
+   → 5 OSM matches, 4 unique-named candidates added
+   → Chipmunk Cafe, Argentinian Coffee & Wine Bar, Arlington Bar, Red Light Roastery
+   → ALL Arkansas (no SD leak — disambiguation works)
+2. Re-run same discover → 0 added, 4 dedup'd (idempotent)
+3. count=26 → 400 with cap message
+4. Garbage city → 502 "Nominatim found no city named 'Asdfqwerty'…"
+5. Malformed city_state → 400 with parse error
+6. Approve + Convert → Logan lead with source='Logan', outreach_status='not_started'
+7. Cleanup → leads.json + candidates.json back to pre-test byte-state
+```
+
+**Safety perimeter — every constraint honored:**
+
+- ❌ No scraping. Both endpoints are designed query APIs over open data.
+- ❌ No paid APIs. Nominatim and Overpass are free, no-auth, public.
+- ❌ No OAuth. No keys. No accounts. No cookies.
+- ❌ No automated outreach. Discovered candidates land as `pending`.
+  Topher reviews → approves → converts manually. The new Logan lead
+  arrives with `outreach_status='not_started'`. Prepare Outreach is
+  still a manual click. Send is still manual.
+- ❌ No PII outbound. The query payload is category + city + state only.
+  User-Agent identifies the tool by name + version, no email.
+- ❌ No new Python dependencies. `urllib.request` + `json` only.
+- ✅ One read-only call each to Nominatim + Overpass per Discover click.
+- ✅ Idempotent: dedup against existing queue by (name, city_state).
+- ✅ Honest about coverage: returns what OSM actually has; never pads.
+- ✅ v8.8 stub path preserved as the "advanced" fallback for thin areas.
+
+**Scope shift from v8.9 proposal:** I told you "one outbound HTTPS GET
+per click" up front. The first live test revealed Overpass's nested
+area-by-name filter doesn't strictly enforce geographic containment —
+a `Hot Springs, AR` query leaked a `Hot Springs, SD` result. The clean
+fix is Nominatim for unambiguous city resolution, which is one extra
+call. Same OSM project, same trust model, but I want it on the record:
+v8.9 ships as **two outbound calls per Discover click**, not one.
+
+---
+
+## v8.0
 
 Pure reorganization, no new features. Goal: a first-time user should understand the page in under 30 seconds.
 

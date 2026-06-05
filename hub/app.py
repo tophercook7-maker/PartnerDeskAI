@@ -53,6 +53,7 @@ import lead_missions as missions_mod  # noqa: E402
 import youtube_partner as yt_mod  # noqa: E402
 import video_partner as vp_mod  # noqa: E402
 import lead_candidates as cand_mod  # noqa: E402
+import overpass_discovery as overpass_mod  # noqa: E402  (v8.9: OSM Overpass client)
 import linkedin_oauth  # noqa: E402
 import meta_app_state  # noqa: E402
 import social_posters  # noqa: E402
@@ -1843,6 +1844,43 @@ def api_candidates_bulk(body: CandidateBulkIn) -> dict:
         return cand_mod.bulk_action(body.action, body.ids)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# --- v8.9: Discover Real Businesses (OpenStreetMap Overpass) -----------
+# One read-only HTTPS POST to overpass-api.de per click. No auth, no key,
+# no paid plan, no scraping. Returns real businesses with whatever
+# fields OSM contributors entered. Candidates land as 'pending' — Topher
+# reviews + approves + converts manually before anything outbound.
+
+@app.post("/api/lead-candidates/discover")
+def api_candidates_discover(body: CandidateFindIn) -> dict:
+    """v8.9 'Discover Real Businesses': queries OpenStreetMap via
+    Overpass for real local businesses matching category + city_state.
+    Reuses CandidateFindIn so the UI form is symmetric with /find.
+    Returns {ok, added_count, found, skipped_duplicates, message}.
+    """
+    try:
+        result = cand_mod.discover_via_overpass(
+            category=body.category,
+            city_state=body.city_state,
+            count=body.count,
+            website_status_target=body.website_status_target or "any local business",
+        )
+        return {
+            "ok":                 True,
+            "added":              result["added"],
+            "added_count":        result["added_count"],
+            "found":              result["found"],
+            "skipped_duplicates": result["skipped_duplicates"],
+            "resolved_city":      result["resolved_city"],
+            "resolved_state":     result["resolved_state"],
+            "display_name":       result.get("display_name", ""),
+            "message":            result["message"],
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except overpass_mod.OverpassError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 @app.get("/api/connections")

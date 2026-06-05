@@ -4281,9 +4281,10 @@ function renderCandidates() {
         el.innerHTML =
             '<div class="vp-callout vp-callout-info" style="margin: 0;">' +
               '<strong>No candidates yet.</strong> Fill the form above with a ' +
-              'category (e.g. <code>coffee shops</code>) and city, then click ' +
-              '<strong>Find Leads For Me</strong>. Logan will generate ' +
-              'candidate slots you can fill in as you research.' +
+              'category (e.g. <code>coffee shops</code>) and a <code>City, ST</code>, ' +
+              'then click <strong>🌍 Discover Real Businesses (OSM)</strong>. ' +
+              'Logan will query OpenStreetMap for real local businesses and ' +
+              'queue them here for you to review and approve.' +
             '</div>';
         return;
     }
@@ -4328,33 +4329,75 @@ async function loadCandidates() {
     }
 }
 
-// "Find Leads For Me" form submit.
+// v8.9: Possible Leads form — routes by submitter button:
+//   cand_action="discover" → POST /api/lead-candidates/discover (OSM Overpass)
+//   cand_action="find"     → POST /api/lead-candidates/find     (v8.8 stub generator)
+// Both populate the same queue.
 const _candidatesFindForm = document.getElementById('candidates-find-form');
 if (_candidatesFindForm) {
     _candidatesFindForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const data = Object.fromEntries(new FormData(_candidatesFindForm).entries());
+        const action = (e.submitter && e.submitter.value) || 'discover';
         const body = {
             category:              data.category,
             city_state:            data.city_state,
             count:                 parseInt(data.count, 10) || 10,
             website_status_target: data.website_status_target,
         };
+        const status = document.getElementById('cmd-status');
+        const route  = action === 'find'
+            ? '/api/lead-candidates/find'
+            : '/api/lead-candidates/discover';
+        // Optimistic in-flight feedback — OSM round-trip can take a few seconds.
+        if (status) {
+            status.textContent = action === 'find'
+                ? `Generating stubs for ${body.category} in ${body.city_state}…`
+                : `Asking OpenStreetMap for ${body.category} in ${body.city_state}…`;
+        }
+        // Lock submit buttons so the user can't double-fire mid-flight.
+        const buttons = _candidatesFindForm.querySelectorAll('button[type="submit"]');
+        buttons.forEach(b => { b.disabled = true; });
         try {
-            const r = await fetch('/api/lead-candidates/find', {
+            const r = await fetch(route, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
             const d = await r.json();
             if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
-            document.getElementById('cmd-status').textContent =
-                `Generated ${d.count} candidate${d.count === 1 ? '' : 's'} for ` +
-                `${body.category} in ${body.city_state}. Open search on each to fill them in.`;
+            if (action === 'find') {
+                if (status) status.textContent =
+                    `Generated ${d.count} candidate${d.count === 1 ? '' : 's'} for ` +
+                    `${body.category} in ${body.city_state}. Open search on each to fill them in.`;
+            } else {
+                // Discover response carries added/found/skipped + message.
+                const added = d.added_count || 0;
+                const found = d.found || 0;
+                const dup   = d.skipped_duplicates || 0;
+                let line;
+                if (added > 0) {
+                    line = `Logan found ${found} match${found === 1 ? '' : 'es'} via OSM, ` +
+                           `added ${added} new candidate${added === 1 ? '' : 's'}` +
+                           (dup ? ` (${dup} already in queue — skipped).` : '.');
+                } else if (found > 0 && dup > 0) {
+                    line = `OSM returned ${found} match${found === 1 ? '' : 'es'} — ` +
+                           `all ${dup} already in your queue. Nothing new added.`;
+                } else {
+                    line = d.message ||
+                        `OSM found no matches for ${body.category} in ${body.city_state}. ` +
+                        `Try a broader category or larger city.`;
+                }
+                if (status) status.textContent = line;
+            }
             await loadCandidates();
         } catch (err) {
-            document.getElementById('cmd-status').textContent =
-                'Find leads failed: ' + (err.message || err);
+            if (status) {
+                status.textContent = (action === 'find' ? 'Stub generation' : 'OSM discovery')
+                    + ' failed: ' + (err.message || err);
+            }
+        } finally {
+            buttons.forEach(b => { b.disabled = false; });
         }
     });
 }
