@@ -1318,6 +1318,28 @@
             margin-top: 0.25rem; padding-top: 0.4rem;
             border-top: 1px solid #f1f5f9;
         }
+        /* v8.9.1: discovery_source badge + search-platform link strip. */
+        .cand-source-badge {
+            display: inline-block; padding: 0.1rem 0.5rem;
+            border-radius: 999px; font-size: 0.65rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.04em;
+            margin-left: 0.3rem;
+        }
+        .cand-source-osm              { background: #d8efd8; color: #2d6a3a; }
+        .cand-source-research_mission { background: #fff6e0; color: #8a6320; }
+        .cand-source-manual           { background: #e2e8f0; color: #475569; }
+        .cand-search-strip {
+            display: flex; flex-wrap: wrap; gap: 0.3rem;
+            margin-top: 0.25rem; padding: 0.4rem 0;
+            border-top: 1px dashed #e2e8f0;
+        }
+        .cand-search-strip .row-action {
+            font-size: 0.78rem; padding: 0.25rem 0.6rem;
+        }
+        .cand-search-phrase {
+            display: block; font-size: 0.72rem; color: #64748b;
+            font-style: italic; margin-bottom: 0.2rem;
+        }
         @media (max-width: 720px) {
             .cand-field { flex-direction: column; gap: 0.1rem; }
             .cand-field-label { min-width: 0; }
@@ -2492,12 +2514,12 @@
             <div class="vp-callout vp-callout-info" style="margin-bottom: 0.6rem; font-size: 0.85rem;">
                 <strong>Logan collects candidates. You approve them.</strong>
                 Click <strong>🌍 Discover</strong> and Logan queries
-                OpenStreetMap for real local businesses in the area —
-                no scraping, no paid APIs, just OSM's free public query
-                endpoint. You review the queue, approve the keepers,
-                and convert them into Logan leads. Coverage varies by
-                area: well-mapped metros return 10-30; thin areas may
-                return fewer.
+                OpenStreetMap for real local businesses. If OSM is thin
+                for the area, Logan tops up the gap with
+                <strong>🔍 research missions</strong> — candidate cards
+                with one-click Google, Facebook, and Maps search links
+                so you can finish the find. You won't end up with an
+                empty queue. No scraping, no paid APIs.
             </div>
             <form id="candidates-find-form" class="leads-form"
                   aria-label="Discover or generate possible leads">
@@ -2516,13 +2538,18 @@
                 <div class="leads-form-actions">
                     <button type="submit" name="cand_action" value="discover"
                             class="primary"
-                            title="Query OpenStreetMap for real local businesses">
+                            title="Query OpenStreetMap; if OSM is thin Logan tops up with research missions">
                         🌍 Discover Real Businesses (OSM)
+                    </button>
+                    <button type="submit" name="cand_action" value="research_missions"
+                            class="row-action"
+                            title="Skip OSM — generate research missions with Google/Facebook/Maps search links">
+                        🔍 Find More Anyway
                     </button>
                     <button type="submit" name="cand_action" value="find"
                             class="row-action"
-                            title="Generate empty stubs with Google search URLs to fill in manually">
-                        📋 Generate stubs (advanced)
+                            title="Generate empty stubs with a single Google search URL each (v8.8 path)">
+                        📋 Generate empty stubs
                     </button>
                 </div>
             </form>

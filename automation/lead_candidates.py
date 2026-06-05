@@ -60,6 +60,12 @@ ALLOWED_APPROVAL = ("pending", "approved", "rejected", "needs_research", "conver
 ALLOWED_CONFIDENCE = ("Hot", "Warm", "Research", "Reject")
 DEFAULT_APPROVAL = "pending"
 
+# v8.9.1: track how each candidate landed so the UI can show the right
+# affordances (research-mission cards get Google/FB/Maps + Mark Researched;
+# OSM cards already have a verifiable business; manual cards are bare).
+ALLOWED_DISCOVERY_SOURCES = ("osm", "research_mission", "manual")
+DEFAULT_DISCOVERY_SOURCE = "manual"
+
 ALLOWED_WEBSITE_STATUS = (
     "no website found", "weak web presence", "has website but needs cleanup",
     "has website (good)", "any local business",
@@ -76,7 +82,25 @@ MAX_NOTES      = 4000
 MAX_EVIDENCE   = 2000
 MAX_OFFER      = 500
 
-MAX_FIND_COUNT = 25  # per "Find Leads For Me" call
+MAX_FIND_COUNT = 25  # per "Find Leads For Me" / "Discover" call
+MAX_PHRASE     = 500
+MAX_URL_LIST   = 8   # max search URLs we'll store per candidate
+
+# v8.9.1: research-mission phrase templates. Spec verbatim examples
+# are folded in. The discover path rotates through these to give the
+# user varied SERP angles for the same category/city.
+_RESEARCH_PHRASE_TMPL = [
+    '{cat} {city} email',
+    '{cat} {city} gmail.com',
+    '{cat} {city} contact',
+    '{cat} {city} phone',
+    '{cat} {city} "call or text"',
+    '{cat} {city} "free estimate"',
+    'site:facebook.com {cat} {city}',
+    '{cat} {city} "find us on facebook"',
+    '{cat} {city} instagram.com',
+    'inurl:facebook.com {cat} {city}',
+]
 
 # Search-template variants — same shape as missions, one per candidate stub.
 _QUERY_TEMPLATES = [
@@ -194,6 +218,10 @@ def load() -> list[dict]:
     for it in items:
         if isinstance(it, dict):
             it.setdefault("converted_lead_id", None)
+            # v8.9.1 fields:
+            it.setdefault("search_phrase", "")
+            it.setdefault("discovery_source", DEFAULT_DISCOVERY_SOURCE)
+            it.setdefault("search_urls", [])
     return items
 
 
@@ -249,6 +277,27 @@ def _clean(raw: dict, existing: dict | None = None) -> dict:
             return raw[key]
         return ex.get(key)
 
+    # v8.9.1: discovery_source enum. Default 'manual' (legacy / direct
+    # adds), set explicitly by OSM + research-mission paths.
+    ds_raw = _pick("discovery_source") or DEFAULT_DISCOVERY_SOURCE
+    ds = str(ds_raw).strip().lower()
+    if ds not in ALLOWED_DISCOVERY_SOURCES:
+        ds = DEFAULT_DISCOVERY_SOURCE
+
+    # v8.9.1: search_urls list of {label, url} dicts. Sanitized + clamped.
+    raw_urls = _pick("search_urls") or []
+    if not isinstance(raw_urls, list):
+        raw_urls = []
+    search_urls: list[dict] = []
+    for item in raw_urls[:MAX_URL_LIST]:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label") or "").strip()[:60]
+        url = str(item.get("url") or "").strip()[:MAX_URL]
+        if not url:
+            continue
+        search_urls.append({"label": label or "Search", "url": url})
+
     merged = {
         "id":                ex.get("id") or raw.get("id"),
         "business_name":     str(_pick("business_name") or "").strip()[:MAX_NAME],
@@ -260,6 +309,10 @@ def _clean(raw: dict, existing: dict | None = None) -> dict:
         "phone":             str(_pick("phone") or "").strip()[:MAX_PHONE],
         "source_url":        str(_pick("source_url") or "").strip()[:MAX_URL],
         "search_url":        str(_pick("search_url") or "").strip()[:MAX_URL],
+        # v8.9.1:
+        "search_phrase":     str(_pick("search_phrase") or "").strip()[:MAX_PHRASE],
+        "search_urls":       search_urls,
+        "discovery_source":  ds,
         "evidence_notes":    str(_pick("evidence_notes") or "")[:MAX_EVIDENCE],
         "suggested_offer_angle": str(_pick("suggested_offer_angle") or "").strip()[:MAX_OFFER],
         "is_local_service":  _norm_bool(_pick("is_local_service")),
@@ -378,8 +431,106 @@ def find_for_me(
 
 
 # --- v8.9: Discover via OpenStreetMap Overpass ------------------------
+# v8.9.1: when OSM coverage is thin (count requested > count returned),
+# the discover path tops up the gap with research-mission stubs so the
+# user never lands on an empty queue.
 
-import overpass_discovery as _overpass_mod  # one outbound HTTPS POST per call
+import overpass_discovery as _overpass_mod  # two read-only HTTPS calls per discover
+
+
+def _search_urls_for(category: str, city_state: str, phrase: str) -> list[dict]:
+    """
+    Build the three search-platform URLs the spec asks for. All client-
+    safe (target=_blank, rel=noopener noreferrer applied by the renderer).
+    No external calls — these are just URL strings.
+    """
+    base_q = f"{category} {city_state}".strip()
+    return [
+        {
+            "label": "Google",
+            "url":   "https://www.google.com/search?q=" + quote_plus(phrase or base_q),
+        },
+        {
+            "label": "Facebook",
+            "url":   "https://www.facebook.com/search/top?q=" + quote_plus(base_q),
+        },
+        {
+            "label": "Maps",
+            "url":   "https://www.google.com/maps/search/" + quote_plus(base_q),
+        },
+    ]
+
+
+def _make_research_mission_row(
+    category: str,
+    city_state: str,
+    phrase_idx: int,
+    items_for_id: list[dict],
+) -> dict:
+    """
+    Pure builder for one research-mission candidate row. Does not
+    persist. Caller batches and saves.
+
+    Lands with:
+      - discovery_source='research_mission'
+      - approval_status='needs_research' (spec: status='needs research')
+      - search_phrase + search_urls populated
+      - business_name="" — the user fills in after researching
+    """
+    tmpl = _RESEARCH_PHRASE_TMPL[phrase_idx % len(_RESEARCH_PHRASE_TMPL)]
+    phrase = tmpl.format(cat=category, city=city_state)
+    google_url = "https://www.google.com/search?q=" + quote_plus(phrase)
+    cleaned = _clean({
+        "business_name":          "",
+        "category":               category,
+        "city_state":             city_state,
+        "website_status":         "",  # unknown until researched
+        "search_url":             google_url,  # primary, for "Open Search" parity
+        "source_url":             google_url,
+        "search_phrase":          phrase,
+        "search_urls":            _search_urls_for(category, city_state, phrase),
+        "discovery_source":       "research_mission",
+        "approval_status":        "needs_research",
+        "is_local_service":       True,
+        "suggested_offer_angle":  _GENERIC_OFFER,
+    })
+    cleaned["id"] = _next_id(items_for_id)
+    cleaned["created_at"] = _now()
+    cleaned["updated_at"] = cleaned["created_at"]
+    return cleaned
+
+
+def generate_research_missions(
+    category: str,
+    city_state: str,
+    count: int,
+    phrase_offset: int = 0,
+) -> list[dict]:
+    """
+    Public entry point for the 'Find More Anyway' button. Generates N
+    research-mission stubs scoped to (category, city_state) and persists
+    them. Phrase rotation starts at phrase_offset so successive calls
+    don't repeat the same templates.
+    """
+    category = (category or "").strip()
+    city_state = (city_state or "").strip()
+    if not category or not city_state:
+        raise ValueError("category and city_state are required")
+    if not isinstance(count, int) or count < 1:
+        raise ValueError("count must be a positive integer")
+    if count > MAX_FIND_COUNT:
+        raise ValueError(f"count {count} exceeds limit of {MAX_FIND_COUNT}")
+    items = load()
+    new_rows: list[dict] = []
+    for i in range(count):
+        row = _make_research_mission_row(
+            category, city_state, phrase_offset + i, items + new_rows,
+        )
+        new_rows.append(row)
+    if new_rows:
+        items.extend(new_rows)
+        _save(items)
+    return new_rows
 
 
 def discover_via_overpass(
@@ -389,19 +540,28 @@ def discover_via_overpass(
     website_status_target: str = "any local business",
 ) -> dict:
     """
-    Logan asks OpenStreetMap (via the public Overpass API) for real
-    local businesses matching (category, city_state) and queues them
-    as pending candidates for Topher to review.
+    Logan asks OpenStreetMap for real local businesses matching
+    (category, city_state) and queues them for Topher to review.
 
-    - One read-only HTTPS POST to overpass-api.de per call.
+    v8.9.1 fallback: if OSM returns fewer than `count` businesses,
+    Logan tops up the gap with research-mission stubs (status=
+    'needs_research') so the user never lands on an empty queue.
+
+    - Two read-only HTTPS calls to OSM per discover (Nominatim + Overpass).
     - No auth, no key, no paid plan, no scraping.
     - Dedupes against existing candidates by (lowered name, lowered city_state)
       so re-running the same query is idempotent.
-    - Returns however many OSM actually had, up to count. Never pads.
-    - Candidates land with approval_status='pending' — Topher still
+    - Returns whatever OSM had, up to count, plus research missions
+      to bring the total to count when needed.
+    - Candidates land with approval_status='pending' (OSM rows) or
+      'needs_research' (research-mission stubs) — Topher still
       approves + converts manually before anything outbound happens.
 
-    Returns: {added: [rows], added_count, found, skipped_duplicates, message}
+    Returns: {
+        added, added_count, osm_added, research_missions_added,
+        fallback_triggered, found, skipped_duplicates, message,
+        resolved_city, resolved_state, display_name,
+    }
     """
     if not isinstance(count, int) or count < 1:
         raise ValueError("count must be a positive integer")
@@ -430,23 +590,67 @@ def discover_via_overpass(
             skipped_duplicates += 1
             continue
         existing_keys.add(key)
+        # v8.9.1: tag OSM-discovered candidates so the UI shows the
+        # right affordances (verified-via-OSM vs needs-research-stub).
+        cand["discovery_source"] = "osm"
+        # Also attach the three search URLs so users can double-check
+        # OSM data via FB / Maps with one click.
+        cand["search_urls"] = _search_urls_for(
+            cand["category"], cand["city_state"], cand["business_name"] or cand["category"],
+        )
         cleaned = _clean(cand)
         cleaned["id"] = _next_id(items + added)
         cleaned["created_at"] = _now()
         cleaned["updated_at"] = cleaned["created_at"]
         added.append(cleaned)
+    osm_added = len(added)
+
+    # v8.9.1 fallback: top up to `count` with research-mission stubs.
+    research_added: list[dict] = []
+    gap = count - osm_added
+    if gap > 0:
+        for i in range(gap):
+            row = _make_research_mission_row(
+                category, city_state, i, items + added + research_added,
+            )
+            research_added.append(row)
+        added.extend(research_added)
+    fallback_triggered = bool(research_added)
+
     if added:
         items.extend(added)
         _save(items)
+
+    # Build the message per spec wording.
+    if fallback_triggered and osm_added == 0:
+        # Exact spec sentence.
+        msg = (
+            "OSM did not have enough businesses for this search, so "
+            "Logan created research missions instead."
+        )
+    elif fallback_triggered and osm_added > 0:
+        msg = (
+            f"OSM returned {osm_added} business{'es' if osm_added != 1 else ''} for "
+            f"{category} in {result.get('display_name', city_state)}; "
+            f"Logan added {len(research_added)} research mission"
+            f"{'s' if len(research_added) != 1 else ''} so you have "
+            f"{len(added)} total to work."
+        )
+    else:
+        msg = result["message"]
+
     return {
-        "added":              added,
-        "added_count":        len(added),
-        "found":              result["total_found"],
-        "skipped_duplicates": skipped_duplicates,
-        "resolved_city":      result.get("resolved_city", ""),
-        "resolved_state":     result.get("resolved_state", ""),
-        "display_name":       result.get("display_name", ""),
-        "message":            result["message"],
+        "added":                   added,
+        "added_count":             len(added),
+        "osm_added":               osm_added,
+        "research_missions_added": len(research_added),
+        "fallback_triggered":      fallback_triggered,
+        "found":                   result["total_found"],
+        "skipped_duplicates":      skipped_duplicates,
+        "resolved_city":           result.get("resolved_city", ""),
+        "resolved_state":          result.get("resolved_state", ""),
+        "display_name":            result.get("display_name", ""),
+        "message":                 msg,
     }
 
 
@@ -465,6 +669,25 @@ def reject(cid: str) -> dict:
 
 def needs_research(cid: str) -> dict:
     return update(cid, {"approval_status": "needs_research"})
+
+
+def mark_researched(cid: str) -> dict:
+    """
+    v8.9.1: flip a research-mission candidate from 'needs_research'
+    back to 'pending' once the user has filled in business_name +
+    contact info. The user can then Approve → Convert as usual.
+
+    Refuses to flip rows that aren't currently 'needs_research' — those
+    are already in the review/convert/reject flow.
+    """
+    cand = _find(cid)
+    cur = (cand.get("approval_status") or "").strip()
+    if cur != "needs_research":
+        raise ValueError(
+            f"candidate {cid!r} is not in 'needs_research' state "
+            f"(current: {cur!r}); nothing to mark"
+        )
+    return update(cid, {"approval_status": "pending"})
 
 
 def convert(cid: str) -> dict:

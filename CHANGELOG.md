@@ -1,6 +1,114 @@
 # PartnerDeskAI Changelog
 
-Newest first. v8.9 is the current shipped version.
+Newest first. v8.9.1 is the current shipped version.
+
+---
+
+## v8.9.1 — Logan discovery fallback when OSM is thin
+
+v8.9 was honest about OSM coverage variance ("well-mapped metros return
+10-30; thin areas may return fewer"), but it still left the user with
+empty results when "fewer" meant zero. Small US towns, niche services,
+and rural areas all hit this case. v8.9.1 promises: **Logan never ends
+with an empty queue unless an actual error fires.**
+
+If OSM returns fewer than the requested `count`, Logan tops up the gap
+with **research missions** — candidate cards pre-loaded with Google,
+Facebook, and Maps search links the user can click to finish the find
+themselves. Each card lands as `approval_status='needs_research'`;
+clicking **✓ Mark Researched** flips it to `pending`, then the existing
+approve → convert path takes over.
+
+**New candidate fields** (additive; legacy rows setdefault on load):
+
+- `discovery_source: "osm" | "research_mission" | "manual"` — drives
+  the source badge in the UI
+- `search_phrase: str` — the rotating SERP phrase encoded into the
+  search URLs (e.g. `"plumber Hot Springs AR email"`,
+  `"site:facebook.com plumber Hot Springs AR"`)
+- `search_urls: [{label, url}, ...]` — three platform links per card
+  (Google + Facebook + Maps); both OSM and research-mission cards
+  carry these so users can cross-check anything with one click
+
+**Phrase rotation** — 10 templates covering the spec's verbatim examples:
+
+```
+{cat} {city} email
+{cat} {city} gmail.com
+{cat} {city} contact
+{cat} {city} phone
+{cat} {city} "call or text"
+{cat} {city} "free estimate"
+site:facebook.com {cat} {city}
+{cat} {city} "find us on facebook"
+{cat} {city} instagram.com
+inurl:facebook.com {cat} {city}
+```
+
+**New state transition**: `mark_researched()` flips `needs_research → pending`.
+Refuses to flip rows in other states (raises ValueError → HTTP 400).
+
+**New / changed endpoints:**
+
+- `POST /api/lead-candidates/discover` — response now carries
+  `osm_added`, `research_missions_added`, `fallback_triggered`. When
+  `osm_added=0 && fallback_triggered=true`, message reads exactly:
+  *"OSM did not have enough businesses for this search, so Logan
+  created research missions instead."*
+- `POST /api/lead-candidates/research-missions` (new) — explicit
+  fallback generator for the "Find More Anyway" button; reuses
+  `CandidateFindIn`
+- `POST /api/lead-candidates/{cid}/mark-researched` (new) — the
+  needs_research → pending transition
+
+**`CandidateIn` Pydantic model extended** with `search_phrase`,
+`search_urls`, `discovery_source`. FastAPI silently drops undeclared
+fields; missing these would have erased the research-mission payload
+on the first PUT (the v8.4.1 / v8.7 silent-drop pattern, but applied
+proactively this time).
+
+**UI changes:**
+
+- New third form button **🔍 Find More Anyway** — generates +N research
+  missions for the current category/city without touching OSM
+- Card header gets a third badge: **🌍 OSM** / **🔍 Research** / **✋ Manual**
+- Card body grows a search-platform strip — italic phrase line + three
+  one-click buttons (Google / Facebook / Maps) — visible on every card
+  that has `search_urls` populated
+- Research-mission cards show a primary **✓ Mark Researched** button
+  while in `needs_research`; clicking it (after filling business_name)
+  promotes the card to `pending` and surfaces Approve / Reject
+- Placeholder name copy for research-mission cards reads
+  *"— research mission — open Google/FB/Maps below"*
+- Help callout rewritten to promise the never-empty behavior
+
+**Live verification:**
+
+```
+1. Discover plumbers in Mountain View, AR (small town)
+   → osm_added=0, research_missions_added=5, fallback_triggered=true
+   → message exact-verbatim spec line
+2. Discover cafes in Austin, TX (rich OSM)
+   → osm_added=5, research_missions_added=0, fallback_triggered=false
+   → no fallback, standard OSM message
+3. POST research-missions for "pressure washing" in Hot Springs, AR
+   → 4 rows added, each with Google/Facebook/Maps + needs_research
+4. Mark Researched flips needs_research → pending; second flip → 400
+5. Garbage city → 502 with Nominatim error
+6. PUT round-trip preserves search_phrase, search_urls, discovery_source
+   (no silent drop)
+```
+
+**Safety perimeter — every constraint preserved:**
+
+- ❌ No auto-contacting. No auto-sending. No scraping. No paid APIs.
+- ❌ No new Python deps. No outbound calls in the fallback path
+  (research missions are pure URL string construction).
+- ✅ Research missions land as `needs_research` — approval still
+  required before convert
+- ✅ Converted leads still arrive with `outreach_status='not_started'`
+- ✅ Logan never lands on empty results unless an actual error
+  (Nominatim 502, count cap 400) fires
 
 ---
 

@@ -1686,7 +1686,12 @@ def api_missions_delete(mission_id: str) -> dict:
 
 class CandidateIn(BaseModel):
     """v8.8: lead candidate update body. All optional so PUT can
-    patch a subset. lead_candidates._clean validates / clamps."""
+    patch a subset. lead_candidates._clean validates / clamps.
+
+    v8.9.1: extended with search_phrase, search_urls, discovery_source
+    so research-mission rows survive a round-trip through PUT. FastAPI
+    silently drops fields not declared here, so missing them would
+    erase the research-mission payload on the first user-save."""
     business_name:          str | None = None
     category:               str | None = None
     city_state:             str | None = None
@@ -1703,6 +1708,10 @@ class CandidateIn(BaseModel):
     is_corporate:           bool | None = None
     approval_status:        str | None = None
     notes:                  str | None = None
+    # v8.9.1 fields:
+    search_phrase:          str | None = None
+    search_urls:            list[dict] | None = None
+    discovery_source:       str | None = None
 
 
 class CandidateFindIn(BaseModel):
@@ -1828,6 +1837,19 @@ def api_candidates_needs_research(cid: str) -> dict:
         raise HTTPException(status_code=404, detail=f"Candidate {cid!r} not found")
 
 
+@app.post("/api/lead-candidates/{cid}/mark-researched")
+def api_candidates_mark_researched(cid: str) -> dict:
+    """v8.9.1: flip a research-mission candidate from 'needs_research'
+    back to 'pending' once the user has filled in business_name +
+    contact info. Refuses to flip rows already in other states."""
+    try:
+        return cand_mod.mark_researched(cid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Candidate {cid!r} not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.post("/api/lead-candidates/{cid}/convert")
 def api_candidates_convert(cid: str) -> dict:
     try:
@@ -1856,8 +1878,9 @@ def api_candidates_bulk(body: CandidateBulkIn) -> dict:
 def api_candidates_discover(body: CandidateFindIn) -> dict:
     """v8.9 'Discover Real Businesses': queries OpenStreetMap via
     Overpass for real local businesses matching category + city_state.
-    Reuses CandidateFindIn so the UI form is symmetric with /find.
-    Returns {ok, added_count, found, skipped_duplicates, message}.
+    v8.9.1: if OSM returns fewer than `count`, Logan tops up the gap
+    with research-mission stubs so the user never lands on an empty
+    queue. Reuses CandidateFindIn so the UI form is symmetric with /find.
     """
     try:
         result = cand_mod.discover_via_overpass(
@@ -1867,20 +1890,49 @@ def api_candidates_discover(body: CandidateFindIn) -> dict:
             website_status_target=body.website_status_target or "any local business",
         )
         return {
-            "ok":                 True,
-            "added":              result["added"],
-            "added_count":        result["added_count"],
-            "found":              result["found"],
-            "skipped_duplicates": result["skipped_duplicates"],
-            "resolved_city":      result["resolved_city"],
-            "resolved_state":     result["resolved_state"],
-            "display_name":       result.get("display_name", ""),
-            "message":            result["message"],
+            "ok":                     True,
+            "added":                  result["added"],
+            "added_count":            result["added_count"],
+            "osm_added":              result["osm_added"],
+            "research_missions_added": result["research_missions_added"],
+            "fallback_triggered":     result["fallback_triggered"],
+            "found":                  result["found"],
+            "skipped_duplicates":     result["skipped_duplicates"],
+            "resolved_city":          result["resolved_city"],
+            "resolved_state":         result["resolved_state"],
+            "display_name":           result.get("display_name", ""),
+            "message":                result["message"],
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except overpass_mod.OverpassError as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.post("/api/lead-candidates/research-missions")
+def api_candidates_research_missions(body: CandidateFindIn) -> dict:
+    """v8.9.1 'Find More Anyway': generates N research-mission stubs
+    for the current (category, city_state) without touching OSM. Each
+    stub gets a rotating SERP phrase + Google/Facebook/Maps URLs and
+    lands as approval_status='needs_research'. No outbound calls."""
+    try:
+        rows = cand_mod.generate_research_missions(
+            category=body.category,
+            city_state=body.city_state,
+            count=body.count,
+        )
+        return {
+            "ok":          True,
+            "added":       rows,
+            "added_count": len(rows),
+            "message":     (
+                f"Logan added {len(rows)} research mission"
+                f"{'s' if len(rows) != 1 else ''} for "
+                f"{body.category} in {body.city_state}."
+            ),
+        }
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/api/connections")

@@ -4174,6 +4174,7 @@ function _renderCandidateCard(c) {
     const id = _escape(c.id);
     const conf = c.confidence || 'Research';
     const approval = c.approval_status || 'pending';
+    const source   = c.discovery_source || 'manual';
     const selected = _candSelected.has(c.id);
     const cardCls = [
         'cand-card',
@@ -4181,25 +4182,52 @@ function _renderCandidateCard(c) {
         approval === 'converted' ? 'is-converted' : '',
         approval === 'rejected'  ? 'is-rejected'  : '',
     ].filter(Boolean).join(' ');
+    const placeholder = source === 'research_mission'
+        ? '— research mission — open Google/FB/Maps below'
+        : '— empty slot — fill via Open Search';
     const name = c.business_name && c.business_name.trim()
         ? _escape(c.business_name)
-        : '<span class="cand-name-placeholder">— empty slot — fill via Open Search</span>';
+        : `<span class="cand-name-placeholder">${placeholder}</span>`;
     const convertedLink = c.converted_lead_id
         ? `<div class="cand-field"><span class="cand-field-label">Lead</span>` +
           `<span class="cand-field-value">→ ${_escape(c.converted_lead_id)}</span></div>`
         : '';
-    // Buttons depend on approval state. Converted = read-only.
+    // v8.9.1: search-platform link strip. For research-mission rows
+    // the spec asks for Google + Facebook + Maps; for OSM rows we
+    // also include them so the user can cross-check FB/Maps with
+    // one click.
+    const phraseLine = c.search_phrase
+        ? `<span class="cand-search-phrase">Search: ${_escape(c.search_phrase)}</span>`
+        : '';
+    const searchUrls = Array.isArray(c.search_urls) ? c.search_urls : [];
+    const ICONS = {Google: '🔍', Facebook: '📘', Maps: '🗺'};
+    const searchStrip = searchUrls.length
+        ? `<div class="cand-search-strip">${phraseLine}` +
+            searchUrls.map(u =>
+                `<a class="row-action" target="_blank" rel="noopener noreferrer" ` +
+                `href="${_escape(u.url)}">${ICONS[u.label] || '🔗'} ${_escape(u.label)}</a>`
+            ).join('') +
+          `</div>`
+        : (c.search_url
+            ? `<div class="cand-search-strip"><a class="row-action" target="_blank" ` +
+              `rel="noopener noreferrer" href="${_escape(c.search_url)}">🔎 Open Search</a></div>`
+            : '');
+
+    // Action buttons. Converted = read-only.
     const buttons = [];
-    if (c.search_url) {
-        buttons.push(`<a class="row-action primary" target="_blank" rel="noopener noreferrer" ` +
-            `href="${_escape(c.search_url)}">🔎 Open Search</a>`);
-    }
     if (approval !== 'converted' && approval !== 'rejected') {
         buttons.push(`<button type="button" class="row-action" data-cand-action="save" data-cand-id="${id}">Save</button>`);
     }
+    // v8.9.1: Mark Researched is the needs_research → pending transition.
+    // Only show when status is currently needs_research.
+    if (approval === 'needs_research') {
+        buttons.push(`<button type="button" class="row-action primary" data-cand-action="mark_researched" data-cand-id="${id}">✓ Mark Researched</button>`);
+    }
     if (approval === 'pending' || approval === 'needs_research') {
         buttons.push(`<button type="button" class="row-action" data-cand-action="approve" data-cand-id="${id}">Approve</button>`);
-        buttons.push(`<button type="button" class="row-action" data-cand-action="needs_research" data-cand-id="${id}">Needs Research</button>`);
+        if (approval !== 'needs_research') {
+            buttons.push(`<button type="button" class="row-action" data-cand-action="needs_research" data-cand-id="${id}">Needs Research</button>`);
+        }
         buttons.push(`<button type="button" class="row-action" data-cand-action="reject" data-cand-id="${id}">Reject</button>`);
     }
     if (approval === 'approved') {
@@ -4207,6 +4235,10 @@ function _renderCandidateCard(c) {
         buttons.push(`<button type="button" class="row-action" data-cand-action="reject" data-cand-id="${id}">Reject</button>`);
     }
     buttons.push(`<button type="button" class="row-action danger" data-cand-action="delete" data-cand-id="${id}">Delete</button>`);
+
+    const sourceLabels = {osm: '🌍 OSM', research_mission: '🔍 Research', manual: '✋ Manual'};
+    const sourceBadge =
+        `<span class="cand-source-badge cand-source-${_escape(source)}">${sourceLabels[source] || source}</span>`;
 
     return (
         `<div class="${cardCls}" data-cand-id="${id}">` +
@@ -4217,8 +4249,10 @@ function _renderCandidateCard(c) {
             `<div class="cand-badges">` +
               `<span class="cand-score-badge cand-score-${_escape(conf)}">${_escape(conf)} · ${c.score}</span>` +
               `<span class="cand-approval-badge cand-approval-${_escape(approval)}">${_escape(approval)}</span>` +
+              sourceBadge +
             `</div>` +
           `</div>` +
+          searchStrip +
           // Editable fields. Score recomputes server-side on Save.
           `<div class="cand-field"><span class="cand-field-label">Business</span>` +
             `<span class="cand-field-value"><input type="text" data-cand-field="business_name" ` +
@@ -4329,10 +4363,11 @@ async function loadCandidates() {
     }
 }
 
-// v8.9: Possible Leads form — routes by submitter button:
-//   cand_action="discover" → POST /api/lead-candidates/discover (OSM Overpass)
-//   cand_action="find"     → POST /api/lead-candidates/find     (v8.8 stub generator)
-// Both populate the same queue.
+// v8.9 / v8.9.1: Possible Leads form — routes by submitter button:
+//   cand_action="discover"          → POST /api/lead-candidates/discover (OSM + fallback)
+//   cand_action="research_missions" → POST /api/lead-candidates/research-missions
+//   cand_action="find"              → POST /api/lead-candidates/find (v8.8 stub generator)
+// All populate the same queue.
 const _candidatesFindForm = document.getElementById('candidates-find-form');
 if (_candidatesFindForm) {
     _candidatesFindForm.addEventListener('submit', async (e) => {
@@ -4346,15 +4381,19 @@ if (_candidatesFindForm) {
             website_status_target: data.website_status_target,
         };
         const status = document.getElementById('cmd-status');
-        const route  = action === 'find'
-            ? '/api/lead-candidates/find'
-            : '/api/lead-candidates/discover';
-        // Optimistic in-flight feedback — OSM round-trip can take a few seconds.
-        if (status) {
-            status.textContent = action === 'find'
-                ? `Generating stubs for ${body.category} in ${body.city_state}…`
-                : `Asking OpenStreetMap for ${body.category} in ${body.city_state}…`;
+        let route;
+        let inflightMsg;
+        if (action === 'find') {
+            route = '/api/lead-candidates/find';
+            inflightMsg = `Generating stubs for ${body.category} in ${body.city_state}…`;
+        } else if (action === 'research_missions') {
+            route = '/api/lead-candidates/research-missions';
+            inflightMsg = `Generating ${body.count} research missions for ${body.category} in ${body.city_state}…`;
+        } else {
+            route = '/api/lead-candidates/discover';
+            inflightMsg = `Asking OpenStreetMap for ${body.category} in ${body.city_state}…`;
         }
+        if (status) status.textContent = inflightMsg;
         // Lock submit buttons so the user can't double-fire mid-flight.
         const buttons = _candidatesFindForm.querySelectorAll('button[type="submit"]');
         buttons.forEach(b => { b.disabled = true; });
@@ -4366,35 +4405,52 @@ if (_candidatesFindForm) {
             });
             const d = await r.json();
             if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            let line;
             if (action === 'find') {
-                if (status) status.textContent =
-                    `Generated ${d.count} candidate${d.count === 1 ? '' : 's'} for ` +
-                    `${body.category} in ${body.city_state}. Open search on each to fill them in.`;
+                line = `Generated ${d.count} candidate${d.count === 1 ? '' : 's'} for ` +
+                       `${body.category} in ${body.city_state}. Open search on each to fill them in.`;
+            } else if (action === 'research_missions') {
+                line = d.message ||
+                       `Added ${d.added_count} research mission${d.added_count === 1 ? '' : 's'}.`;
             } else {
-                // Discover response carries added/found/skipped + message.
-                const added = d.added_count || 0;
+                // Discover. v8.9.1 fallback: server returns spec-exact message
+                // when OSM had nothing; otherwise we synthesize from the
+                // osm_added / research_missions_added counts.
+                const osm   = d.osm_added || 0;
+                const miss  = d.research_missions_added || 0;
                 const found = d.found || 0;
                 const dup   = d.skipped_duplicates || 0;
-                let line;
-                if (added > 0) {
-                    line = `Logan found ${found} match${found === 1 ? '' : 'es'} via OSM, ` +
-                           `added ${added} new candidate${added === 1 ? '' : 's'}` +
+                if (d.fallback_triggered && osm === 0) {
+                    // Spec verbatim line.
+                    line = 'OSM did not have enough businesses for this search, so ' +
+                           'Logan created research missions instead. ' +
+                           `(${miss} research mission${miss === 1 ? '' : 's'} added.)`;
+                } else if (d.fallback_triggered && osm > 0) {
+                    line = `OSM returned ${osm} business${osm === 1 ? '' : 'es'} for ` +
+                           `${body.category} in ${d.display_name || body.city_state}; ` +
+                           `Logan added ${miss} research mission${miss === 1 ? '' : 's'} ` +
+                           `so you have ${osm + miss} total to work` +
                            (dup ? ` (${dup} already in queue — skipped).` : '.');
-                } else if (found > 0 && dup > 0) {
+                } else if (osm > 0) {
+                    line = `Logan found ${found} match${found === 1 ? '' : 'es'} via OSM, ` +
+                           `added ${osm} new candidate${osm === 1 ? '' : 's'}` +
+                           (dup ? ` (${dup} already in queue — skipped).` : '.');
+                } else if (dup > 0) {
                     line = `OSM returned ${found} match${found === 1 ? '' : 'es'} — ` +
                            `all ${dup} already in your queue. Nothing new added.`;
                 } else {
                     line = d.message ||
-                        `OSM found no matches for ${body.category} in ${body.city_state}. ` +
-                        `Try a broader category or larger city.`;
+                        `Logan found nothing new for ${body.category} in ${body.city_state}.`;
                 }
-                if (status) status.textContent = line;
             }
+            if (status) status.textContent = line;
             await loadCandidates();
         } catch (err) {
             if (status) {
-                status.textContent = (action === 'find' ? 'Stub generation' : 'OSM discovery')
-                    + ' failed: ' + (err.message || err);
+                const label = action === 'find' ? 'Stub generation'
+                            : action === 'research_missions' ? 'Research-mission generation'
+                            : 'OSM discovery';
+                status.textContent = label + ' failed: ' + (err.message || err);
             }
         } finally {
             buttons.forEach(b => { b.disabled = false; });
@@ -4463,7 +4519,8 @@ if (_candidatesListEl) {
                     `Saved. Score: ${d.score} ${d.confidence}.`;
                 return;
             }
-            if (action === 'approve' || action === 'reject' || action === 'needs_research') {
+            if (action === 'approve' || action === 'reject' || action === 'needs_research'
+                || action === 'mark_researched') {
                 // First save current edits, then flip approval.
                 const fields = readFields();
                 if (Object.values(fields).some(v => v && v.length > 0)) {
@@ -4473,13 +4530,17 @@ if (_candidatesListEl) {
                         body: JSON.stringify(fields),
                     });
                 }
-                const path = action === 'needs_research' ? 'needs-research' : action;
+                const path = action === 'needs_research'  ? 'needs-research'
+                           : action === 'mark_researched' ? 'mark-researched'
+                           : action;
                 const r = await fetch(`/api/lead-candidates/${encodeURIComponent(cid)}/${path}`, { method: 'POST' });
                 const d = await r.json();
                 if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
                 await loadCandidates();
+                const verb = action === 'mark_researched' ? 'marked researched — ready for approval'
+                           : action.replace('_', ' ');
                 document.getElementById('cmd-status').textContent =
-                    `Candidate ${action.replace('_',' ')}.`;
+                    `Candidate ${verb}.`;
                 return;
             }
             if (action === 'convert') {
