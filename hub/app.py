@@ -1172,6 +1172,23 @@ class DeadIn(BaseModel):
     reason: str
 
 
+class ScheduleFollowUpIn(BaseModel):
+    """v9.2: days until the next follow-up. Defaults to 3 to match the
+    industry-standard first-touch cadence."""
+    days: int = 3
+
+
+class MarkFollowedUpIn(BaseModel):
+    """v9.2: how many days to push the next follow-up after this send.
+    Defaults to 5 — the v9.2 repeat-cadence default."""
+    days: int = 5
+
+
+class MarkRepliedIn(BaseModel):
+    """v9.2: reply outcome. One of {warm, hot, won}."""
+    outcome: str
+
+
 class YouTubeChannelIn(BaseModel):
     """v8.5: channel profile. All optional so PUT can patch a subset."""
     channel_niche:    str | None = None
@@ -1434,6 +1451,72 @@ def api_leads_dead_reasons() -> dict:
     """Expose the allowed dead-reason list so the frontend picker
     stays in sync with leads.py without hardcoding."""
     return {"reasons": list(leads_mod.ALLOWED_DEAD_REASONS)}
+
+
+# --- v9.2: Follow-up tracking -----------------------------------------
+# Builds on v8.4's next_follow_up_at + follow_up_count. ZERO outbound
+# calls — every action is local state mutation. Send is still manual.
+
+@app.post("/api/leads/{lead_id}/schedule-follow-up")
+def api_leads_schedule_follow_up(lead_id: str, body: ScheduleFollowUpIn | None = None) -> dict:
+    """v9.2: stamp last_contacted_at + set next_follow_up_at + bump
+    follow_up_count + flip outreach_status appropriately. The v9.1
+    Ready-to-Send Mark Contacted button calls this on the converted
+    Logan lead so follow-up tracking starts automatically."""
+    days = body.days if body else 3
+    try:
+        return leads_mod.schedule_follow_up(lead_id, days=days)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/leads/follow-ups-due")
+def api_leads_follow_ups_due() -> dict:
+    """v9.2: list every lead due for follow-up today or earlier.
+    Sorted oldest-due first. Logan's Follow-Ups Due section + the
+    Today panel both read from this."""
+    items = leads_mod.list_due_follow_ups()
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/leads/{lead_id}/follow-up-drafts")
+def api_leads_follow_up_drafts(lead_id: str) -> dict:
+    """v9.2: return the four-channel follow-up drafts WITHOUT
+    persisting. The Write Follow-Up panel pulls these to populate the
+    Copy blocks. The user calls mark-followed-up after they actually
+    send."""
+    try:
+        return leads_mod.write_follow_up_drafts(lead_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
+
+
+@app.post("/api/leads/{lead_id}/mark-followed-up")
+def api_leads_mark_followed_up(lead_id: str, body: MarkFollowedUpIn | None = None) -> dict:
+    """v9.2: user just sent a follow-up. Increment follow_up_count,
+    reschedule next_follow_up_at +days (default 5), set outreach_status
+    to follow_up_due if applicable."""
+    days = body.days if body else 5
+    try:
+        return leads_mod.mark_followed_up(lead_id, days=days)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/leads/{lead_id}/mark-replied")
+def api_leads_mark_replied(lead_id: str, body: MarkRepliedIn) -> dict:
+    """v9.2: user got a reply. outcome ∈ {warm, hot, won}.
+    Clears next_follow_up_at — lead exits auto-cadence."""
+    try:
+        return leads_mod.mark_replied(lead_id, body.outcome)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # --- v8.5: YouTube Growth Partner --------------------------------------

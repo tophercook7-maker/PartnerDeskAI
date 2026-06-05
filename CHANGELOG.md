@@ -1,6 +1,114 @@
 # PartnerDeskAI Changelog
 
-Newest first. v9.1 is the current shipped version.
+Newest first. v9.2 is the current shipped version.
+
+---
+
+## v9.2 — Follow-up tracking
+
+v9.1's Mark Contacted button did nothing for follow-up tracking — it
+just set `outreach_status='contacted'` and the user had to remember to
+follow up manually. v9.2 closes that loop: Mark Contacted now
+auto-schedules a 3-day follow-up, and Logan surfaces a Follow-Ups Due
+section at the top of the Possible Leads panel so the cadence is
+impossible to miss.
+
+The v8.4 outreach pipeline already had `next_follow_up_at`,
+`follow_up_count`, `last_contacted_at`, `write_follow_up`,
+`snooze_follow_up`, and `_FOLLOW_UP_TMPL` (free-mockup CTA). v9.2
+generalizes those helpers and surfaces them in the v9.1 UI flow —
+no new outbound calls, no new Python deps.
+
+**New `automation/leads.py` helpers:**
+
+- `schedule_follow_up(lead_id, days=3)` — generalized
+  `mark_outreach_sent`: stamps `last_contacted_at` + sets
+  `next_follow_up_at` = today + days + bumps `follow_up_count` +
+  flips `outreach_status`. Promotes `contacted` → `follow_up_due` on
+  re-touch; never downgrades warm/hot/dead/won.
+- `list_due_follow_ups(today=None)` — returns leads where
+  `next_follow_up_at <= today` AND `outreach_status` ∈
+  {contacted, follow_up_due, warm, hot}. Sorted most-overdue first.
+- `write_follow_up_drafts(lead_id)` — preview-only multi-channel
+  drafts (email subject+body, FB DM, SMS, phone notes) using the
+  existing free-mockup CTA. Does NOT persist; the user calls
+  `mark_followed_up` after they actually send.
+- `mark_followed_up(lead_id, days=5)` — user just sent a follow-up.
+  Increments `follow_up_count`, reschedules `next_follow_up_at` +days,
+  sets `outreach_status='follow_up_due'`. Refuses to operate on
+  dead/won leads (raises ValueError → HTTP 400).
+- `mark_replied(lead_id, outcome)` — outcome ∈ {warm, hot, won}.
+  Clears `next_follow_up_at` (lead exits auto-cadence) and updates
+  `outreach_status`.
+
+Defaults: first follow-up at +3 days, subsequent at +5 days (v8.4
+implicit cadence preserved). Max snooze 30 days, max reschedule 60.
+
+**New endpoints:**
+
+- `POST /api/leads/{id}/schedule-follow-up` body `{days:int=3}`
+- `GET  /api/leads/follow-ups-due`
+- `POST /api/leads/{id}/follow-up-drafts` (preview only)
+- `POST /api/leads/{id}/mark-followed-up` body `{days:int=5}`
+- `POST /api/leads/{id}/mark-replied` body `{outcome:str}` (warm/hot/won)
+
+**Wire-through:** v9.1's Ready-to-Send "Mark Contacted" button now
+calls `/schedule-follow-up` (was: PUT outreach_status='contacted').
+The follow-up is scheduled automatically without the user thinking
+about it; status bar surfaces the new due date.
+
+**New UI:**
+
+- ⏰ **Follow-Ups Due** section above Logan's Picks in Possible Leads.
+  Shows lead name, company/email, days overdue (red) or "due today",
+  last-contact date, and follow-up number. Hidden when empty.
+- Per-card buttons: **📝 Write Follow-Up** (primary), **⏸ Snooze 2 days**,
+  **↩ Replied → Warm**, **✗ Dead** (with confirmation).
+- **Write Follow-Up** panel mirrors the v9.1 Ready-to-Send shape:
+  business info row, 4 stacked draft blocks with per-draft Copy buttons,
+  and 6 outcome actions: **Mark Followed Up (+5 days)**,
+  **Snooze 3 days**, **Replied → Warm**, **Replied → Hot**, **Mark Dead**,
+  **Back to Leads**.
+- Follow-up badge ("Follow-up #N") on the due cards so the user can
+  see touch count at a glance.
+
+**Today panel integration:** the existing "Leads needing attention"
+card already opens the Logan section. The new Follow-Ups Due block
+renders at the top of that section, so the natural flow is:
+Today card → land in Logan → see Follow-Ups Due → click Write
+Follow-Up. No Today-panel code change needed.
+
+**Live verification (10 tests + integration):**
+
+```
+1. schedule-follow-up sets outreach_status=contacted, next+3, count=1
+2. follow-ups-due empty when due date is 3 days out
+3. force-due (yesterday) → appears in due list
+4. follow-up-drafts returns 4 channels, zero "3 free fixes",
+   free-mockup CTA in all; preview only (lead not mutated)
+5. mark-followed-up: count=2, next+5, status=follow_up_due
+6. snooze 3 days reschedules correctly
+7. mark-replied warm → exits cadence (next_follow_up_at=None)
+8. mark-replied bad outcome → 400
+9. mark-followed-up on dead lead → 400 with helpful message
+10. Integration: create candidate → enrich → convert → schedule-
+    follow-up → force-due → appears in /api/leads/follow-ups-due
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+0/4 on the v9.2 diff. Christian Kovac safe across the whole cycle.
+
+**Safety perimeter — every constraint preserved:**
+
+- ❌ No auto-send. No auto-contact. No scraping. No paid APIs.
+- ❌ No OAuth. No new Python deps. No email/SMS reminders.
+- ❌ Zero "3 free fixes" language added — only forbidden-phrase
+  guardrail comments. Free-mockup CTA verified in all 4 draft channels.
+- ✅ All actions are local state mutation. Send is still manual —
+  the user copies a draft, sends it from their own client, then
+  clicks Mark Followed Up.
+- ✅ Dead/won leads can't be force-followed-up — explicit refusal.
+- ✅ `follow-up-drafts` is preview-only; doesn't mutate the lead.
 
 ---
 

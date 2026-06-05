@@ -433,6 +433,196 @@ def mark_dead(lead_id: str, reason: str) -> dict:
     })
 
 
+# ======================================================================
+# v9.2 — Follow-up tracking
+# ----------------------------------------------------------------------
+# Generalized scheduling + multi-channel follow-up drafts + due-list
+# query. Builds on the v8.4 next_follow_up_at / follow_up_count fields
+# and the existing _FOLLOW_UP_TMPL (free-mockup CTA). Zero outbound
+# calls — every action is pure local state mutation; the user still
+# copy-pastes and sends from their own client.
+# ======================================================================
+
+# Default cadence: first follow-up 3 days after contact; subsequent
+# follow-ups +5 days each. Configurable per-call via the `days` arg.
+DEFAULT_FIRST_FOLLOWUP_DAYS  = 3
+DEFAULT_REPEAT_FOLLOWUP_DAYS = 5
+MAX_SNOOZE_DAYS              = 30
+MAX_FOLLOWUP_DAYS            = 60
+
+
+def schedule_follow_up(lead_id: str, days: int = DEFAULT_FIRST_FOLLOWUP_DAYS) -> dict:
+    """
+    v9.2 generalization of mark_outreach_sent: stamp last_contacted_at,
+    set next_follow_up_at = today + days, increment follow_up_count,
+    and (if not already 'dead'/'won'/'follow_up_due') set
+    outreach_status='contacted'. Idempotent in spirit — each call
+    represents a real touchpoint the user just completed manually.
+
+    Args:
+        days: 1..60 (clamped at MAX_FOLLOWUP_DAYS). Default 3.
+    """
+    if not isinstance(days, int) or days < 1:
+        raise ValueError("days must be a positive integer")
+    if days > MAX_FOLLOWUP_DAYS:
+        raise ValueError(f"days exceeds max {MAX_FOLLOWUP_DAYS}")
+    existing = _find(lead_id)
+    now = datetime.now()
+    next_due = (now + _td(days=days)).strftime("%Y-%m-%d")
+    count = int(existing.get("follow_up_count") or 0) + 1
+    cur_status = (existing.get("outreach_status") or "").lower()
+    raw = {
+        "last_contacted_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "contacted_at":      now.strftime("%Y-%m-%d %H:%M:%S"),
+        "next_follow_up_at": next_due,
+        "follow_up_count":   count,
+    }
+    # Promote terminal-friendly statuses respectfully — don't unkill a
+    # dead/won lead by re-contacting.
+    if cur_status not in ("dead", "won"):
+        # First touch → 'contacted'; subsequent touches → 'follow_up_due'
+        # if not already past contacted (warm/hot/qualified take priority).
+        if cur_status in ("not_started", "found", "qualified", "outreach_ready", ""):
+            raw["outreach_status"] = "contacted"
+        elif cur_status == "contacted":
+            # Already contacted once; a re-touch means we're now in the
+            # follow-up cadence.
+            raw["outreach_status"] = "follow_up_due"
+        # warm / hot / follow_up_due: leave as-is — the user manually
+        # promoted them and we shouldn't downgrade.
+    return update(lead_id, raw)
+
+
+def list_due_follow_ups(today: str | None = None) -> list[dict]:
+    """
+    Return leads whose next_follow_up_at is today or earlier AND whose
+    outreach_status is in {contacted, follow_up_due, warm, hot}. Sorted
+    most-overdue first (oldest next_follow_up_at first).
+
+    Excludes dead/won/empty-outreach_status leads. The Today panel and
+    Logan's Follow-Ups Due section both read from this.
+
+    Args:
+        today: 'YYYY-MM-DD' for testability. Defaults to current date.
+    """
+    if today is None:
+        today = datetime.now().strftime("%Y-%m-%d")
+    eligible = {"contacted", "follow_up_due", "warm", "hot"}
+    out: list[dict] = []
+    for lead in load():
+        fu = (lead.get("next_follow_up_at") or "").strip()
+        if not fu:
+            continue
+        if fu > today:
+            continue
+        st = (lead.get("outreach_status") or "").lower()
+        if st not in eligible:
+            continue
+        out.append(lead)
+    out.sort(key=lambda l: (l.get("next_follow_up_at") or "9999-99-99"))
+    return out
+
+
+# v9.2 multi-channel follow-up drafts. Reuses the existing
+# _FOLLOW_UP_TMPL body (which already uses the free-mockup CTA) and
+# adds FB / SMS / phone-notes variants. No "3 free fixes" anywhere.
+
+_FOLLOW_UP_FB_TMPL = (
+    "Hi {name} — circling back. Want me to put together that free "
+    "homepage mockup I mentioned? Takes me about a day and there's "
+    "no charge to look. No pressure either way."
+)
+_FOLLOW_UP_SMS_TMPL = (
+    "Hi {name}, just checking in — still happy to make you that free "
+    "homepage mockup if you're interested. No pressure."
+)
+_FOLLOW_UP_PHONE_NOTES = (
+    "Follow-up talking points (not a script):\n"
+    "  • Reference the prior touch — don't re-pitch from scratch.\n"
+    "  • Reoffer the free homepage mockup. No charge to look.\n"
+    "  • If they're busy: 'No rush — I just wanted to make sure my\n"
+    "    last note didn't get buried. I'll check back in a few days.'\n"
+    "  • If they're interested: ask what their main customer call-to-\n"
+    "    action is right now (phone? message? walk-in?).\n"
+    "  • If they pass: thank them, leave the door open, mark dead.\n"
+)
+
+
+def write_follow_up_drafts(lead_id: str) -> dict:
+    """
+    v9.2: like write_follow_up() but returns drafts for FOUR channels
+    (email_subject + email_body + fb_message + sms_message +
+    phone_notes) instead of just email. Does NOT mutate the lead —
+    the user calls mark_followed_up() after they actually send.
+
+    Returns:
+        {email_subject, email_body, fb_message, sms_message, phone_notes,
+         follow_up_count: <current count + 1 preview>}
+    """
+    existing = _find(lead_id)
+    name = (existing.get("name") or "there").strip() or "there"
+    subject = "re: " + _OUTREACH_SUBJECT_TMPL.format(business_name=name)
+    body = _FOLLOW_UP_TMPL.format(business_name=name)
+    return {
+        "email_subject":     subject,
+        "email_body":        body,
+        "fb_message":        _FOLLOW_UP_FB_TMPL.format(name=name),
+        "sms_message":       _FOLLOW_UP_SMS_TMPL.format(name=name),
+        "phone_notes":       _FOLLOW_UP_PHONE_NOTES,
+        "follow_up_count":   int(existing.get("follow_up_count") or 0) + 1,
+        "previous_count":    int(existing.get("follow_up_count") or 0),
+        "next_follow_up_at": existing.get("next_follow_up_at"),
+    }
+
+
+def mark_followed_up(lead_id: str, days: int = DEFAULT_REPEAT_FOLLOWUP_DAYS) -> dict:
+    """
+    v9.2: user just sent a follow-up. Increment follow_up_count, push
+    next_follow_up_at out by `days` (default 5), and ensure
+    outreach_status is at least 'follow_up_due'. Mirrors what
+    write_follow_up() did but with a configurable reschedule horizon.
+    """
+    if not isinstance(days, int) or days < 1:
+        raise ValueError("days must be a positive integer")
+    if days > MAX_FOLLOWUP_DAYS:
+        raise ValueError(f"days exceeds max {MAX_FOLLOWUP_DAYS}")
+    existing = _find(lead_id)
+    cur = (existing.get("outreach_status") or "").lower()
+    if cur in ("dead", "won"):
+        raise ValueError(
+            f"cannot mark follow-up on a {cur!r} lead — un-dead it first"
+        )
+    now = datetime.now()
+    next_due = (now + _td(days=days)).strftime("%Y-%m-%d")
+    count = int(existing.get("follow_up_count") or 0) + 1
+    raw = {
+        "last_contacted_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "next_follow_up_at": next_due,
+        "follow_up_count":   count,
+    }
+    if cur in ("contacted", "not_started", "found", "qualified",
+               "outreach_ready", ""):
+        raw["outreach_status"] = "follow_up_due"
+    return update(lead_id, raw)
+
+
+def mark_replied(lead_id: str, outcome: str) -> dict:
+    """
+    v9.2: user got a reply. outcome ∈ {warm, hot, won}.
+    Updates outreach_status and clears next_follow_up_at — the lead is
+    now in active conversation, not in the auto-cadence.
+    """
+    outcome = (outcome or "").strip().lower()
+    allowed = ("warm", "hot", "won")
+    if outcome not in allowed:
+        raise ValueError(f"outcome must be one of {allowed}, got {outcome!r}")
+    return update(lead_id, {
+        "outreach_status":   outcome,
+        "next_follow_up_at": None,
+        "last_contacted_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+
 def add_batch(lines: list[str]) -> dict:
     """
     Bulk-create cold leads from paste input. Dedupes against existing

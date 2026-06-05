@@ -1573,6 +1573,23 @@
             padding-top: 0.4rem; border-top: 1px solid #cfe1ff;
             margin-top: 0.3rem;
         }
+        /* v9.2: Follow-Ups Due — amber-tinted section above Logan's Picks. */
+        .follow-ups-due {
+            margin: 0.6rem 0 0.8rem; padding: 0.6rem 0.7rem;
+            background: linear-gradient(180deg, #fff6e0 0%, #fff 100%);
+            border: 1px solid #f3d28a; border-radius: 8px;
+        }
+        .follow-ups-due .picks-h4 { color: #8a6320; }
+        .follow-ups-due .pick-card { border-color: #f3d28a; }
+        .follow-ups-due .followup-overdue {
+            color: #b34a4a; font-weight: 600;
+        }
+        .followup-badge {
+            display: inline-block; padding: 0.05rem 0.4rem;
+            background: #fff6e0; color: #8a6320;
+            border-radius: 4px; font-size: 0.7rem; font-weight: 600;
+            margin-left: 0.3rem;
+        }
         @media (max-width: 720px) {
             .cand-field { flex-direction: column; gap: 0.1rem; }
             .cand-field-label { min-width: 0; }
@@ -2742,6 +2759,21 @@
             <!-- v9.1: Ready-to-Send view — hidden by default. Use This
                  Lead opens this and the user copies the drafts manually. -->
             <div id="ready-to-send" class="ready-to-send" hidden></div>
+
+            <!-- v9.2: Write Follow-Up panel — same shape as Ready-to-Send
+                 but for leads already in the contacted/follow_up_due
+                 cadence. Hidden by default. -->
+            <div id="write-follow-up" class="ready-to-send" hidden></div>
+
+            <!-- v9.2: Follow-Ups Due section. Surfaces leads where
+                 next_follow_up_at <= today so the user actually keeps
+                 the cadence. Hidden when the due list is empty. -->
+            <section id="follow-ups-due" class="follow-ups-due" hidden>
+                <h4 class="picks-h4">⏰ Follow-Ups Due
+                    <span id="follow-ups-due-count" class="muted"></span>
+                </h4>
+                <div id="follow-ups-due-list" class="picks-list"></div>
+            </section>
 
             <!-- v9.1: One-click form. Just 3 inputs + one big button. -->
             <form id="candidates-do-form" class="leads-form"

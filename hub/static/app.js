@@ -5271,23 +5271,291 @@ if (_rtsEl) {
                     return;
                 }
                 try {
-                    const r = await fetch(`/api/leads/${encodeURIComponent(_rtsLeadId)}`, {
-                        method: 'PUT',
+                    // v9.2: schedule-follow-up does outreach_status='contacted'
+                    // + last_contacted_at + next_follow_up_at (today+3) +
+                    // follow_up_count+=1 in one atomic write.
+                    const r = await fetch(`/api/leads/${encodeURIComponent(_rtsLeadId)}/schedule-follow-up`, {
+                        method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ outreach_status: 'contacted' }),
+                        body: JSON.stringify({ days: 3 }),
                     });
                     if (!r.ok) {
                         const d = await r.json().catch(() => ({}));
                         throw new Error(d.detail || 'http ' + r.status);
                     }
+                    const d = await r.json();
                     await loadLeads();
                     if (status) status.textContent =
-                        'Lead marked contacted. Schedule a follow-up from LinkedIn Leads if needed.';
+                        `Contacted. Follow-up scheduled for ${d.next_follow_up_at}.`;
                     _hideReadyToSend();
                 } catch (err) {
                     if (status) status.textContent =
                         'Mark contacted failed: ' + (err.message || err);
                 }
+            }
+        }
+    });
+}
+
+// ======================================================================
+// v9.2: Follow-up tracking — Follow-Ups Due section + Write Follow-Up
+// panel + Mark Contacted auto-schedule.
+// ======================================================================
+
+let _followUpsDue = [];
+
+function _daysOverdue(dateStr) {
+    if (!dateStr) return 0;
+    const due = new Date(dateStr + 'T00:00:00');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const ms = today - due;
+    return Math.max(0, Math.floor(ms / 86400000));
+}
+
+function _renderFollowUpCard(lead) {
+    const lid = _escape(lead.id);
+    const name = _escape(lead.name || '(unnamed)');
+    const fuCount = lead.follow_up_count || 0;
+    const overdue = _daysOverdue(lead.next_follow_up_at);
+    const overdueLabel = overdue === 0
+        ? '<span class="muted">due today</span>'
+        : `<span class="followup-overdue">${overdue} day${overdue === 1 ? '' : 's'} overdue</span>`;
+    const lastContact = lead.last_contacted_at
+        ? `Last contact ${_escape(lead.last_contacted_at)}` : '';
+    return (
+        `<div class="pick-card" data-lead-id="${lid}">` +
+          `<div class="pick-name">${name}` +
+            `<span class="followup-badge">Follow-up #${fuCount + 1}</span>` +
+          `</div>` +
+          `<div class="pick-meta">${_escape(lead.company || '')}` +
+            (lead.email ? ` · ${_escape(lead.email)}` : '') +
+          `</div>` +
+          `<div class="pick-reason">${overdueLabel}` +
+            (lastContact ? ` · <span class="muted">${lastContact}</span>` : '') +
+          `</div>` +
+          `<div class="pick-actions">` +
+            `<button type="button" class="row-action primary" ` +
+              `data-followup-action="write" data-lead-id="${lid}">📝 Write Follow-Up</button>` +
+            `<button type="button" class="row-action" ` +
+              `data-followup-action="snooze" data-lead-id="${lid}">⏸ Snooze 2 days</button>` +
+            `<button type="button" class="row-action" ` +
+              `data-followup-action="replied_warm" data-lead-id="${lid}">↩ Replied → Warm</button>` +
+            `<button type="button" class="row-action" ` +
+              `data-followup-action="dead" data-lead-id="${lid}">✗ Dead</button>` +
+          `</div>` +
+        `</div>`
+    );
+}
+
+async function loadFollowUpsDue() {
+    try {
+        const r = await fetch('/api/leads/follow-ups-due');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _followUpsDue = d.items || [];
+    } catch (err) {
+        _followUpsDue = [];
+    }
+    const section = document.getElementById('follow-ups-due');
+    const list    = document.getElementById('follow-ups-due-list');
+    const count   = document.getElementById('follow-ups-due-count');
+    if (!section || !list) return;
+    if (_followUpsDue.length === 0) {
+        section.hidden = true;
+        return;
+    }
+    section.hidden = false;
+    list.innerHTML = _followUpsDue.map(_renderFollowUpCard).join('');
+    if (count) count.textContent =
+        `(${_followUpsDue.length} due now)`;
+}
+
+// Wrap loadLeads so follow-ups refresh whenever leads change.
+const _v91_loadLeads = loadLeads;
+loadLeads = async function() {
+    await _v91_loadLeads();
+    await loadFollowUpsDue();
+};
+
+// ----- Write Follow-Up panel ------------------------------------------
+let _wfuLeadId = null;
+let _wfuDrafts = null;
+
+async function _openWriteFollowUp(leadId) {
+    const status = document.getElementById('cmd-status');
+    const lead = _followUpsDue.find(l => l.id === leadId) ||
+                 (window._leadsCache || []).find(l => l.id === leadId);
+    if (status) status.textContent = `Loading follow-up drafts for ${lead ? lead.name : leadId}…`;
+    try {
+        const r = await fetch(`/api/leads/${encodeURIComponent(leadId)}/follow-up-drafts`, {
+            method: 'POST',
+        });
+        const drafts = await r.json();
+        if (!r.ok) throw new Error(drafts.detail || 'http ' + r.status);
+        _wfuLeadId = leadId;
+        _wfuDrafts = drafts;
+        const el = document.getElementById('write-follow-up');
+        if (!el) return;
+        const name = (lead && lead.name) || '(unknown)';
+        const fuNum = drafts.follow_up_count || 1;
+        const draftBlock = (label, key) => drafts[key]
+            ? `<div class="rts-draft">` +
+                `<div class="rts-draft-header">` +
+                  `<strong>${label}</strong>` +
+                  `<button type="button" class="row-action" data-wfu-copy="${key}">Copy</button>` +
+                `</div>` +
+                (key === 'email_body' && drafts.email_subject
+                  ? `<div style="font-size:0.72rem;color:#64748b;margin-bottom:0.2rem;">Subject: ${_escape(drafts.email_subject)}</div>`
+                  : '') +
+                `<pre>${_escape(drafts[key])}</pre>` +
+              `</div>`
+            : '';
+        el.innerHTML =
+            `<h4 class="rts-h">📝 Write Follow-Up #${fuNum} — ${_escape(name)}</h4>` +
+            `<div class="rts-row">` +
+              `<span class="rts-label">Lead:</span><span>${_escape(name)}</span>` +
+              (lead && lead.company ? `<span class="rts-label">Company:</span><span>${_escape(lead.company)}</span>` : '') +
+              (lead && lead.email ? `<span class="rts-label">Email:</span><span>${_escape(lead.email)}</span>` : '') +
+              (lead && lead.next_follow_up_at ? `<span class="rts-label">Was due:</span><span>${_escape(lead.next_follow_up_at)}</span>` : '') +
+            `</div>` +
+            draftBlock('Email draft', 'email_body') +
+            draftBlock('Facebook DM', 'fb_message') +
+            draftBlock('Text message', 'sms_message') +
+            draftBlock('Phone call notes', 'phone_notes') +
+            `<div class="rts-actions">` +
+              `<button type="button" class="row-action primary" data-wfu-action="mark_followed_up">✓ Mark Followed Up (+5 days)</button>` +
+              `<button type="button" class="row-action" data-wfu-action="snooze_3">⏸ Snooze 3 days</button>` +
+              `<button type="button" class="row-action" data-wfu-action="replied_warm">↩ Replied → Warm</button>` +
+              `<button type="button" class="row-action" data-wfu-action="replied_hot">🔥 Replied → Hot</button>` +
+              `<button type="button" class="row-action danger" data-wfu-action="dead">✗ Mark Dead</button>` +
+              `<button type="button" class="row-action" data-wfu-action="back">← Back to Leads</button>` +
+            `</div>`;
+        el.hidden = false;
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (status) status.textContent =
+            `Follow-up drafts ready. Copy what you'll send, then click Mark Followed Up.`;
+    } catch (err) {
+        if (status) status.textContent =
+            'Write Follow-Up failed: ' + (err.message || err);
+    }
+}
+
+function _hideWriteFollowUp() {
+    const el = document.getElementById('write-follow-up');
+    if (el) { el.hidden = true; el.innerHTML = ''; }
+    _wfuLeadId = null; _wfuDrafts = null;
+}
+
+// Delegators for the Follow-Ups Due card buttons.
+const _followUpsList = document.getElementById('follow-ups-due-list');
+if (_followUpsList) {
+    _followUpsList.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-followup-action]');
+        if (!btn) return;
+        const lid = btn.dataset.leadId;
+        const action = btn.dataset.followupAction;
+        const status = document.getElementById('cmd-status');
+        if (action === 'write') { await _openWriteFollowUp(lid); return; }
+        try {
+            if (action === 'snooze') {
+                const r = await fetch(`/api/leads/${encodeURIComponent(lid)}/snooze`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ days: 2 }),
+                });
+                if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || 'http ' + r.status); }
+                if (status) status.textContent = 'Snoozed 2 days.';
+            } else if (action === 'replied_warm') {
+                const r = await fetch(`/api/leads/${encodeURIComponent(lid)}/mark-replied`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ outcome: 'warm' }),
+                });
+                if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || 'http ' + r.status); }
+                if (status) status.textContent = 'Marked Warm — exited follow-up cadence.';
+            } else if (action === 'dead') {
+                if (!confirm('Mark this lead dead? (reason: no reply after 3 follow-ups)')) return;
+                const r = await fetch(`/api/leads/${encodeURIComponent(lid)}/dead`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: 'no reply after 3 follow-ups' }),
+                });
+                if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || 'http ' + r.status); }
+                if (status) status.textContent = 'Marked dead.';
+            }
+            await loadLeads();
+        } catch (err) {
+            if (status) status.textContent = 'Action failed: ' + (err.message || err);
+        }
+    });
+}
+
+// Delegator for the Write Follow-Up panel buttons.
+const _wfuEl = document.getElementById('write-follow-up');
+if (_wfuEl) {
+    _wfuEl.addEventListener('click', async (e) => {
+        const copyBtn = e.target.closest('button[data-wfu-copy]');
+        const actBtn  = e.target.closest('button[data-wfu-action]');
+        const status = document.getElementById('cmd-status');
+        if (copyBtn) {
+            const key = copyBtn.dataset.wfuCopy;
+            const text = (_wfuDrafts && _wfuDrafts[key]) || '';
+            if (!text) { if (status) status.textContent = 'Nothing to copy.'; return; }
+            try {
+                await navigator.clipboard.writeText(text);
+                if (status) status.textContent = `${key.replace('_',' ')} copied.`;
+            } catch (clipErr) {
+                if (status) status.textContent = 'Clipboard unavailable — select the text and copy manually.';
+            }
+            return;
+        }
+        if (actBtn) {
+            const a = actBtn.dataset.wfuAction;
+            if (!_wfuLeadId) { if (status) status.textContent = 'No lead loaded.'; return; }
+            if (a === 'back') { _hideWriteFollowUp(); return; }
+            try {
+                if (a === 'mark_followed_up') {
+                    const r = await fetch(`/api/leads/${encodeURIComponent(_wfuLeadId)}/mark-followed-up`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ days: 5 }),
+                    });
+                    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || 'http ' + r.status); }
+                    const d = await r.json();
+                    if (status) status.textContent =
+                        `Follow-up #${d.follow_up_count} recorded. Next due ${d.next_follow_up_at}.`;
+                } else if (a === 'snooze_3') {
+                    const r = await fetch(`/api/leads/${encodeURIComponent(_wfuLeadId)}/snooze`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ days: 3 }),
+                    });
+                    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || 'http ' + r.status); }
+                    if (status) status.textContent = 'Snoozed 3 days.';
+                } else if (a === 'replied_warm' || a === 'replied_hot') {
+                    const outcome = a === 'replied_warm' ? 'warm' : 'hot';
+                    const r = await fetch(`/api/leads/${encodeURIComponent(_wfuLeadId)}/mark-replied`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ outcome }),
+                    });
+                    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || 'http ' + r.status); }
+                    if (status) status.textContent = `Marked ${outcome} — exited follow-up cadence.`;
+                } else if (a === 'dead') {
+                    if (!confirm('Mark this lead dead?')) return;
+                    const r = await fetch(`/api/leads/${encodeURIComponent(_wfuLeadId)}/dead`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ reason: 'no reply after 3 follow-ups' }),
+                    });
+                    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || 'http ' + r.status); }
+                    if (status) status.textContent = 'Marked dead.';
+                }
+                await loadLeads();
+                _hideWriteFollowUp();
+            } catch (err) {
+                if (status) status.textContent = 'Action failed: ' + (err.message || err);
             }
         }
     });
