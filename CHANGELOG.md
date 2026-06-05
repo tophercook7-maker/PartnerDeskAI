@@ -1,6 +1,126 @@
 # PartnerDeskAI Changelog
 
-Newest first. v8.9.1 is the current shipped version.
+Newest first. v9.0 is the current shipped version.
+
+---
+
+## v9.0 — Logan Lead Enrichment Engine
+
+v8.9.1 prevented empty results but still left the user doing all the
+work after Discover landed. v9.0 takes the next bite: Logan now takes
+a candidate row and derives a structured analysis on top of it — the
+"why this score" bullets, the missing-data checklist, the weak-presence
+flags, the opportunity reasons, the suggested offer, the four outreach
+drafts, and the Ready-for-Outreach gate.
+
+**Honest framing first** — enrichment here is local derivation +
+scaffolding, not external data fetching. We don't scrape, we don't pay
+APIs, we don't crawl business websites to extract emails. What we
+do compute, from data already on the row plus the spec's rule set:
+
+- weak-presence flags (11 spec flags, internal notes only — never
+  insulting copy)
+- opportunity reasons in human-readable bullets
+- score-explanation bullets that map 1-to-1 with the v8.8 scoring rules
+- 5 missing-data chips: Website / Phone / Email / Facebook / Contact form,
+  each tagged Found / Missing / Needs Check
+- per-field targeted search URLs ("Find email" → `"{name}" "{city}" email`,
+  etc.) for what's still missing
+- standardized offer suggestions: **Free homepage mockup**, **Starter
+  website fix from $150**, message angle from spec section 6
+- four outreach drafts: email subject+body, Facebook DM, text message,
+  phone call notes. Every draft uses the **free homepage mockup** CTA.
+  ZERO "3 free fixes" language anywhere — verified by grep against the
+  whole repo (the only occurrences are comments forbidding the phrase).
+- `ready_for_outreach` boolean — true only when the row has
+  business_name + category + city_state + at least one contact route
+  + score ≥ 1 + an offer angle + generated email_body
+
+**New endpoints:**
+
+- `POST /api/lead-candidates/{cid}/enrich` — one row
+- `POST /api/lead-candidates/bulk-enrich` body `{ids: [...]}` — many
+  rows, per-row failure capture
+
+**New candidate fields** (additive; legacy rows setdefault on load):
+
+- `enrichment_status` enum: `not_started | enriched | partial | needs_research | failed`
+- `enrichment_notes: str` — human-readable summary line
+- `missing_fields: list[{field, status}]`
+- `opportunity_reasons: list[str]`
+- `weak_presence_flags: list[str]`
+- `score_reasons: list[str]`
+- `ready_for_outreach: bool`
+- `outreach_drafts: dict` with 5 fixed keys
+- `contact_routes: list[str]`
+- `last_enriched_at: str | None`
+- `facebook_url`, `instagram_url`, `contact_form_url`, `service_area: str`
+
+`CandidateIn` Pydantic model extended with all 14 new fields. FastAPI
+silently drops undeclared fields — added proactively to avoid the
+v8.4.1 / v8.7 silent-drop pattern.
+
+**UI:**
+
+- Per-card **✨ Enrich** button (saves any pending edits first, runs
+  enrichment, refreshes the card)
+- Per-card **📝 Prepare Outreach** button (same endpoint — re-runs
+  enrichment so drafts pick up fresh field data)
+- Card body grows enrichment sections that only appear when populated:
+  Missing data chips, Why this score, Opportunity, Weak presence,
+  Suggested offers, Outreach drafts (4 stacked blocks with Copy buttons)
+- **🚀 Ready for Outreach** badge next to the name when the gate passes
+- Enrichment-status pill alongside source/approval badges
+- Top toolbar: **✨ Enrich All Visible** + **⭐ Enrich Top 25**
+- Bulk toolbar: **✨ Enrich selected** as a new action
+- 7 new filter chips: Needs Email / Needs Phone / No Website /
+  Facebook Only / Ready for Outreach / Needs Research / Rejected
+- Empty-enrichment fallback panel on research-mission rows with no
+  business_name uses the spec verbatim: *"Logan could not confirm more
+  details yet. Use the search links above or mark this as Needs Research."*
+- Copy-to-clipboard button on each draft (with graceful fallback when
+  navigator.clipboard is unavailable)
+
+**Live verification:**
+
+```
+1. OSM discover cafes in Austin TX → 3 OSM candidates added
+2. Enrich one → enrichment_status=partial (no contact on OSM row);
+   missing_fields = all 5 missing; 2 weak flags fired
+3. Drafts spec compliance: zero "3 free fixes" in any draft;
+   free-mockup CTA present in email_body, fb_message, sms_message,
+   phone_notes
+4. Discover thin OSM (Mountain View, AR) → research-mission row
+5. Enrich empty research-mission → enrichment_status=needs_research,
+   ready_for_outreach=False, enrichment_notes = spec-verbatim line
+6. PUT business_name + phone, re-enrich → enrichment_status=enriched,
+   ready_for_outreach=True, contact_routes=['phone']
+7. Bulk enrich 6 rows → 6 enriched / 0 failed
+8. Legacy row (no v8.9.1 / v9.0 fields) loads with all defaults:
+   enrichment_status='not_started', ready_for_outreach=False,
+   outreach_drafts={} — no crash, no silent corruption
+```
+
+**Compile checks:**
+
+```
+py_compile hub/app.py automation/lead_candidates.py automation/lead_missions.py → PASS
+node --check hub/static/app.js                                                    → PASS
+module-init smoke via /tmp/run_app.js                                             → PASS
+```
+
+**Safety perimeter — every constraint preserved:**
+
+- ❌ No auto-contacting. No auto-sending. No scraping. No paid APIs.
+- ❌ No OAuth. No new Python deps.
+- ❌ Zero outbound calls in the enrichment path — pure local derivation.
+  (The Discover call still goes to OSM, unchanged from v8.9.1.)
+- ❌ Zero "3 free fixes" language in user-facing copy. Verified by
+  whole-repo grep. The only occurrences are guardrail comments in
+  `lead_candidates.py` explicitly forbidding the phrase.
+- ✅ Approval still required before convert. Send still manual.
+- ✅ Converted leads still arrive with `outreach_status='not_started'`.
+- ✅ Christian Kovac untouched across the full test cycle.
 
 ---
 

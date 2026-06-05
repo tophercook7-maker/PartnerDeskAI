@@ -1712,6 +1712,21 @@ class CandidateIn(BaseModel):
     search_phrase:          str | None = None
     search_urls:            list[dict] | None = None
     discovery_source:       str | None = None
+    # v9.0 enrichment fields:
+    enrichment_status:      str | None = None
+    enrichment_notes:       str | None = None
+    missing_fields:         list[dict] | None = None
+    opportunity_reasons:    list[str] | None = None
+    weak_presence_flags:    list[str] | None = None
+    score_reasons:          list[str] | None = None
+    ready_for_outreach:     bool | None = None
+    outreach_drafts:        dict | None = None
+    contact_routes:         list[str] | None = None
+    last_enriched_at:       str | None = None
+    facebook_url:           str | None = None
+    instagram_url:          str | None = None
+    contact_form_url:       str | None = None
+    service_area:           str | None = None
 
 
 class CandidateFindIn(BaseModel):
@@ -1726,6 +1741,11 @@ class CandidateBulkIn(BaseModel):
     """v8.8: bulk action on selected candidate ids."""
     action: str        # 'approve' | 'reject' | 'needs_research' | 'delete' | 'convert'
     ids:    list[str]
+
+
+class CandidateBulkEnrichIn(BaseModel):
+    """v9.0: bulk enrichment input."""
+    ids: list[str]
 
 
 class MissionCaptureIn(BaseModel):
@@ -1846,6 +1866,45 @@ def api_candidates_mark_researched(cid: str) -> dict:
         return cand_mod.mark_researched(cid)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Candidate {cid!r} not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# --- v9.0: Lead Enrichment Engine -------------------------------------
+# Pure-local derivation: weak-presence flags, opportunity reasons,
+# missing-field chips, contact-route inventory, outreach drafts,
+# ready_for_outreach. ZERO outbound calls. No scraping, no paid APIs.
+# Approval still required before convert; send still manual.
+
+@app.post("/api/lead-candidates/{cid}/enrich")
+def api_candidates_enrich(cid: str) -> dict:
+    """v9.0: run full enrichment against one candidate.
+    Derives flags + reasons + chips + drafts + ready_for_outreach.
+    Persists and returns the updated row.
+    """
+    try:
+        return cand_mod.enrich(cid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Candidate {cid!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/lead-candidates/bulk-enrich")
+def api_candidates_bulk_enrich(body: CandidateBulkEnrichIn) -> dict:
+    """v9.0: enrich every id in body.ids. Per-row failures are
+    captured but don't abort the batch. Returns
+    {enriched: [row,...], failed: [{id,reason},...], counts}.
+    """
+    try:
+        result = cand_mod.bulk_enrich(body.ids)
+        return {
+            "ok":             True,
+            "enriched":       result["enriched"],
+            "enriched_count": len(result["enriched"]),
+            "failed":         result["failed"],
+            "failed_count":   len(result["failed"]),
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

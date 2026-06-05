@@ -4217,6 +4217,12 @@ function _renderCandidateCard(c) {
     const buttons = [];
     if (approval !== 'converted' && approval !== 'rejected') {
         buttons.push(`<button type="button" class="row-action" data-cand-action="save" data-cand-id="${id}">Save</button>`);
+        // v9.0: Enrich button — runs the local derivation pass.
+        buttons.push(`<button type="button" class="row-action" data-cand-action="enrich" data-cand-id="${id}">✨ Enrich</button>`);
+        // v9.0: Prepare Outreach — same backend call as enrich (drafts
+        // are part of the enrichment payload); button exists so the
+        // user can re-generate copy on demand.
+        buttons.push(`<button type="button" class="row-action" data-cand-action="prepare_outreach" data-cand-id="${id}">📝 Prepare Outreach</button>`);
     }
     // v8.9.1: Mark Researched is the needs_research → pending transition.
     // Only show when status is currently needs_research.
@@ -4240,16 +4246,158 @@ function _renderCandidateCard(c) {
     const sourceBadge =
         `<span class="cand-source-badge cand-source-${_escape(source)}">${sourceLabels[source] || source}</span>`;
 
+    // v9.0: Ready for Outreach badge — only when the row passes the gate.
+    const readyBadge = c.ready_for_outreach
+        ? `<span class="cand-ready-badge">🚀 Ready for Outreach</span>`
+        : '';
+
+    // v9.0: enrichment status pill (small, secondary).
+    const enrichStatus = c.enrichment_status || 'not_started';
+    const enrichLabel = {
+        not_started: 'not enriched', enriched: 'enriched',
+        partial: 'partial', needs_research: 'needs research',
+        failed: 'enrich failed',
+    }[enrichStatus] || enrichStatus;
+    const enrichBadge =
+        `<span class="cand-enrich-status cand-enrich-status-${_escape(enrichStatus)}">${_escape(enrichLabel)}</span>`;
+
+    // v9.0: enriched-data sections. Only render when present so
+    // un-enriched cards stay compact.
+    const sections = [];
+
+    if (Array.isArray(c.missing_fields) && c.missing_fields.length) {
+        const chips = c.missing_fields.map(f => {
+            const labelMap = {website: 'Website', phone: 'Phone', email: 'Email',
+                              facebook: 'Facebook', contact_form: 'Contact form'};
+            const statusMap = {found: 'Found', missing: 'Missing', needs_check: 'Needs check'};
+            return `<span class="cand-missing-chip" data-status="${_escape(f.status)}">` +
+                   `${_escape(labelMap[f.field] || f.field)}: ${_escape(statusMap[f.status] || f.status)}` +
+                   `</span>`;
+        }).join('');
+        sections.push(
+            `<div class="cand-enriched-section">` +
+              `<span class="cand-section-label">Missing data</span>` +
+              `<div class="cand-missing-chips">${chips}</div>` +
+            `</div>`
+        );
+    }
+
+    if (Array.isArray(c.score_reasons) && c.score_reasons.length) {
+        const items = c.score_reasons.map(r => `<li>${_escape(r)}</li>`).join('');
+        sections.push(
+            `<div class="cand-enriched-section">` +
+              `<span class="cand-section-label">Why this score</span>` +
+              `<ul class="cand-reason-list">${items}</ul>` +
+            `</div>`
+        );
+    }
+
+    if (Array.isArray(c.opportunity_reasons) && c.opportunity_reasons.length) {
+        const items = c.opportunity_reasons.map(r => `<li>${_escape(r)}</li>`).join('');
+        sections.push(
+            `<div class="cand-enriched-section">` +
+              `<span class="cand-section-label">Opportunity</span>` +
+              `<ul class="cand-reason-list">${items}</ul>` +
+            `</div>`
+        );
+    }
+
+    if (Array.isArray(c.weak_presence_flags) && c.weak_presence_flags.length) {
+        const items = c.weak_presence_flags.map(f => `<li>${_escape(f)}</li>`).join('');
+        sections.push(
+            `<div class="cand-enriched-section">` +
+              `<span class="cand-section-label">Weak presence (internal notes)</span>` +
+              `<ul class="cand-reason-list">${items}</ul>` +
+            `</div>`
+        );
+    }
+
+    // Offer block — only after enrichment, when offer_angle is set.
+    if ((c.enrichment_status === 'enriched' || c.enrichment_status === 'partial') &&
+        c.suggested_offer_angle) {
+        sections.push(
+            `<div class="cand-enriched-section">` +
+              `<span class="cand-section-label">Suggested offers</span>` +
+              `<div class="cand-offer-block">` +
+                `<span class="cand-offer-label">Free:</span>` +
+                `<span>Free homepage mockup</span>` +
+                `<span class="cand-offer-label">Paid:</span>` +
+                `<span>Starter website fix from $150</span>` +
+                `<span class="cand-offer-label">Angle:</span>` +
+                `<span>Make it easier for customers to call, message, and trust the business from their phone.</span>` +
+              `</div>` +
+            `</div>`
+        );
+    }
+
+    // Outreach drafts — always render when drafts exist.
+    const drafts = c.outreach_drafts || {};
+    const hasDrafts = drafts.email_body || drafts.fb_message || drafts.sms_message || drafts.phone_notes;
+    if (hasDrafts) {
+        const draftBlocks = [];
+        const renderDraft = (label, key, contentHtml) => {
+            if (!drafts[key]) return;
+            draftBlocks.push(
+                `<div class="cand-draft-block">` +
+                  `<div class="cand-draft-header">` +
+                    `<span class="cand-draft-label">${label}</span>` +
+                    `<button type="button" class="row-action" data-cand-action="copy_draft" data-cand-id="${id}" data-draft-key="${key}">Copy</button>` +
+                  `</div>` +
+                  contentHtml +
+                `</div>`
+            );
+        };
+        if (drafts.email_body) {
+            renderDraft('Email draft', 'email_body',
+                `<div style="font-size:0.72rem;color:#64748b;margin-bottom:0.2rem;">` +
+                  `Subject: ${_escape(drafts.email_subject || '')}` +
+                `</div>` +
+                `<pre>${_escape(drafts.email_body)}</pre>`);
+        }
+        renderDraft('Facebook DM', 'fb_message', `<pre>${_escape(drafts.fb_message || '')}</pre>`);
+        renderDraft('Text message',  'sms_message', `<pre>${_escape(drafts.sms_message || '')}</pre>`);
+        renderDraft('Phone call notes', 'phone_notes', `<pre>${_escape(drafts.phone_notes || '')}</pre>`);
+        if (draftBlocks.length) {
+            sections.push(
+                `<div class="cand-enriched-section">` +
+                  `<span class="cand-section-label">Outreach drafts (review only — not sent)</span>` +
+                  draftBlocks.join('') +
+                `</div>`
+            );
+        }
+    }
+
+    // Empty-enrichment fallback (spec section 11).
+    if (c.enrichment_status === 'needs_research' && !c.business_name) {
+        sections.push(
+            `<div class="cand-enriched-section" style="border-left-color:#fde2e2;">` +
+              `<span class="cand-section-label">Enrichment</span>` +
+              `<div style="font-size:0.78rem;color:#334155;">` +
+                `Logan could not confirm more details yet. Use the search ` +
+                `links above or mark this as Needs Research.` +
+              `</div>` +
+            `</div>`
+        );
+    } else if (c.enrichment_notes) {
+        sections.push(
+            `<div class="cand-enriched-section" style="border-left-color:#cbd5e1;">` +
+              `<span class="cand-section-label">Enrichment notes</span>` +
+              `<div style="font-size:0.78rem;color:#334155;">${_escape(c.enrichment_notes)}</div>` +
+            `</div>`
+        );
+    }
+
     return (
         `<div class="${cardCls}" data-cand-id="${id}">` +
           `<div class="cand-card-header">` +
             `<input type="checkbox" class="cand-checkbox" data-cand-id="${id}"` +
               (selected ? ' checked' : '') + '>' +
-            `<div class="cand-name">${name}</div>` +
+            `<div class="cand-name">${name}${readyBadge}</div>` +
             `<div class="cand-badges">` +
               `<span class="cand-score-badge cand-score-${_escape(conf)}">${_escape(conf)} · ${c.score}</span>` +
               `<span class="cand-approval-badge cand-approval-${_escape(approval)}">${_escape(approval)}</span>` +
               sourceBadge +
+              enrichBadge +
             `</div>` +
           `</div>` +
           searchStrip +
@@ -4278,6 +4426,7 @@ function _renderCandidateCard(c) {
           `<div class="cand-field"><span class="cand-field-label">Offer</span>` +
             `<span class="cand-field-value">${_escape(c.suggested_offer_angle || '')}</span></div>` +
           convertedLink +
+          sections.join('') +
           `<div class="cand-actions">${buttons.join('')}</div>` +
         `</div>`
     );
@@ -4286,6 +4435,23 @@ function _renderCandidateCard(c) {
 function _candPassesFilter(c) {
     if (_candFilter === 'all') return true;
     if (_candFilter === 'converted') return c.approval_status === 'converted';
+    if (_candFilter === 'rejected')  return c.approval_status === 'rejected';
+    if (_candFilter === 'needs_research_approval')
+        return c.approval_status === 'needs_research';
+    // v9.0 quality-of-data filters:
+    if (_candFilter === 'needs_email')
+        return !(c.email || '').trim() && c.approval_status !== 'converted';
+    if (_candFilter === 'needs_phone')
+        return !(c.phone || '').trim() && c.approval_status !== 'converted';
+    if (_candFilter === 'no_website') {
+        const ws = (c.website_status || '').toLowerCase();
+        return !(c.website_url || '').trim() || ws === 'no website found';
+    }
+    if (_candFilter === 'facebook_only')
+        return (c.weak_presence_flags || []).includes('Facebook only');
+    if (_candFilter === 'ready_for_outreach')
+        return c.ready_for_outreach === true;
+    // Confidence-band filters (Hot / Warm / Research / Reject).
     return c.confidence === _candFilter;
 }
 
@@ -4573,6 +4739,52 @@ if (_candidatesListEl) {
                 await loadCandidates();
                 return;
             }
+            // v9.0: per-card enrich / prepare-outreach (same endpoint;
+            // Prepare Outreach is just a re-run that refreshes drafts).
+            if (action === 'enrich' || action === 'prepare_outreach') {
+                // Save any current edits first so enrich runs against
+                // the latest user input.
+                const fields = readFields();
+                if (Object.values(fields).some(v => v && v.length > 0)) {
+                    await fetch(`/api/lead-candidates/${encodeURIComponent(cid)}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(fields),
+                    });
+                }
+                const r = await fetch(`/api/lead-candidates/${encodeURIComponent(cid)}/enrich`, {
+                    method: 'POST',
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadCandidates();
+                document.getElementById('cmd-status').textContent =
+                    action === 'prepare_outreach'
+                        ? `Outreach drafts ready — review below. ${d.enrichment_notes || ''}`
+                        : `Enriched. ${d.enrichment_notes || ''}`;
+                return;
+            }
+            // v9.0: copy a specific draft to the clipboard.
+            if (action === 'copy_draft') {
+                const key = btn.dataset.draftKey;
+                const cand = _candidates.find(c => c.id === cid);
+                const text = cand && cand.outreach_drafts ? (cand.outreach_drafts[key] || '') : '';
+                if (!text) {
+                    document.getElementById('cmd-status').textContent =
+                        'Nothing to copy yet — click Enrich first.';
+                    return;
+                }
+                try {
+                    await navigator.clipboard.writeText(text);
+                    document.getElementById('cmd-status').textContent =
+                        `${key.replace('_', ' ')} copied to clipboard.`;
+                } catch (clipErr) {
+                    // Fallback: select + execCommand for old browsers.
+                    document.getElementById('cmd-status').textContent =
+                        'Clipboard unavailable — select the draft text and copy manually.';
+                }
+                return;
+            }
         } catch (err) {
             document.getElementById('cmd-status').textContent =
                 'Candidate action failed: ' + (err.message || err);
@@ -4607,6 +4819,27 @@ if (_candidatesBulkEl) {
                 `Exported ${rows.length} candidate${rows.length === 1 ? '' : 's'}.`;
             return;
         }
+        // v9.0: Bulk enrich uses a different endpoint than other bulk
+        // actions (returns enriched/failed, not processed/skipped).
+        if (action === 'enrich') {
+            try {
+                const r = await fetch('/api/lead-candidates/bulk-enrich', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: [..._candSelected] }),
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+                await loadCandidates();
+                document.getElementById('cmd-status').textContent =
+                    `Enriched ${d.enriched_count} of ${_candSelected.size} candidate${_candSelected.size === 1 ? '' : 's'}` +
+                    (d.failed_count ? ` (${d.failed_count} failed).` : '.');
+            } catch (err) {
+                document.getElementById('cmd-status').textContent =
+                    'Bulk enrich failed: ' + (err.message || err);
+            }
+            return;
+        }
         // Confirm destructive actions.
         const n = _candSelected.size;
         if ((action === 'delete' || action === 'reject' || action === 'convert')
@@ -4632,6 +4865,59 @@ if (_candidatesBulkEl) {
             document.getElementById('cmd-status').textContent =
                 'Bulk action failed: ' + (err.message || err);
         }
+    });
+}
+
+// v9.0: top-level "Enrich All Visible" + "Enrich Top 25" buttons.
+// These don't rely on checkbox selection — they compute the target
+// id set client-side from the current view.
+async function _runBulkEnrich(ids, label) {
+    if (!ids.length) {
+        document.getElementById('cmd-status').textContent =
+            `Nothing to enrich (${label}).`;
+        return;
+    }
+    document.getElementById('cmd-status').textContent =
+        `Enriching ${ids.length} candidate${ids.length === 1 ? '' : 's'}…`;
+    try {
+        const r = await fetch('/api/lead-candidates/bulk-enrich', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+        await loadCandidates();
+        document.getElementById('cmd-status').textContent =
+            `${label}: enriched ${d.enriched_count} of ${ids.length}` +
+            (d.failed_count ? ` (${d.failed_count} failed).` : '.');
+    } catch (err) {
+        document.getElementById('cmd-status').textContent =
+            label + ' failed: ' + (err.message || err);
+    }
+}
+
+const _enrichVisibleBtn = document.getElementById('candidates-enrich-visible');
+if (_enrichVisibleBtn) {
+    _enrichVisibleBtn.addEventListener('click', () => {
+        const ids = _candidates
+            .filter(_candPassesFilter)
+            .filter(c => c.approval_status !== 'converted')
+            .map(c => c.id);
+        _runBulkEnrich(ids, 'Enrich All Visible');
+    });
+}
+
+const _enrichTop25Btn = document.getElementById('candidates-enrich-top25');
+if (_enrichTop25Btn) {
+    _enrichTop25Btn.addEventListener('click', () => {
+        const ids = _candidates
+            .filter(c => c.approval_status !== 'converted' && c.approval_status !== 'rejected')
+            .slice()
+            .sort((a, b) => (b.score || 0) - (a.score || 0))
+            .slice(0, 25)
+            .map(c => c.id);
+        _runBulkEnrich(ids, 'Enrich Top 25');
     });
 }
 

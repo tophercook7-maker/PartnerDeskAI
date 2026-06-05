@@ -66,6 +66,41 @@ DEFAULT_APPROVAL = "pending"
 ALLOWED_DISCOVERY_SOURCES = ("osm", "research_mission", "manual")
 DEFAULT_DISCOVERY_SOURCE = "manual"
 
+# v9.0 Lead Enrichment Engine.
+#
+# Honest framing: "enrich" here means derivation + scaffolding, not
+# external data fetching. We don't scrape, we don't pay any APIs, and
+# we don't crawl a business's website to extract their email. What we
+# CAN do is: compute structured weakness flags + opportunity reasons
+# from what's already on the row, build per-field search URLs for what's
+# still missing, generate the four outreach drafts (email / Facebook /
+# SMS / phone notes), and compute whether the row is ready for outreach.
+ALLOWED_ENRICHMENT_STATUS = (
+    "not_started", "enriched", "partial", "needs_research", "failed",
+)
+DEFAULT_ENRICHMENT_STATUS = "not_started"
+
+# The 5 missing-data indicator chips per the spec. Each chip carries
+# one of: "found" | "missing" | "needs_check". We never silently fill
+# a field — if a status is "missing" or "needs_check", the UI surfaces
+# it so the user knows what to research.
+MISSING_FIELD_KEYS = ("website", "phone", "email", "facebook", "contact_form")
+
+# Spec-verbatim offer + message angle wording. The user is the source
+# of truth on this — DO NOT drift to "3 free fixes" language; only
+# "free homepage mockup" + "$150 starter website fix".
+FREE_OFFER_TEXT = "Free homepage mockup"
+PAID_OFFER_TEXT = "Starter website fix from $150"
+MESSAGE_ANGLE_TEXT = (
+    "Make it easier for customers to call, message, and trust the "
+    "business from their phone."
+)
+
+MAX_DRAFT      = 4000  # per-draft cap
+MAX_REASONS    = 12    # max items in opportunity_reasons / score_reasons
+MAX_FLAGS      = 16    # max items in weak_presence_flags
+MAX_ROUTES     = 8     # max items in contact_routes
+
 ALLOWED_WEBSITE_STATUS = (
     "no website found", "weak web presence", "has website but needs cleanup",
     "has website (good)", "any local business",
@@ -222,6 +257,21 @@ def load() -> list[dict]:
             it.setdefault("search_phrase", "")
             it.setdefault("discovery_source", DEFAULT_DISCOVERY_SOURCE)
             it.setdefault("search_urls", [])
+            # v9.0 enrichment fields:
+            it.setdefault("enrichment_status", DEFAULT_ENRICHMENT_STATUS)
+            it.setdefault("enrichment_notes", "")
+            it.setdefault("missing_fields", [])
+            it.setdefault("opportunity_reasons", [])
+            it.setdefault("weak_presence_flags", [])
+            it.setdefault("score_reasons", [])
+            it.setdefault("ready_for_outreach", False)
+            it.setdefault("outreach_drafts", {})
+            it.setdefault("contact_routes", [])
+            it.setdefault("last_enriched_at", None)
+            it.setdefault("facebook_url", "")
+            it.setdefault("instagram_url", "")
+            it.setdefault("contact_form_url", "")
+            it.setdefault("service_area", "")
     return items
 
 
@@ -298,6 +348,52 @@ def _clean(raw: dict, existing: dict | None = None) -> dict:
             continue
         search_urls.append({"label": label or "Search", "url": url})
 
+    # v9.0: enrichment_status enum.
+    es_raw = _pick("enrichment_status") or DEFAULT_ENRICHMENT_STATUS
+    es = str(es_raw).strip().lower()
+    if es not in ALLOWED_ENRICHMENT_STATUS:
+        es = DEFAULT_ENRICHMENT_STATUS
+
+    # v9.0: missing_fields list of {field, status} — strict shape.
+    raw_mf = _pick("missing_fields") or []
+    if not isinstance(raw_mf, list):
+        raw_mf = []
+    missing_fields: list[dict] = []
+    for item in raw_mf:
+        if not isinstance(item, dict):
+            continue
+        field = str(item.get("field") or "").strip()[:60]
+        st = str(item.get("status") or "").strip().lower()
+        if not field or st not in ("found", "missing", "needs_check"):
+            continue
+        missing_fields.append({"field": field, "status": st})
+
+    # v9.0: simple list-of-strings fields, clamped + truncated.
+    def _list_of_str(key, cap):
+        raw_v = _pick(key) or []
+        if not isinstance(raw_v, list):
+            return []
+        out = []
+        for s in raw_v[:cap]:
+            if isinstance(s, str) and s.strip():
+                out.append(s.strip()[:500])
+        return out
+
+    opportunity_reasons = _list_of_str("opportunity_reasons", MAX_REASONS)
+    weak_presence_flags = _list_of_str("weak_presence_flags", MAX_FLAGS)
+    score_reasons       = _list_of_str("score_reasons",       MAX_REASONS)
+    contact_routes      = _list_of_str("contact_routes",      MAX_ROUTES)
+
+    # v9.0: outreach_drafts dict with 5 fixed string keys, clamped.
+    raw_drafts = _pick("outreach_drafts") or {}
+    if not isinstance(raw_drafts, dict):
+        raw_drafts = {}
+    drafts_clean: dict = {}
+    for k in ("email_subject", "email_body", "fb_message", "sms_message", "phone_notes"):
+        v = raw_drafts.get(k)
+        if isinstance(v, str) and v.strip():
+            drafts_clean[k] = v[:MAX_DRAFT]
+
     merged = {
         "id":                ex.get("id") or raw.get("id"),
         "business_name":     str(_pick("business_name") or "").strip()[:MAX_NAME],
@@ -313,6 +409,21 @@ def _clean(raw: dict, existing: dict | None = None) -> dict:
         "search_phrase":     str(_pick("search_phrase") or "").strip()[:MAX_PHRASE],
         "search_urls":       search_urls,
         "discovery_source":  ds,
+        # v9.0 enrichment fields:
+        "enrichment_status":  es,
+        "enrichment_notes":   str(_pick("enrichment_notes") or "")[:MAX_NOTES],
+        "missing_fields":     missing_fields,
+        "opportunity_reasons": opportunity_reasons,
+        "weak_presence_flags": weak_presence_flags,
+        "score_reasons":      score_reasons,
+        "ready_for_outreach": bool(_pick("ready_for_outreach")),
+        "outreach_drafts":    drafts_clean,
+        "contact_routes":     contact_routes,
+        "last_enriched_at":   _pick("last_enriched_at"),
+        "facebook_url":       str(_pick("facebook_url") or "").strip()[:MAX_URL],
+        "instagram_url":      str(_pick("instagram_url") or "").strip()[:MAX_URL],
+        "contact_form_url":   str(_pick("contact_form_url") or "").strip()[:MAX_URL],
+        "service_area":       str(_pick("service_area") or "").strip()[:MAX_CITY],
         "evidence_notes":    str(_pick("evidence_notes") or "")[:MAX_EVIDENCE],
         "suggested_offer_angle": str(_pick("suggested_offer_angle") or "").strip()[:MAX_OFFER],
         "is_local_service":  _norm_bool(_pick("is_local_service")),
@@ -778,3 +889,509 @@ def bulk_action(action: str, ids: list[str]) -> dict:
         except (KeyError, ValueError) as e:
             skipped.append({"id": cid, "reason": str(e)})
     return {"processed": processed, "skipped": skipped, "leads": leads}
+
+
+# ======================================================================
+# v9.0 Lead Enrichment Engine
+# ----------------------------------------------------------------------
+# enrich(cid) is the public entry point. It derives structured weakness
+# signals + opportunity reasons, builds per-field search URLs for what's
+# still missing, generates the four outreach drafts (free homepage
+# mockup CTA — never "3 free fixes"), computes ready_for_outreach, and
+# persists. ZERO outbound calls — pure local derivation.
+# ======================================================================
+
+# ---- Pure helpers (no I/O) ------------------------------------------
+
+_GENERIC_EMAIL_HOSTS = (
+    "gmail.com", "yahoo.com", "outlook.com", "hotmail.com",
+    "aol.com", "icloud.com", "live.com", "msn.com", "comcast.net",
+)
+
+_DIRECTORY_DOMAINS = (
+    "yelp.com", "yellowpages.com", "angi.com", "angieslist.com",
+    "bbb.org", "manta.com", "superpages.com", "citysearch.com",
+    "tripadvisor.com", "foursquare.com",
+)
+
+
+def _is_email_generic(email: str) -> bool:
+    """True if the email uses a free consumer host (gmail/yahoo/etc.).
+    A non-generic email implies a business domain, which is a stronger
+    signal of an established web presence."""
+    e = (email or "").strip().lower()
+    if "@" not in e:
+        return False
+    host = e.rsplit("@", 1)[-1]
+    return host in _GENERIC_EMAIL_HOSTS
+
+
+def _source_is_directory(source_url: str) -> bool:
+    """True if the lead's source_url is a directory site (Yelp/YP/etc.)."""
+    s = (source_url or "").strip().lower()
+    if not s:
+        return False
+    return any(d in s for d in _DIRECTORY_DOMAINS)
+
+
+def _source_is_facebook(*urls: str) -> bool:
+    """True if any of the given URLs points at facebook.com."""
+    for u in urls:
+        if "facebook.com" in (u or "").lower():
+            return True
+    return False
+
+
+def _detect_weak_presence_flags(c: dict) -> list[str]:
+    """
+    Compute the spec's 11 weak-presence flags from the row's existing
+    fields. Internal flags only; never insulting copy — they're
+    Logan's notes for the user, not text we'd ever send anywhere.
+
+    Mapping is intentionally conservative — we only flag what we can
+    actually see, never guess.
+    """
+    flags: list[str] = []
+    website = (c.get("website_url") or "").strip()
+    website_status = (c.get("website_status") or "").strip().lower()
+    email = (c.get("email") or "").strip()
+    phone = (c.get("phone") or "").strip()
+    source_url = (c.get("source_url") or "").strip()
+    fb_url = (c.get("facebook_url") or "").strip()
+    contact_form_url = (c.get("contact_form_url") or "").strip()
+
+    has_fb = bool(fb_url) or _source_is_facebook(source_url)
+
+    if not website:
+        flags.append("No website found")
+    elif "weak" in website_status or "cleanup" in website_status:
+        flags.append("Old or weak website")
+    if has_fb and not website:
+        flags.append("Facebook only")
+    if _source_is_directory(source_url) and not website:
+        flags.append("Directory only")
+    if _is_email_generic(email):
+        flags.append("Gmail/Yahoo/Outlook email")
+    if phone and not email and not website:
+        flags.append("Phone only")
+    if website and not contact_form_url:
+        flags.append("No contact form found")
+    if website and "weak" in website_status:
+        flags.append("Needs mobile-friendly landing page")
+    if not website or "weak" in website_status:
+        flags.append("No booking/contact hub")
+    # "Good candidate for free homepage mockup" — fires when there's a
+    # legible opportunity but the row isn't a corporate/franchise outright.
+    if (not website or "weak" in website_status) and not c.get("is_corporate"):
+        flags.append("Good candidate for free homepage mockup")
+    # "No clear call to action" — only flag when we have a website but
+    # status hints it's weak. We can't actually see the page; this is a
+    # heuristic to surface to the user, not a definitive judgement.
+    if website and ("weak" in website_status or "cleanup" in website_status):
+        flags.append("No clear call to action")
+
+    # Dedup while preserving order.
+    seen: set[str] = set()
+    out: list[str] = []
+    for f in flags:
+        if f not in seen:
+            seen.add(f)
+            out.append(f)
+    return out[:MAX_FLAGS]
+
+
+def _build_opportunity_reasons(c: dict, flags: list[str]) -> list[str]:
+    """
+    Convert weak-presence flags + score signals into human-readable
+    bullets the user sees in the 'Why this score' block.
+
+    Reads from the row + the flags list (already computed). Returns
+    the most useful subset, ordered most-actionable first.
+    """
+    reasons: list[str] = []
+    if "No website found" in flags:
+        reasons.append("No website found — ideal for a free homepage mockup pitch")
+    if "Facebook only" in flags:
+        reasons.append("Customers find them on Facebook only — easy to upgrade")
+    if "Directory only" in flags:
+        reasons.append("Visible on directories only — could own their own page")
+    if "Old or weak website" in flags:
+        reasons.append("Existing site is dated or thin — good candidate for refresh")
+    if "Gmail/Yahoo/Outlook email" in flags:
+        reasons.append("Uses a free consumer email — likely no business domain yet")
+    if (c.get("phone") or "").strip():
+        reasons.append("Phone is available — direct outreach channel")
+    if (c.get("email") or "").strip():
+        reasons.append("Email is available — written-outreach channel")
+    if c.get("is_local_service") is True:
+        reasons.append("Local service business — fits the partner-style offer")
+    if c.get("is_active") is True:
+        reasons.append("Currently active — worth the time to research")
+    if c.get("is_corporate") is True:
+        reasons.append("Brand / franchise — usually a no-go for the small-shop offer")
+    if "Phone only" in flags:
+        reasons.append("Phone only — strong fit for the starter website fix")
+    return reasons[:MAX_REASONS]
+
+
+def _compute_score_reasons(c: dict) -> list[str]:
+    """
+    Per-row score breakdown matching compute_score()'s rule set. The UI
+    renders this as the 'Why' bullets next to the score.
+    """
+    reasons: list[str] = []
+    ws = (c.get("website_status") or "").strip().lower()
+    if ws == "no website found":
+        reasons.append("+3 No website found")
+    if ws == "weak web presence":
+        reasons.append("+2 Weak web presence")
+    if (c.get("email") or "").strip():
+        reasons.append("+2 Email available")
+    if (c.get("phone") or "").strip():
+        reasons.append("+1 Phone available")
+    if c.get("is_local_service") is True:
+        reasons.append("+1 Local service business")
+    if c.get("is_active") is True:
+        reasons.append("+1 Active recent presence")
+    if c.get("is_corporate") is True:
+        reasons.append("-3 Looks corporate / franchise")
+    if not (c.get("email") or "").strip() and not (c.get("phone") or "").strip():
+        reasons.append("-2 No contact info on file")
+    if c.get("is_active") is False:
+        reasons.append("-2 Marked inactive / closed")
+    return reasons[:MAX_REASONS]
+
+
+def _has_facebook(c: dict) -> bool:
+    return bool((c.get("facebook_url") or "").strip()) or _source_is_facebook(
+        c.get("source_url") or "",
+    )
+
+
+def _build_missing_fields(c: dict) -> list[dict]:
+    """
+    Build the five missing-data chips per spec:
+      website / phone / email / facebook / contact_form
+    Each chip = {"field": <key>, "status": "found" | "missing" | "needs_check"}.
+
+    "needs_check" is used for research_mission rows (we haven't verified
+    anything) and for fields whose website_status hints at a problem.
+    """
+    chips: list[dict] = []
+    discovery_source = (c.get("discovery_source") or "manual").strip()
+    is_research = discovery_source == "research_mission"
+
+    def _chip(field: str, value: str, has: bool) -> dict:
+        if has:
+            return {"field": field, "status": "found"}
+        # If the row was never enriched + is a research mission, the
+        # field hasn't been checked yet — flag for follow-up.
+        if is_research and (c.get("enrichment_status") or DEFAULT_ENRICHMENT_STATUS) == DEFAULT_ENRICHMENT_STATUS:
+            return {"field": field, "status": "needs_check"}
+        return {"field": field, "status": "missing"}
+
+    website = (c.get("website_url") or "").strip()
+    phone   = (c.get("phone") or "").strip()
+    email   = (c.get("email") or "").strip()
+    fb      = _has_facebook(c)
+    contact = (c.get("contact_form_url") or "").strip()
+
+    chips.append(_chip("website", website, bool(website)))
+    chips.append(_chip("phone",   phone,   bool(phone)))
+    chips.append(_chip("email",   email,   bool(email)))
+    chips.append(_chip("facebook", "fb",   fb))
+    # contact_form: if no website, mark missing; if website but no
+    # contact_form_url, mark needs_check (we'd need to visit the site).
+    if not website:
+        chips.append({"field": "contact_form", "status": "missing"})
+    elif contact:
+        chips.append({"field": "contact_form", "status": "found"})
+    else:
+        chips.append({"field": "contact_form", "status": "needs_check"})
+    return chips
+
+
+def _build_contact_routes(c: dict) -> list[str]:
+    """Inventory of outbound channels usable for this lead today."""
+    routes: list[str] = []
+    if (c.get("phone") or "").strip():            routes.append("phone")
+    if (c.get("email") or "").strip():            routes.append("email")
+    if (c.get("website_url") or "").strip():      routes.append("website")
+    if _has_facebook(c):                          routes.append("facebook")
+    if (c.get("contact_form_url") or "").strip(): routes.append("contact_form")
+    return routes[:MAX_ROUTES]
+
+
+def _build_per_field_search_urls(c: dict, missing_fields: list[dict]) -> list[dict]:
+    """
+    Generate targeted search URLs for fields that are missing or
+    needs-check, so the user can click straight to a useful SERP.
+    Returned as the same {label, url} shape used elsewhere — these
+    augment the existing Google/Facebook/Maps strip.
+    """
+    name = (c.get("business_name") or "").strip()
+    category = (c.get("category") or "").strip()
+    city = (c.get("city_state") or "").strip()
+    out: list[dict] = []
+    # Seed term: business name when known, else category.
+    base = name or category
+    if not base or not city:
+        return out
+
+    def _g(label: str, query: str):
+        out.append({
+            "label": label,
+            "url":   "https://www.google.com/search?q=" + quote_plus(query),
+        })
+
+    by_field = {it["field"]: it["status"] for it in (missing_fields or [])}
+    if by_field.get("email") in ("missing", "needs_check"):
+        _g("Find email", f'"{base}" "{city}" email')
+    if by_field.get("phone") in ("missing", "needs_check"):
+        _g("Find phone", f'"{base}" "{city}" phone OR "call or text"')
+    if by_field.get("facebook") in ("missing", "needs_check"):
+        _g("Find Facebook", f'site:facebook.com "{base}" "{city}"')
+    if by_field.get("contact_form") in ("missing", "needs_check"):
+        _g("Find contact form", f'"{base}" "{city}" contact')
+    if by_field.get("website") in ("missing", "needs_check"):
+        _g("Find website", f'"{base}" "{city}" official site')
+    # Instagram is implied by the spec list of contact routes; include
+    # it when the row has no IG and we have a name.
+    if not (c.get("instagram_url") or "").strip() and name:
+        _g("Find Instagram", f'site:instagram.com "{base}" "{city}"')
+    return out[:MAX_URL_LIST]
+
+
+def _is_ready_for_outreach(c: dict) -> bool:
+    """
+    A candidate is Ready for Outreach when it has the minimum the spec
+    requires:
+      - business_name + category + city_state
+      - at least one contact route
+      - a positive opportunity score (>= 1, i.e. not Reject)
+      - an offer angle attached
+      - outreach drafts generated
+    """
+    if not (c.get("business_name") or "").strip():
+        return False
+    if not (c.get("category") or "").strip():
+        return False
+    if not (c.get("city_state") or "").strip():
+        return False
+    routes = c.get("contact_routes") or _build_contact_routes(c)
+    if not routes:
+        return False
+    if (c.get("score") or 0) < 1:
+        return False
+    if not (c.get("suggested_offer_angle") or "").strip():
+        return False
+    drafts = c.get("outreach_drafts") or {}
+    if not drafts.get("email_body"):
+        return False
+    return True
+
+
+# ---- Outreach draft generator (spec section 7) ----------------------
+
+def _greeting_for(name: str) -> str:
+    """Friendly, non-presumptuous greeting that works for a business
+    name (we don't know the owner's first name)."""
+    n = (name or "").strip()
+    if not n:
+        return "Hi there,"
+    # If the name looks like "Joe's Coffee", keep it; if it's an LLC
+    # or capitalized brand, "team" is friendlier than guessing.
+    if any(tok in n.lower() for tok in (" llc", " inc", " co.", " corp", " co ")):
+        return f"Hi {n} team,"
+    return f"Hi {n} team,"
+
+
+def _generate_outreach_drafts(c: dict) -> dict:
+    """
+    Produce the four outreach drafts the spec asks for. CTA is
+    "free homepage mockup" verbatim. The paid offer is "$150 starter
+    website fix". ZERO "3 free fixes" language anywhere in this file.
+
+    Drafts are friendly, brief, and never insult the business. They
+    use placeholders only for fields we have on the row — never invent
+    a name or a quote.
+    """
+    name = (c.get("business_name") or "").strip()
+    category = (c.get("category") or "your kind of business").strip()
+    city = (c.get("city_state") or "").strip()
+    label = name or "your business"
+    where = f" in {city}" if city else ""
+    greet = _greeting_for(name)
+
+    email_subject = (
+        f"Quick idea for {label}" if name else f"Quick idea for a local {category}"
+    )
+    email_body = (
+        f"{greet}\n\n"
+        f"I help local {category} make it easier for customers to call, "
+        f"message, and trust the business straight from a phone.\n\n"
+        f"If you'd like, I can put together a free homepage mockup for "
+        f"{label}{where} — just one clean, phone-first page that shows "
+        f"what a simple modern site could look like. No commitment, "
+        f"just a visual you can keep.\n\n"
+        f"If you want to take it further after, I do a starter website "
+        f"fix from $150 — pay once, no subscription.\n\n"
+        f"Want me to put a free mockup together so you can see what I mean?\n\n"
+        f"— Topher"
+    )
+
+    fb_message = (
+        f"Hi! I help local {category} build simple, phone-first websites "
+        f"and tap hubs (pay once, no subscription). "
+        f"Happy to put together a free homepage mockup for {label} so you "
+        f"can see what a clean, modern page might look like — no pressure. "
+        f"Want me to make one?"
+    )
+
+    sms_message = (
+        f"Hi! I help local businesses with simple websites. "
+        f"I'd love to make {label} a free homepage mockup so you can see "
+        f"what I mean — no commitment. Interested?"
+    )
+
+    phone_notes = (
+        "Talking points (not a script):\n"
+        f"  • Who: local partner helping {category} with simple, "
+        f"phone-first websites — pay once, no subscription.\n"
+        f"  • What I noticed: limited / weak web presence (be specific, "
+        f"don't insult).\n"
+        f"  • Free offer: I can put together a free homepage mockup for "
+        f"{label}{where} so you can see what a clean modern page would "
+        f"look like. No commitment.\n"
+        "  • Paid offer (only if asked): starter website fix from $150.\n"
+        "  • Ask: 'Would it help if I put one together for you to look at?'\n"
+        "  • Listen first. If they're busy, offer to text or email.\n"
+    )
+
+    return {
+        "email_subject": email_subject[:MAX_DRAFT],
+        "email_body":    email_body[:MAX_DRAFT],
+        "fb_message":    fb_message[:MAX_DRAFT],
+        "sms_message":   sms_message[:MAX_DRAFT],
+        "phone_notes":   phone_notes[:MAX_DRAFT],
+    }
+
+
+# ---- enrich() + bulk_enrich() ---------------------------------------
+
+def enrich(cid: str) -> dict:
+    """
+    Run the full v9.0 enrichment pass against one candidate. Pure-local;
+    no outbound calls. Sets enrichment_status to one of:
+      - 'enriched'      — has business_name + at least one signal worth using
+      - 'partial'       — derived what we could but core fields missing
+      - 'needs_research' — empty row that needs the user to research first
+    """
+    items = load()
+    cand = None
+    idx = -1
+    for i, it in enumerate(items):
+        if it.get("id") == cid:
+            cand = dict(it)
+            idx = i
+            break
+    if cand is None:
+        raise KeyError(cid)
+
+    # Derive everything in one pass.
+    flags = _detect_weak_presence_flags(cand)
+    cand["weak_presence_flags"] = flags
+    cand["opportunity_reasons"] = _build_opportunity_reasons(cand, flags)
+    cand["score_reasons"] = _compute_score_reasons(cand)
+    missing = _build_missing_fields(cand)
+    cand["missing_fields"] = missing
+    cand["contact_routes"] = _build_contact_routes(cand)
+
+    # Always attach the standardized offer + message angle so the UI
+    # has spec-verbatim copy to show. Only overwrite the offer_angle
+    # if it was empty — preserve user-set offers.
+    if not (cand.get("suggested_offer_angle") or "").strip():
+        cand["suggested_offer_angle"] = (
+            f"{FREE_OFFER_TEXT}. {PAID_OFFER_TEXT}. {MESSAGE_ANGLE_TEXT}"
+        )
+
+    # Augment the per-card search URL strip with targeted "find <field>"
+    # links. Preserve any existing Google/Facebook/Maps entries the
+    # discovery path put on the row.
+    base_urls = list(cand.get("search_urls") or [])
+    extra = _build_per_field_search_urls(cand, missing)
+    existing_urls = {(u.get("url") or "") for u in base_urls if isinstance(u, dict)}
+    for item in extra:
+        if item["url"] not in existing_urls:
+            base_urls.append(item)
+            existing_urls.add(item["url"])
+    cand["search_urls"] = base_urls[:MAX_URL_LIST]
+
+    # Generate the four outreach drafts. Always — even for empty rows
+    # the drafts use placeholders so the user has something to copy.
+    cand["outreach_drafts"] = _generate_outreach_drafts(cand)
+
+    # Compute ready_for_outreach AFTER all derivations land. The
+    # function reads score / contact_routes / drafts.
+    cand["ready_for_outreach"] = _is_ready_for_outreach(cand)
+
+    # Status decision:
+    name = (cand.get("business_name") or "").strip()
+    if not name and (cand.get("discovery_source") or "") == "research_mission":
+        # Empty research mission — needs the user to fill basics first.
+        cand["enrichment_status"] = "needs_research"
+        notes = (
+            "Logan could not confirm more details yet. "
+            "Use the search links below or mark this as Needs Research."
+        )
+    elif not name:
+        cand["enrichment_status"] = "partial"
+        notes = (
+            "Partial enrichment — Logan derived opportunity + offer info, "
+            "but the business name is missing. Add it to keep going."
+        )
+    elif not cand["contact_routes"]:
+        cand["enrichment_status"] = "partial"
+        notes = (
+            "Partial enrichment — no contact route on file yet "
+            "(phone / email / website / Facebook). Click a search link "
+            "below to find one."
+        )
+    else:
+        cand["enrichment_status"] = "enriched"
+        notes = (
+            f"Enriched. {len(flags)} weak-presence flag"
+            f"{'s' if len(flags) != 1 else ''} · "
+            f"{len(cand['contact_routes'])} contact route"
+            f"{'s' if len(cand['contact_routes']) != 1 else ''} · "
+            f"ready_for_outreach={cand['ready_for_outreach']}."
+        )
+    cand["enrichment_notes"] = notes
+    cand["last_enriched_at"] = _now()
+
+    # Persist via _clean (re-computes score from current fields).
+    cleaned = _clean(cand, existing=items[idx])
+    cleaned["id"] = cid
+    items[idx] = cleaned
+    _save(items)
+    return cleaned
+
+
+def bulk_enrich(ids: list[str]) -> dict:
+    """
+    Run enrich() against every id. Returns:
+      {enriched: [row, ...], failed: [{id, reason}, ...]}
+    Per-row errors don't abort the batch.
+    """
+    if not isinstance(ids, list) or not ids:
+        raise ValueError("ids must be a non-empty list")
+    enriched: list[dict] = []
+    failed: list[dict] = []
+    for cid in ids:
+        try:
+            enriched.append(enrich(cid))
+        except KeyError:
+            failed.append({"id": cid, "reason": "not found"})
+        except (ValueError, OSError) as e:
+            failed.append({"id": cid, "reason": str(e)})
+    return {"enriched": enriched, "failed": failed}

@@ -1318,6 +1318,11 @@
             margin-top: 0.25rem; padding-top: 0.4rem;
             border-top: 1px solid #f1f5f9;
         }
+        /* v9.0: bulk-enrich row above the selection toolbar. */
+        .candidates-enrich-bar {
+            display: flex; flex-wrap: wrap; gap: 0.3rem;
+            margin: 0.4rem 0 0.3rem;
+        }
         /* v8.9.1: discovery_source badge + search-platform link strip. */
         .cand-source-badge {
             display: inline-block; padding: 0.1rem 0.5rem;
@@ -1340,6 +1345,81 @@
             display: block; font-size: 0.72rem; color: #64748b;
             font-style: italic; margin-bottom: 0.2rem;
         }
+        /* ===== v9.0: Lead Enrichment Engine ============================ */
+        .cand-enriched-section {
+            margin-top: 0.4rem; padding: 0.5rem 0.6rem;
+            background: #f8fafc; border-radius: 6px;
+            border-left: 3px solid #cbd5e1;
+        }
+        .cand-enriched-section .cand-section-label {
+            display: block; font-size: 0.7rem; color: #64748b;
+            font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.04em; margin-bottom: 0.3rem;
+        }
+        .cand-missing-chips {
+            display: flex; flex-wrap: wrap; gap: 0.25rem;
+        }
+        .cand-missing-chip {
+            display: inline-flex; align-items: center; gap: 0.2rem;
+            padding: 0.1rem 0.5rem; border-radius: 999px;
+            font-size: 0.7rem; font-weight: 600;
+            text-transform: capitalize;
+        }
+        .cand-missing-chip[data-status="found"]       { background: #d8efd8; color: #2d6a3a; }
+        .cand-missing-chip[data-status="missing"]     { background: #f1d4d4; color: #7a2424; }
+        .cand-missing-chip[data-status="needs_check"] { background: #fff6e0; color: #8a6320; }
+        .cand-reason-list {
+            margin: 0.2rem 0 0; padding-left: 1rem;
+            font-size: 0.78rem; color: #334155;
+        }
+        .cand-reason-list li { margin: 0.1rem 0; }
+        .cand-offer-block {
+            display: grid; grid-template-columns: max-content 1fr;
+            gap: 0.2rem 0.6rem; font-size: 0.78rem; color: #334155;
+            margin: 0.2rem 0 0;
+        }
+        .cand-offer-block .cand-offer-label {
+            color: #64748b; font-weight: 600;
+        }
+        .cand-draft-block {
+            margin-top: 0.25rem; background: #fff;
+            border: 1px solid #e2e8f0; border-radius: 5px;
+            padding: 0.4rem 0.5rem;
+        }
+        .cand-draft-block .cand-draft-header {
+            display: flex; justify-content: space-between;
+            align-items: center; gap: 0.3rem; margin-bottom: 0.2rem;
+        }
+        .cand-draft-block .cand-draft-label {
+            font-size: 0.7rem; color: #64748b; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .cand-draft-block pre {
+            margin: 0; padding: 0;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.76rem; color: #1f2937;
+            white-space: pre-wrap; word-break: break-word;
+            max-height: 14rem; overflow: auto;
+        }
+        .cand-ready-badge {
+            display: inline-flex; align-items: center; gap: 0.2rem;
+            padding: 0.15rem 0.55rem; border-radius: 999px;
+            background: #cfe1ff; color: #1c4f8f;
+            font-size: 0.7rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.04em;
+            margin-left: 0.3rem;
+        }
+        .cand-enrich-status {
+            display: inline-block; padding: 0.05rem 0.4rem;
+            border-radius: 4px; font-size: 0.65rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.03em;
+            margin-left: 0.3rem;
+        }
+        .cand-enrich-status-not_started   { background: #e2e8f0; color: #475569; }
+        .cand-enrich-status-enriched      { background: #d8efd8; color: #2d6a3a; }
+        .cand-enrich-status-partial       { background: #fff6e0; color: #8a6320; }
+        .cand-enrich-status-needs_research{ background: #fde2e2; color: #b34a4a; }
+        .cand-enrich-status-failed        { background: #f1d4d4; color: #7a2424; }
         @media (max-width: 720px) {
             .cand-field { flex-direction: column; gap: 0.1rem; }
             .cand-field-label { min-width: 0; }
@@ -2553,10 +2633,26 @@
                     </button>
                 </div>
             </form>
-            <!-- Bulk action toolbar. Visible always; selection state
-                 is per-card via checkboxes. -->
+            <!-- v9.0: Bulk-enrich + bulk-action toolbar. The two enrich
+                 buttons live above the selection toolbar so they're
+                 reachable without ticking checkboxes first. -->
+            <div class="candidates-enrich-bar">
+                <button type="button" id="candidates-enrich-visible"
+                        class="row-action primary"
+                        title="Enrich every candidate that passes the current filter">
+                    ✨ Enrich All Visible
+                </button>
+                <button type="button" id="candidates-enrich-top25"
+                        class="row-action"
+                        title="Enrich the 25 highest-score non-converted candidates">
+                    ⭐ Enrich Top 25
+                </button>
+            </div>
+            <!-- Selection-driven bulk toolbar (hidden until a candidate
+                 checkbox is ticked). -->
             <div id="candidates-bulk" class="candidates-bulk" hidden>
                 <span id="candidates-selected-count" class="muted">0 selected</span>
+                <button type="button" class="row-action" data-candidates-bulk="enrich">✨ Enrich selected</button>
                 <button type="button" class="row-action" data-candidates-bulk="approve">Approve selected</button>
                 <button type="button" class="row-action" data-candidates-bulk="reject">Reject selected</button>
                 <button type="button" class="row-action" data-candidates-bulk="needs_research">Mark needs research</button>
@@ -2564,15 +2660,24 @@
                 <button type="button" class="row-action danger" data-candidates-bulk="delete">Delete</button>
                 <button type="button" class="row-action" data-candidates-bulk="export">Export</button>
             </div>
-            <!-- Filter chips by confidence band. -->
+            <!-- Filter chips. v9.0 adds quality-of-data filters
+                 (Needs Email / Needs Phone / No Website / Facebook Only /
+                 Ready for Outreach) on top of the v8.8 confidence bands. -->
             <div id="candidates-filters" class="candidates-filters"
-                 role="toolbar" aria-label="Filter by quality">
+                 role="toolbar" aria-label="Filter candidates">
                 <button type="button" class="cand-filter is-active" data-cand-filter="all">All</button>
                 <button type="button" class="cand-filter" data-cand-filter="Hot">🔥 Hot</button>
                 <button type="button" class="cand-filter" data-cand-filter="Warm">🌤️ Warm</button>
                 <button type="button" class="cand-filter" data-cand-filter="Research">🔍 Research</button>
                 <button type="button" class="cand-filter" data-cand-filter="Reject">✗ Reject</button>
+                <button type="button" class="cand-filter" data-cand-filter="needs_email">📧 Needs Email</button>
+                <button type="button" class="cand-filter" data-cand-filter="needs_phone">📞 Needs Phone</button>
+                <button type="button" class="cand-filter" data-cand-filter="no_website">🌐 No Website</button>
+                <button type="button" class="cand-filter" data-cand-filter="facebook_only">📘 Facebook Only</button>
+                <button type="button" class="cand-filter" data-cand-filter="ready_for_outreach">🚀 Ready for Outreach</button>
+                <button type="button" class="cand-filter" data-cand-filter="needs_research_approval">🔎 Needs Research</button>
                 <button type="button" class="cand-filter" data-cand-filter="converted">✓ Converted</button>
+                <button type="button" class="cand-filter" data-cand-filter="rejected">✗ Rejected</button>
             </div>
             <div id="candidates-list" class="candidates-list">
                 <div class="muted">Loading…</div>
