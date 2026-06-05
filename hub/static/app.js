@@ -4921,6 +4921,422 @@ if (_enrichTop25Btn) {
     });
 }
 
+// ======================================================================
+// v9.1: One-Click Lead Desk — picks + status groups + simplified cards
+// + Ready-to-Send view. The advanced #candidates-list still renders via
+// renderCandidates(); v9.1 just adds another rendering surface on top.
+// ======================================================================
+
+let _logansPicks = [];
+
+function _classifyCandidate(c) {
+    const approval   = c.approval_status || 'pending';
+    const conf       = c.confidence || '';
+    const ds         = c.discovery_source || 'manual';
+    const hasName    = !!(c.business_name && c.business_name.trim());
+    if (approval === 'converted') return 'converted';
+    if (approval === 'rejected')  return 'rejected';
+    if (approval === 'needs_research') return 'needs_research';
+    if (!hasName && ds === 'research_mission') return 'needs_research';
+    if (conf === 'Reject') return 'rejected';
+    if (c.ready_for_outreach) return 'hot';
+    if (conf === 'Hot' || conf === 'Warm') return 'hot';
+    return 'maybe';
+}
+
+function _primaryActionFor(c) {
+    // Decide ONE primary action per card. Status drives the choice.
+    const approval = c.approval_status || 'pending';
+    if (approval === 'converted') {
+        return { label: '📄 View Drafts', action: 'use_this_lead', cls: 'primary' };
+    }
+    if (approval === 'rejected') return null;
+    if (approval === 'needs_research') {
+        return { label: '🔍 Research This', action: 'research_this', cls: 'primary' };
+    }
+    const hasName = !!(c.business_name && c.business_name.trim());
+    const hasContact = (c.contact_routes || []).length > 0;
+    if (hasName && hasContact) {
+        return { label: '✓ Use This Lead', action: 'use_this_lead', cls: 'primary' };
+    }
+    return { label: '🔍 Research This', action: 'research_this', cls: 'primary' };
+}
+
+function _renderPickCard(p) {
+    const id = _escape(p.id);
+    const name = p.business_name && p.business_name.trim()
+        ? _escape(p.business_name)
+        : `<span class="cand-name-placeholder">— empty slot —</span>`;
+    const readyBadge = p.ready_for_outreach
+        ? `<span class="cand-ready-badge">🚀 Ready</span>` : '';
+    const action = _primaryActionFor(p) || { label: '—', action: 'use_this_lead', cls: 'row-action' };
+    const offerLine = p.suggested_offer_angle
+        ? `<div class="pick-offer">💡 ${_escape(p.suggested_offer_angle)}</div>` : '';
+    return (
+        `<div class="pick-card" data-cand-id="${id}">` +
+          `<div class="pick-name">${name}` +
+            `<span class="cand-score-badge cand-score-${_escape(p.confidence || 'Research')}">${_escape(p.confidence || '')} · ${p.score}</span>` +
+            readyBadge +
+          `</div>` +
+          `<div class="pick-meta">${_escape(p.category || '')} · ${_escape(p.city_state || '')}</div>` +
+          (p.pick_reason ? `<div class="pick-reason">${_escape(p.pick_reason)}</div>` : '') +
+          (p.best_contact_route ? `<div class="pick-contact">${_escape(p.best_contact_route)}</div>` : '') +
+          offerLine +
+          `<div class="pick-actions">` +
+            `<button type="button" class="row-action ${_escape(action.cls)}" ` +
+              `data-cand-action="${_escape(action.action)}" data-cand-id="${id}">${_escape(action.label)}</button>` +
+            `<button type="button" class="row-action" data-cand-action="reject" data-cand-id="${id}">Reject</button>` +
+          `</div>` +
+        `</div>`
+    );
+}
+
+function _renderSimpleCard(c) {
+    const id = _escape(c.id);
+    const conf = c.confidence || 'Research';
+    const approval = c.approval_status || 'pending';
+    const hasName = !!(c.business_name && c.business_name.trim());
+    const name = hasName
+        ? _escape(c.business_name)
+        : `<span class="v91-name-placeholder">— empty slot — research first</span>`;
+    const readyBadge = c.ready_for_outreach
+        ? `<span class="cand-ready-badge">🚀 Ready</span>` : '';
+    const action = _primaryActionFor(c);
+    const primaryBtn = action
+        ? `<button type="button" class="row-action ${_escape(action.cls)}" data-cand-action="${_escape(action.action)}" data-cand-id="${id}">${_escape(action.label)}</button>`
+        : '';
+    const reason = (c.opportunity_reasons && c.opportunity_reasons[0])
+        ? `<div class="v91-reason">${_escape(c.opportunity_reasons[0])}</div>` : '';
+    const contactLine = _bestContactSummary(c);
+    const contactRow = contactLine
+        ? `<div class="v91-contact">${_escape(contactLine)}</div>` : '';
+    // More Options reuses the v9.0 full card under a disclosure.
+    const fullCard = _renderCandidateCard(c);
+    return (
+        `<div class="cand-card-v91" data-cand-id="${id}">` +
+          `<div class="v91-head">` +
+            `<div class="v91-name">${name}${readyBadge}</div>` +
+            `<span class="cand-score-badge cand-score-${_escape(conf)}">${_escape(conf)} · ${c.score}</span>` +
+          `</div>` +
+          `<div class="v91-meta">${_escape(c.category || '')} · ${_escape(c.city_state || '')}</div>` +
+          reason +
+          contactRow +
+          `<div class="v91-actions">${primaryBtn}` +
+            (approval !== 'rejected' && approval !== 'converted'
+              ? `<button type="button" class="row-action" data-cand-action="reject" data-cand-id="${id}">Reject</button>` : '') +
+          `</div>` +
+          `<details class="v91-more">` +
+            `<summary>More options · raw fields · score math · drafts</summary>` +
+            `<div class="v91-more-body">${fullCard}</div>` +
+          `</details>` +
+        `</div>`
+    );
+}
+
+function _bestContactSummary(c) {
+    const parts = [];
+    if ((c.phone || '').trim())       parts.push(`📞 ${c.phone}`);
+    if ((c.email || '').trim())       parts.push(`✉ ${c.email}`);
+    if ((c.facebook_url || '').trim() ||
+        ((c.source_url || '').toLowerCase().includes('facebook.com'))) parts.push('📘 Facebook');
+    if ((c.website_url || '').trim()) parts.push('🌐 Website');
+    if (!parts.length) return '';
+    return parts.join(' · ');
+}
+
+function renderCandidateGroups() {
+    // Picks (Logan's Picks) — only shown when populated.
+    const picksSection = document.getElementById('logans-picks');
+    const picksList    = document.getElementById('picks-list');
+    const picksCount   = document.getElementById('picks-count');
+    if (picksSection && picksList) {
+        if (_logansPicks.length === 0) {
+            picksSection.hidden = true;
+        } else {
+            picksSection.hidden = false;
+            picksList.innerHTML = _logansPicks.map(_renderPickCard).join('');
+            if (picksCount) picksCount.textContent =
+                `(${_logansPicks.length} pick${_logansPicks.length === 1 ? '' : 's'})`;
+        }
+    }
+    // Status groups — bucket every candidate.
+    const buckets = { hot: [], maybe: [], needs_research: [], rejected: [], converted: [] };
+    for (const c of _candidates) buckets[_classifyCandidate(c)].push(c);
+    // Sort each by score desc (converted/rejected by recency).
+    for (const k of Object.keys(buckets)) {
+        buckets[k].sort((a, b) => (b.score || 0) - (a.score || 0));
+    }
+    document.querySelectorAll('[data-group-list]').forEach(el => {
+        const k = el.dataset.groupList;
+        const rows = buckets[k] || [];
+        if (rows.length === 0) {
+            el.innerHTML = `<div class="cand-group-empty">— no candidates here —</div>`;
+        } else {
+            el.innerHTML = rows.map(_renderSimpleCard).join('');
+        }
+    });
+    document.querySelectorAll('[data-group-count]').forEach(el => {
+        const k = el.dataset.groupCount;
+        const n = (buckets[k] || []).length;
+        el.textContent = n ? `(${n})` : '';
+    });
+}
+
+async function loadLogansPicks() {
+    try {
+        const r = await fetch('/api/lead-candidates/picks?k=5');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _logansPicks = d.picks || [];
+    } catch (err) {
+        _logansPicks = [];
+    }
+}
+
+// Patch loadCandidates so any v9.1 surfaces refresh alongside the
+// v9.0 #candidates-list. We override the prior assignment by wrapping.
+const _v90_loadCandidates = loadCandidates;
+loadCandidates = async function() {
+    await _v90_loadCandidates();
+    await loadLogansPicks();
+    renderCandidateGroups();
+};
+
+// v9.1: One-click "Find Leads For Me" form handler.
+const _candidatesDoForm = document.getElementById('candidates-do-form');
+if (_candidatesDoForm) {
+    _candidatesDoForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(_candidatesDoForm).entries());
+        const body = {
+            category:   data.category,
+            city_state: data.city_state,
+            count:      parseInt(data.count, 10) || 10,
+            website_status_target: 'any local business',
+        };
+        const status = document.getElementById('cmd-status');
+        const btn = document.getElementById('candidates-do-it-all');
+        if (status) status.textContent =
+            `Logan is finding, enriching, and ranking leads for ${body.category} in ${body.city_state}…`;
+        if (btn) btn.disabled = true;
+        try {
+            const r = await fetch('/api/lead-candidates/do-it-all', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            await loadCandidates();
+            if (status) status.textContent = d.message || 'Done.';
+            // Show the next-step banner now that there's something to act on.
+            const banner = document.getElementById('candidates-next-banner');
+            if (banner && (d.picks_count || 0) > 0) banner.hidden = false;
+        } catch (err) {
+            if (status) status.textContent =
+                'Find Leads For Me failed: ' + (err.message || err);
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    });
+}
+
+// ----- Ready-to-Send view --------------------------------------------
+// Opens when a card's Use This Lead button is clicked. Auto-converts
+// the candidate to a Logan lead (skipped if already converted), then
+// shows the drafts + Copy buttons + Mark Contacted.
+let _rtsLeadId = null;     // the underlying Logan lead id once converted
+let _rtsCandId = null;     // the candidate id
+
+function _renderReadyToSend(cand, leadId) {
+    _rtsLeadId = leadId;
+    _rtsCandId = cand.id;
+    const el = document.getElementById('ready-to-send');
+    if (!el) return;
+    const drafts = cand.outreach_drafts || {};
+    const name = (cand.business_name || '').trim() || '(unnamed)';
+    const reason = (cand.opportunity_reasons && cand.opportunity_reasons[0]) ||
+                   (cand.pick_reason || 'Worth a touch.');
+    const contact = _bestContactSummary(cand) || '(none on file)';
+    const offer = cand.suggested_offer_angle ||
+        'Free homepage mockup. Starter website fix from $150.';
+    const draftBlock = (label, key) => drafts[key]
+        ? `<div class="rts-draft">` +
+            `<div class="rts-draft-header">` +
+              `<strong>${label}</strong>` +
+              `<button type="button" class="row-action" data-rts-copy="${key}">Copy</button>` +
+            `</div>` +
+            (key === 'email_body' && drafts.email_subject
+              ? `<div style="font-size:0.72rem;color:#64748b;margin-bottom:0.2rem;">Subject: ${_escape(drafts.email_subject)}</div>`
+              : '') +
+            `<pre>${_escape(drafts[key])}</pre>` +
+          `</div>`
+        : '';
+    el.innerHTML =
+        `<h4 class="rts-h">📨 Lead Ready — Review &amp; Send Manually</h4>` +
+        `<div class="rts-row">` +
+          `<span class="rts-label">Business:</span><span>${_escape(name)}</span>` +
+          `<span class="rts-label">Category:</span><span>${_escape(cand.category || '')} · ${_escape(cand.city_state || '')}</span>` +
+          `<span class="rts-label">Contact route:</span><span>${_escape(contact)}</span>` +
+          `<span class="rts-label">Why this lead:</span><span>${_escape(reason)}</span>` +
+          `<span class="rts-label">Suggested offer:</span><span>${_escape(offer)}</span>` +
+        `</div>` +
+        draftBlock('Email draft', 'email_body') +
+        draftBlock('Facebook DM', 'fb_message') +
+        draftBlock('Text message', 'sms_message') +
+        draftBlock('Phone call notes', 'phone_notes') +
+        `<div class="rts-actions">` +
+          `<button type="button" class="row-action primary" data-rts-action="mark_contacted">✓ Mark Contacted (manual send done)</button>` +
+          `<button type="button" class="row-action" data-rts-action="back">← Back to Leads</button>` +
+        `</div>`;
+    el.hidden = false;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function _hideReadyToSend() {
+    const el = document.getElementById('ready-to-send');
+    if (el) { el.hidden = true; el.innerHTML = ''; }
+    _rtsLeadId = null; _rtsCandId = null;
+}
+
+// Use This Lead: convert (skip if already converted) + open Ready-to-Send.
+async function _useThisLead(cid) {
+    const status = document.getElementById('cmd-status');
+    const cand = _candidates.find(c => c.id === cid) || _logansPicks.find(p => p.id === cid);
+    if (!cand) {
+        if (status) status.textContent = 'Lead not found — refresh and try again.';
+        return;
+    }
+    try {
+        // If the candidate isn't enriched yet, enrich first so the
+        // Ready-to-Send view has drafts.
+        if (!cand.outreach_drafts || !cand.outreach_drafts.email_body) {
+            await fetch(`/api/lead-candidates/${encodeURIComponent(cid)}/enrich`, { method: 'POST' });
+        }
+        let leadId = cand.converted_lead_id || null;
+        const approval = cand.approval_status || 'pending';
+        if (approval !== 'converted') {
+            // Auto-approve if still pending — the user clicking
+            // Use This Lead is an implicit approve+convert.
+            if (approval === 'pending' || approval === 'needs_research') {
+                await fetch(`/api/lead-candidates/${encodeURIComponent(cid)}/approve`, { method: 'POST' });
+            }
+            const r = await fetch(`/api/lead-candidates/${encodeURIComponent(cid)}/convert`, { method: 'POST' });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            leadId = d.lead.id;
+        }
+        // Refresh state to pick up the converted row + drafts.
+        await loadCandidates();
+        await loadLeads();
+        const fresh = _candidates.find(c => c.id === cid) || cand;
+        _renderReadyToSend(fresh, leadId);
+        if (status) status.textContent =
+            'Lead ready. Review drafts, copy what you want, then send manually.';
+    } catch (err) {
+        if (status) status.textContent =
+            'Use This Lead failed: ' + (err.message || err);
+    }
+}
+
+// Ready-to-Send button delegator (Copy / Mark Contacted / Back).
+const _rtsEl = document.getElementById('ready-to-send');
+if (_rtsEl) {
+    _rtsEl.addEventListener('click', async (e) => {
+        const copyBtn = e.target.closest('button[data-rts-copy]');
+        const actBtn  = e.target.closest('button[data-rts-action]');
+        const status = document.getElementById('cmd-status');
+        if (copyBtn) {
+            const key = copyBtn.dataset.rtsCopy;
+            const cand = _candidates.find(c => c.id === _rtsCandId);
+            const text = cand && cand.outreach_drafts ? (cand.outreach_drafts[key] || '') : '';
+            if (!text) {
+                if (status) status.textContent = 'Nothing to copy yet.';
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(text);
+                if (status) status.textContent = `${key.replace('_', ' ')} copied.`;
+            } catch (clipErr) {
+                if (status) status.textContent = 'Clipboard unavailable — select the text and copy manually.';
+            }
+            return;
+        }
+        if (actBtn) {
+            const a = actBtn.dataset.rtsAction;
+            if (a === 'back') { _hideReadyToSend(); return; }
+            if (a === 'mark_contacted') {
+                if (!_rtsLeadId) {
+                    if (status) status.textContent = 'No converted lead to update.';
+                    return;
+                }
+                try {
+                    const r = await fetch(`/api/leads/${encodeURIComponent(_rtsLeadId)}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ outreach_status: 'contacted' }),
+                    });
+                    if (!r.ok) {
+                        const d = await r.json().catch(() => ({}));
+                        throw new Error(d.detail || 'http ' + r.status);
+                    }
+                    await loadLeads();
+                    if (status) status.textContent =
+                        'Lead marked contacted. Schedule a follow-up from LinkedIn Leads if needed.';
+                    _hideReadyToSend();
+                } catch (err) {
+                    if (status) status.textContent =
+                        'Mark contacted failed: ' + (err.message || err);
+                }
+            }
+        }
+    });
+}
+
+// Hook v9.1 actions into the existing per-card delegator. The
+// delegator already handles approve/reject/needs_research/convert —
+// we add use_this_lead + research_this here so the simplified card
+// + Logan's Picks buttons route correctly.
+document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-cand-action="use_this_lead"], button[data-cand-action="research_this"]');
+    if (!btn) return;
+    const cid = btn.dataset.candId;
+    if (!cid) return;
+    const action = btn.dataset.candAction;
+    if (action === 'use_this_lead') {
+        await _useThisLead(cid);
+        return;
+    }
+    if (action === 'research_this') {
+        // Flip to needs_research if not already, open advanced panel,
+        // and scroll to the card's full detail.
+        try {
+            const cand = _candidates.find(c => c.id === cid);
+            if (cand && cand.approval_status !== 'needs_research') {
+                await fetch(`/api/lead-candidates/${encodeURIComponent(cid)}/needs-research`, { method: 'POST' });
+                await loadCandidates();
+            }
+            // Open the advanced details so the user sees the search strip.
+            const adv = document.getElementById('candidates-advanced');
+            if (adv) adv.open = true;
+            // Scroll the simplified card so its More Options is visible.
+            const target = document.querySelector(`.cand-card-v91[data-cand-id="${cid}"]`);
+            if (target) {
+                const more = target.querySelector('.v91-more');
+                if (more) more.open = true;
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            const status = document.getElementById('cmd-status');
+            if (status) status.textContent =
+                'Marked Needs Research — open the search links below to find the missing info.';
+        } catch (err) {
+            const status = document.getElementById('cmd-status');
+            if (status) status.textContent =
+                'Research This failed: ' + (err.message || err);
+        }
+    }
+});
+
 // --- v8.1: Auto Lead Generator (missions) ---------------------------------
 // Mission = Google search query + URL. Hub never fetches the URL —
 // Topher opens it manually. Per-card actions only mutate local state

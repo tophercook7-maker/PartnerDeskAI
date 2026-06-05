@@ -1909,6 +1909,42 @@ def api_candidates_bulk_enrich(body: CandidateBulkEnrichIn) -> dict:
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# --- v9.1: One-Click Lead Desk -----------------------------------------
+# Single end-to-end pipeline: discover → enrich → rank → return picks.
+# Same safety perimeter as the underlying calls (OSM read-only, no auto-
+# contact, no scraping, no paid APIs). The UI uses this for the
+# "Find Leads For Me" big button so the user sees ONE progress state.
+
+@app.get("/api/lead-candidates/picks")
+def api_candidates_picks(k: int = 5) -> dict:
+    """v9.1: return the current Logan's Picks without running discovery.
+    Lets the UI refresh picks after a manual edit or status flip."""
+    if k < 1: k = 1
+    if k > 50: k = 50
+    picks = cand_mod.compute_picks(k=k)
+    return {"picks": picks, "count": len(picks)}
+
+
+@app.post("/api/lead-candidates/do-it-all")
+def api_candidates_do_it_all(body: CandidateFindIn) -> dict:
+    """v9.1 'Do It All For Me' (a.k.a. the big Find-Leads-For-Me button):
+    runs OSM discover → auto-enrich just-added rows → return server-
+    computed picks (top 5 across the whole queue). One round trip
+    for the whole pipeline."""
+    try:
+        result = cand_mod.do_it_all(
+            category=body.category,
+            city_state=body.city_state,
+            count=body.count,
+            website_status_target=body.website_status_target or "any local business",
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except overpass_mod.OverpassError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 @app.post("/api/lead-candidates/{cid}/convert")
 def api_candidates_convert(cid: str) -> dict:
     try:

@@ -1,6 +1,124 @@
 # PartnerDeskAI Changelog
 
-Newest first. v9.0 is the current shipped version.
+Newest first. v9.1 is the current shipped version.
+
+---
+
+## v9.1 — Logan One-Click Lead Desk
+
+v9.0 added enrichment but the user still had to manage too many decisions:
+which button to click, what to enrich, what to approve, what to convert,
+what to prepare-outreach. v9.1 collapses the routine path into one
+button — **🚀 Find Leads For Me** — and reorganizes everything around
+status groups + Logan's Picks instead of filter chips.
+
+The advanced v9.0 controls (multi-button form, filter chips, bulk
+toolbar, raw candidate list) are still present under an **Advanced
+controls** disclosure for power users. Nothing is removed.
+
+**New backend pipeline:**
+
+`POST /api/lead-candidates/do-it-all` runs in one round trip:
+1. `discover_via_overpass` (OSM + research-mission fallback — unchanged from v8.9.1)
+2. `bulk_enrich` on the just-added rows (unchanged from v9.0)
+3. `compute_picks(k=5)` — top 5 across the whole queue, server-side
+
+Response carries `discover` + `enrichment` counts + `picks` array.
+Each pick is augmented with `pick_reason` (one sentence from
+`opportunity_reasons[0]`) and `best_contact_route` (one-line summary).
+
+New supporting endpoint `GET /api/lead-candidates/picks?k=5` lets the
+UI refresh picks after manual edits without re-running discovery.
+
+`compute_picks` ranks: `ready_for_outreach` first, then `score` desc.
+Excludes `approval_status='converted' / 'rejected'` and
+`confidence='Reject'` — verified live (converted rows drop out, a
+corporate-tagged candidate scoring -5 stays out of picks).
+
+**New UI shell (replaces the v9.0 filter-chip view as the default):**
+
+- Big primary button **🚀 Find Leads For Me** with just 3 inputs
+  (business type, location, count) — runs the whole pipeline
+- "What do I do next?" callout appears after a run, copy-verbatim:
+  *"Start with Logan's Picks. Click Use This Lead on the best one.
+  Logan will prepare the outreach, but you still send it manually."*
+- **🏆 Logan's Picks** section at the top — top 5 cards with
+  pick_reason, best_contact_route, suggested offer, one main action
+- Status group sections, each a collapsible `<details>`:
+  **🔥 Hot Leads** (ready_for_outreach), **🌤️ Maybe Leads** (pending
+  with name + score), **🔍 Needs Research** (needs_research approval
+  or empty research-mission), **✗ Rejected**, **✓ Converted**
+- Hot + Maybe open by default; Needs Research, Rejected, Converted
+  collapsed by default
+
+**New simplified card** — shows only:
+- Name + score badge + Ready badge
+- Category · location
+- One-line "Why Logan picked it" (from `opportunity_reasons[0]`)
+- One-line contact summary
+- ONE primary action: **✓ Use This Lead** (when ready) or
+  **🔍 Research This** (when missing name/contact) or **Reject**
+
+All of v9.0's detail (missing-data chips, score math, weak presence
+flags, raw editable fields, drafts panel, Enrich, Prepare Outreach,
+Mark Researched, Delete, Save) collapses under
+**⋯ More options** disclosure. Nothing is removed — just defaulted-hidden.
+
+**New Ready-to-Send view** — when **Use This Lead** is clicked:
+1. JS auto-approves the candidate if pending
+2. Calls convert (creates a Logan lead with `source='Logan'`,
+   `outreach_status='not_started'`)
+3. Opens a focused panel that takes over the top of Possible Leads:
+   - Business / Category / Contact route / Why this lead / Suggested offer
+   - 4 draft blocks (Email, Facebook DM, Text message, Phone notes)
+     each with **Copy** button (clipboard API + graceful fallback)
+   - **✓ Mark Contacted** — updates the lead's `outreach_status` to
+     `contacted` and closes the panel
+   - **← Back to Leads** — closes the panel
+
+If the candidate is unenriched at click time, Use This Lead enriches
+first so drafts are guaranteed to exist when the panel opens. If the
+candidate is already converted, conversion is skipped and the panel
+opens directly.
+
+**Research This** flow: flips the candidate to `needs_research`, opens
+the Advanced disclosure, and scrolls the card's More Options open so
+the search-link strip (Google / Facebook / Maps + per-field Find Email,
+Find Phone, etc.) is immediately visible.
+
+**Live verification (7 tests):**
+
+```
+1. do-it-all (Austin TX cafes, count=4)
+   → 4 OSM + 0 fallback + 4 enriched + 3 picks; one round trip ~6s
+2. GET /api/lead-candidates/picks?k=3 returns the same picks
+3. PUT phone + re-enrich → ready_for_outreach=True, contact_routes=['phone']
+4. Use This Lead flow: approve → convert succeeds, lead.source='Logan',
+   outreach_status='not_started'
+5. Mark Contacted: PUT outreach_status='contacted' → 200
+6. picks/v after convert: converted row excluded
+7. compute_picks excludes Reject-confidence rows (corporate, score=-5)
+```
+
+Christian Kovac safe across the cycle. Test candidates + test lead
+all cleaned up; leads.json byte-identical to pre-test.
+
+**Compile checks:**
+- `py_compile hub/app.py automation/lead_candidates.py automation/lead_missions.py` → PASS
+- `node --check hub/static/app.js` → PASS
+- Module-init smoke (`/tmp/run_app.js`) → PASS
+
+**Safety perimeter — every constraint preserved:**
+
+- ❌ No auto-contact. No auto-send. No form submission. No scraping.
+  No paid APIs. No OAuth. No new Python deps.
+- ❌ Zero "3 free fixes" language added in the v9.1 diff (verified
+  by `git diff | grep`).
+- ✅ Use This Lead auto-collapses Approve → Convert → Prepare-Outreach
+  into one click, but **send is still manual** — the user copies a
+  draft, sends it from their own client, then clicks Mark Contacted.
+- ✅ Discover still goes through Nominatim + Overpass only (the v8.9.1
+  flow). No new outbound endpoints.
 
 ---
 

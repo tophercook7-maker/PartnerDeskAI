@@ -1395,3 +1395,164 @@ def bulk_enrich(ids: list[str]) -> dict:
         except (ValueError, OSError) as e:
             failed.append({"id": cid, "reason": str(e)})
     return {"enriched": enriched, "failed": failed}
+
+
+# ======================================================================
+# v9.1 One-Click Lead Desk
+# ----------------------------------------------------------------------
+# do_it_all() is the single end-to-end entry point: discover → enrich →
+# rank → return server-computed picks. The frontend can drive the whole
+# workflow with one call.
+#
+# Honest framing (still): no scraping, no paid APIs, no auto-contact.
+# This is the same Discover + bulk-enrich pipeline as before, just
+# bundled so the UI shows one progress state instead of three.
+# ======================================================================
+
+def _pick_reason(c: dict) -> str:
+    """
+    Build the one-sentence rationale shown under each Logan's Pick.
+    Pulls from opportunity_reasons first (most actionable), falls back
+    to weak_presence_flags or score_reasons. Never invents content.
+    """
+    opps = c.get("opportunity_reasons") or []
+    if opps:
+        # First opportunity is already most-actionable.
+        return opps[0]
+    flags = c.get("weak_presence_flags") or []
+    if flags:
+        return f"Weak presence: {flags[0]}"
+    reasons = c.get("score_reasons") or []
+    if reasons:
+        return reasons[0]
+    return "Scored " + str(c.get("score") or 0) + " — review the card."
+
+
+def _best_contact_route(c: dict) -> str:
+    """One-line summary of the best contact route on file."""
+    routes = c.get("contact_routes") or []
+    parts: list[str] = []
+    if "phone" in routes and (c.get("phone") or "").strip():
+        parts.append(f"📞 {c.get('phone')}")
+    if "email" in routes and (c.get("email") or "").strip():
+        parts.append(f"✉  {c.get('email')}")
+    if "facebook" in routes and ((c.get("facebook_url") or "").strip()
+                                  or "facebook.com" in (c.get("source_url") or "").lower()):
+        parts.append("📘 Facebook")
+    if "website" in routes and (c.get("website_url") or "").strip():
+        parts.append("🌐 Website")
+    if not parts:
+        return "No contact route yet — research first"
+    return " · ".join(parts)
+
+
+def compute_picks(items: list[dict] | None = None, k: int = 5) -> list[dict]:
+    """
+    Server-side Logan's Picks computation. Returns up to k candidate
+    rows ranked by ready_for_outreach first, then score desc, excluding
+    converted/rejected.
+
+    Each pick is the original row dict augmented with two keys:
+      - pick_reason:        the one-line rationale
+      - best_contact_route: the one-line contact summary
+    so the frontend doesn't have to compute them.
+    """
+    if k < 1:
+        k = 1
+    if items is None:
+        items = load()
+    candidates = [
+        c for c in items
+        if c.get("approval_status") not in ("converted", "rejected")
+        and (c.get("confidence") or "") != "Reject"
+    ]
+    # Sort: ready_for_outreach first, then by score desc.
+    candidates.sort(
+        key=lambda c: (
+            0 if c.get("ready_for_outreach") else 1,
+            -1 * (c.get("score") or 0),
+        )
+    )
+    picks: list[dict] = []
+    for c in candidates[:k]:
+        enriched_pick = dict(c)
+        enriched_pick["pick_reason"] = _pick_reason(c)
+        enriched_pick["best_contact_route"] = _best_contact_route(c)
+        picks.append(enriched_pick)
+    return picks
+
+
+def do_it_all(
+    category: str,
+    city_state: str,
+    count: int = 10,
+    website_status_target: str = "any local business",
+) -> dict:
+    """
+    The v9.1 one-click pipeline:
+      1. discover_via_overpass (OSM + research-mission fallback) — same
+         honest behavior as v8.9.1
+      2. bulk_enrich the just-added candidates — same local-only
+         derivation as v9.0
+      3. compute Logan's Picks (top 5) from the WHOLE current queue,
+         not just the newly added rows — so re-running picks up
+         previously-discovered candidates the user hasn't acted on yet.
+
+    Returns:
+      {
+        ok, discover: {...}, enrichment: {enriched_count, failed_count, failed},
+        picks: [top 5 with pick_reason + best_contact_route],
+        message: one-line summary,
+      }
+    """
+    discover_result = discover_via_overpass(
+        category=category,
+        city_state=city_state,
+        count=count,
+        website_status_target=website_status_target,
+    )
+    new_ids = [r["id"] for r in discover_result["added"] if r.get("id")]
+    enrichment_result = {"enriched_count": 0, "failed_count": 0, "failed": []}
+    if new_ids:
+        br = bulk_enrich(new_ids)
+        enrichment_result = {
+            "enriched_count": len(br["enriched"]),
+            "failed_count":   len(br["failed"]),
+            "failed":         br["failed"],
+        }
+
+    picks = compute_picks(k=5)
+
+    parts = [discover_result["message"]]
+    if enrichment_result["enriched_count"]:
+        parts.append(
+            f"Enriched {enrichment_result['enriched_count']} candidate"
+            f"{'s' if enrichment_result['enriched_count'] != 1 else ''}."
+        )
+    if picks:
+        ready_n = sum(1 for p in picks if p.get("ready_for_outreach"))
+        parts.append(
+            f"Logan's Picks: {len(picks)} (top by score)"
+            + (f" — {ready_n} ready to send" if ready_n else "")
+            + "."
+        )
+    else:
+        parts.append("No picks yet — fill in business name + contact on a card and re-enrich.")
+    message = " ".join(parts)
+
+    return {
+        "ok":         True,
+        "discover":   {
+            "osm_added":              discover_result["osm_added"],
+            "research_missions_added": discover_result["research_missions_added"],
+            "fallback_triggered":     discover_result["fallback_triggered"],
+            "added_count":            discover_result["added_count"],
+            "found":                  discover_result["found"],
+            "skipped_duplicates":     discover_result["skipped_duplicates"],
+            "display_name":           discover_result.get("display_name", ""),
+        },
+        "enrichment": enrichment_result,
+        "picks":      picks,
+        "picks_count": len(picks),
+        "message":    message,
+    }
