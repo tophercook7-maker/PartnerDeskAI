@@ -1420,6 +1420,150 @@
         .cand-enrich-status-partial       { background: #fff6e0; color: #8a6320; }
         .cand-enrich-status-needs_research{ background: #fde2e2; color: #b34a4a; }
         .cand-enrich-status-failed        { background: #f1d4d4; color: #7a2424; }
+        /* ===== v10.0: Sage SEO Partner ================================== */
+        .sage-section { padding: 0.4rem 0 0; }
+        .sage-dashboard {
+            background: linear-gradient(180deg, #f0f6ff 0%, #fff 100%);
+            border: 1px solid #cfe1ff; border-radius: 8px;
+            padding: 0.7rem 0.8rem; margin-bottom: 0.7rem;
+        }
+        .sage-dash-name {
+            font-weight: 700; font-size: 1.05rem; color: #1c4f8f;
+        }
+        .sage-dash-tagline {
+            font-size: 0.82rem; color: #475569; margin-bottom: 0.5rem;
+        }
+        .sage-dash-grid {
+            display: grid; gap: 0.4rem 0.6rem;
+            grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+        }
+        .sage-dash-stat {
+            display: flex; flex-direction: column; gap: 0.05rem;
+            background: #fff; border: 1px solid #cfe1ff;
+            border-radius: 6px; padding: 0.35rem 0.5rem;
+        }
+        .sage-dash-num {
+            font-size: 1.15rem; font-weight: 700; color: #1c4f8f;
+        }
+        .sage-dash-label {
+            font-size: 0.7rem; color: #64748b;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .sage-h3 { font-size: 0.95rem; color: #1c4f8f; margin: 0.6rem 0 0.3rem; }
+        .sage-add-form-details summary {
+            cursor: pointer; padding: 0.3rem 0;
+            font-size: 0.85rem; color: #475569;
+        }
+        .sage-projects-list {
+            display: flex; flex-direction: column; gap: 0.4rem;
+            margin: 0.3rem 0 0.6rem;
+        }
+        .sage-proj-card {
+            background: #fff; border: 1px solid #e2e8f0; border-radius: 6px;
+            padding: 0.5rem 0.6rem;
+            display: flex; flex-direction: column; gap: 0.25rem;
+        }
+        .sage-proj-head {
+            display: flex; align-items: baseline; gap: 0.4rem; flex-wrap: wrap;
+        }
+        .sage-proj-name {
+            font-weight: 600; font-size: 0.92rem; color: #1f2937;
+        }
+        .sage-proj-status {
+            display: inline-block; padding: 0.05rem 0.4rem;
+            border-radius: 999px; font-size: 0.65rem; font-weight: 600;
+            background: #d8efd8; color: #2d6a3a;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .sage-proj-meta { font-size: 0.78rem; color: #64748b; }
+        .sage-proj-goal { font-size: 0.82rem; color: #334155; }
+        .sage-proj-actions {
+            display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.2rem;
+        }
+        .sage-project-detail {
+            background: #fff; border: 1px solid #cfe1ff; border-radius: 8px;
+            padding: 0.7rem 0.8rem; margin: 0.4rem 0 0.8rem;
+        }
+        .sage-detail-h { color: #1c4f8f; font-size: 1rem; margin: 0 0 0.4rem; }
+        .sage-detail-tabs {
+            display: flex; flex-wrap: wrap; gap: 0.25rem; margin-bottom: 0.5rem;
+            border-bottom: 1px solid #e2e8f0; padding-bottom: 0.3rem;
+        }
+        .sage-tab {
+            padding: 0.3rem 0.7rem; border-radius: 5px;
+            border: 1px solid #cbd5e1; background: #fff;
+            font-size: 0.78rem; cursor: pointer;
+        }
+        .sage-tab.is-active { background: #1c4f8f; color: #fff; border-color: #1c4f8f; }
+        .sage-tab-body { padding: 0.3rem 0; }
+        .sage-audit-section {
+            margin-bottom: 0.6rem;
+        }
+        .sage-audit-section h4 {
+            margin: 0.3rem 0 0.2rem; font-size: 0.85rem; color: #1c4f8f;
+        }
+        .sage-audit-item {
+            display: flex; align-items: baseline; gap: 0.5rem;
+            font-size: 0.82rem; color: #334155;
+            padding: 0.2rem 0; border-bottom: 1px dashed #f1f5f9;
+        }
+        .sage-audit-item select {
+            font-size: 0.75rem; padding: 0.1rem 0.3rem;
+            border: 1px solid #cbd5e1; border-radius: 3px;
+        }
+        .sage-fix-card {
+            background: #fff; border: 1px solid #e2e8f0; border-radius: 5px;
+            padding: 0.4rem 0.5rem; margin-bottom: 0.3rem;
+            font-size: 0.82rem;
+        }
+        .sage-fix-head {
+            display: flex; gap: 0.3rem; align-items: baseline; flex-wrap: wrap;
+        }
+        .sage-fix-sev {
+            display: inline-block; padding: 0.05rem 0.4rem;
+            border-radius: 4px; font-size: 0.65rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .sage-fix-sev-critical { background: #fde2e2; color: #b34a4a; }
+        .sage-fix-sev-high     { background: #fde2e2; color: #b34a4a; }
+        .sage-fix-sev-medium   { background: #fff6e0; color: #8a6320; }
+        .sage-fix-sev-low      { background: #e2e8f0; color: #475569; }
+        .sage-fix-status {
+            display: inline-block; padding: 0.05rem 0.4rem;
+            border-radius: 999px; font-size: 0.65rem; font-weight: 600;
+        }
+        .sage-fix-status-suggested   { background: #fff6e0; color: #8a6320; }
+        .sage-fix-status-approved    { background: #cfe1ff; color: #1c4f8f; }
+        .sage-fix-status-in_progress { background: #cfe1ff; color: #1c4f8f; }
+        .sage-fix-status-completed   { background: #d8efd8; color: #2d6a3a; }
+        .sage-fix-status-skipped     { background: #e2e8f0; color: #64748b; }
+        .sage-fix-issue { font-weight: 600; color: #1f2937; }
+        .sage-fix-detail {
+            font-size: 0.78rem; color: #475569; margin: 0.15rem 0;
+        }
+        .sage-fix-actions {
+            display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.25rem;
+        }
+        .sage-report-section {
+            margin-bottom: 0.5rem;
+        }
+        .sage-report-section h4 {
+            margin: 0 0 0.2rem; font-size: 0.82rem; color: #1c4f8f;
+        }
+        .sage-report-section ul {
+            margin: 0; padding-left: 1.1rem; font-size: 0.82rem; color: #334155;
+        }
+        .sage-report-card {
+            background: #fafbfd; border: 1px solid #e2e8f0; border-radius: 6px;
+            padding: 0.5rem 0.6rem; margin-bottom: 0.4rem;
+        }
+        .sage-queue-details summary { cursor: pointer; padding: 0.3rem 0; }
+        .sage-queue-list { padding: 0.3rem 0; font-size: 0.82rem; }
+        .sage-queue-item {
+            display: flex; flex-direction: column; gap: 0.15rem;
+            background: #fff; border: 1px solid #fde2e2;
+            border-radius: 5px; padding: 0.4rem 0.5rem; margin-bottom: 0.3rem;
+        }
         /* ===== v9.3: Discovery provider chips ========================== */
         .discovery-providers {
             display: flex; flex-wrap: wrap; gap: 0.3rem;
@@ -3352,6 +3496,79 @@
                     <li>Do not mark packages <strong>Used</strong> just because they were generated.</li>
                     <li>Do not enter private customer information.</li>
                 </ul>
+            </div>
+        </section>
+    </details>
+
+    <!-- v10.0: SAGE — SEO Partner / agency project manager. Collapsed by default.
+         NO auto-publishing, NO OAuth, NO live GBP changes. Sage prepares
+         recommendations, drafts, reports, and task lists for manual approval. -->
+    <details class="partner-details" id="sage-details">
+        <summary class="partner-summary">
+            <span class="partner-summary-name">Sage</span>
+            <span class="partner-summary-role">SEO audits + project management</span>
+            <span class="partner-summary-metrics" data-partner-metrics="sage">—</span>
+        </summary>
+
+        <section class="sage-section">
+            <!-- Agency Dashboard card -->
+            <div class="sage-dashboard" id="sage-dashboard">
+                <div class="sage-dash-name" id="sage-agency-name">MixedMakerShop</div>
+                <div class="sage-dash-tagline" id="sage-agency-tagline"></div>
+                <div class="sage-dash-grid">
+                    <div class="sage-dash-stat"><span class="sage-dash-num" id="sage-stat-projects">—</span><span class="sage-dash-label">SEO projects</span></div>
+                    <div class="sage-dash-stat"><span class="sage-dash-num" id="sage-stat-active">—</span><span class="sage-dash-label">Active clients</span></div>
+                    <div class="sage-dash-stat"><span class="sage-dash-num" id="sage-stat-audits">—</span><span class="sage-dash-label">Audits run</span></div>
+                    <div class="sage-dash-stat"><span class="sage-dash-num" id="sage-stat-queue">—</span><span class="sage-dash-label">Fixes waiting approval</span></div>
+                    <div class="sage-dash-stat"><span class="sage-dash-num" id="sage-stat-reports">—</span><span class="sage-dash-label">Reports generated</span></div>
+                </div>
+            </div>
+
+            <!-- Add-project form -->
+            <h3 class="sage-h3">SEO Projects
+                <span id="sage-projects-count" class="muted"></span>
+            </h3>
+            <details class="sage-add-form-details">
+                <summary><strong>+ Add Client Project</strong></summary>
+                <form id="sage-project-add-form" class="leads-form" aria-label="Add SEO project">
+                    <input class="leads-input" name="client_name" placeholder="Client business name (required)" required>
+                    <input class="leads-input" name="website_url" placeholder="Website URL (e.g. https://example.com)">
+                    <input class="leads-input" name="business_type" placeholder="Business type (e.g. plumber, cafe)">
+                    <input class="leads-input" name="location" placeholder="Location / service area">
+                    <textarea class="leads-input" name="main_goal" rows="2" placeholder="Main SEO goal (e.g. 'rank for plumber + Hot Springs')"></textarea>
+                    <div class="leads-form-actions">
+                        <button type="submit" class="primary">Create Project</button>
+                    </div>
+                </form>
+                <div class="muted" style="font-size:0.78rem;margin-top:0.3rem;">
+                    Project name auto-formats to <code>MMS - &lt;client&gt; - SEO</code>.
+                </div>
+            </details>
+
+            <!-- Project list -->
+            <div id="sage-projects-list" class="sage-projects-list">
+                <div class="muted">Loading…</div>
+            </div>
+
+            <!-- Project detail overlay — replaces the project list when active -->
+            <div id="sage-project-detail" class="sage-project-detail" hidden></div>
+
+            <!-- Approval queue (cross-project) -->
+            <details class="sage-queue-details">
+                <summary><strong>🛂 Approval Queue (cross-project)</strong>
+                    <span id="sage-queue-count" class="muted"></span>
+                </summary>
+                <div id="sage-queue-list" class="sage-queue-list">
+                    <div class="muted">Loading…</div>
+                </div>
+            </details>
+
+            <div class="vp-callout vp-callout-info" style="margin-top: 0.6rem; font-size: 0.82rem;">
+                <strong>Sage never auto-publishes.</strong> Approved fixes
+                show up here as task lists you implement manually in
+                your own tooling. No OAuth, no live Google Business
+                Profile edits, no website publishing. Phase 3+ in the
+                roadmap can opt in to GSC/GA/GBP read-only integration.
             </div>
         </section>
     </details>

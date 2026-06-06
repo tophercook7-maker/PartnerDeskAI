@@ -1,6 +1,128 @@
 # PartnerDeskAI Changelog
 
-Newest first. v9.4 is the current shipped version.
+Newest first. v10.0 is the current shipped version.
+
+---
+
+## v10.0 — Sage SEO Partner (agency project management)
+
+PartnerDeskAI graduates from "lead generation + content publishing"
+into a multi-service operating system for the MixedMakerShop agency.
+v10.0 introduces **Sage**, a dedicated SEO and Local SEO partner with
+its own project hierarchy, audit checklists, fix-task lifecycle,
+approval queue, and monthly report generator.
+
+**Agency structure decision:** ONE agency account (MixedMakerShop).
+Clients become projects inside Sage, formatted
+`MMS - <Client Business Name> - SEO`. On first run of
+`GET /api/seo/projects`, Sage auto-seeds the
+`MMS - MixedMakerShop - SEO` project so the dashboard isn't empty.
+
+**New `automation/seo_partner.py`** (+~750 LOC):
+
+- **Agency:** single-record store, first-run bootstrap. `load_agency()`
+  / `save_agency()`.
+- **Projects:** list with inline `fix_tasks`. CRUD + cascading delete
+  (drops audit + report history when a project is removed).
+- **Fix-task lifecycle:** `suggested → approved → in_progress →
+  completed | skipped`. State-machine helpers
+  `approve_fix_task / start_fix_task / complete_fix_task / skip_fix_task`.
+  `requires_approval` defaults to True for high+critical severity.
+- **Approval queue:** cross-project or per-project view of every
+  fix_task where `requires_approval=True && status='suggested'`.
+  Severity-sorted (critical first).
+- **Audit generator:** static-template checklist with 12 Technical +
+  8 On-Page + 10 Local SEO items per the spec. Sage does NOT crawl
+  the site — the user works the checklist manually and updates
+  per-item statuses via `update_audit_item()`. History persisted
+  per-project, capped at 50.
+- **Monthly report generator:** synthesizes the spec's 6 sections
+  (What we checked / What we fixed / Current wins / Current issues /
+  Ranking notes / Next actions) from current project state.
+  Persisted per-project, capped at 50.
+- **`agency_dashboard()`** single-shot summary.
+
+**Storage** (all gitignored):
+- `data/seo_agency.json`
+- `data/seo_projects.json`
+- `data/seo_audits.json` (dict keyed by project_id)
+- `data/seo_reports.json` (dict keyed by project_id)
+
+**Hub API — 20 new endpoints:**
+
+- `GET/PUT /api/seo/agency`
+- `GET /api/seo/dashboard`
+- `GET/POST /api/seo/projects` + `GET/PUT/DELETE /api/seo/projects/{pid}`
+- `POST/PUT/DELETE /api/seo/projects/{pid}/fix-tasks[/{tid}]`
+- `POST .../{tid}/approve | /start | /complete | /skip`
+- `GET /api/seo/approval-queue` (cross-project) +
+  `GET /api/seo/projects/{pid}/approval-queue` (per-project)
+- `GET/POST /api/seo/projects/{pid}/audits`
+- `PUT /api/seo/projects/{pid}/audits/{audit_id}/items/{item_id}`
+- `GET/POST /api/seo/projects/{pid}/reports`
+
+Sage added to `/api/partners` with `status='active'` and live metrics
+(total/active projects, audits run, reports generated, approval queue
+length).
+
+**UI — new collapsible Sage section** (parallel to Parker / Logan /
+YouTube / Video / Olivia):
+
+- Agency Dashboard card with 5 stats (projects / active clients /
+  audits run / fixes waiting approval / reports generated)
+- Project list with one-click project cards (Open / Generate audit /
+  Monthly report)
+- Per-project detail view with 4 tabs: **Overview** (client info,
+  goals, keywords) / **Audit** (interactive checklist with per-item
+  status dropdowns) / **Website Fixes** (fix-task cards with
+  state-machine buttons) / **Reports** (6-section client-friendly
+  reports)
+- Add-project form (auto-formats `MMS - <client> - SEO`)
+- Inline add-fix-task form per project
+- Cross-project Approval Queue disclosure with Approve/Skip buttons
+- Auto-refresh when the user expands the Sage section
+
+**Live verification — 16 tests passed end-to-end:**
+
+```
+1. First-run agency bootstrap → MixedMakerShop
+2. First-run project bootstrap → MMS - MixedMakerShop - SEO with
+   spec-verbatim website/business_type/main_goal/target_keywords
+3. Dashboard reflects bootstrap state (1 project, 0 audits, 0 queue)
+4. Add new client project → name auto-formats to MMS - Joe Coffee Shop - SEO
+5. Generate audit → 12 tech + 8 on-page + 10 local items
+6. PUT audit item status → 'failing' with notes persists
+7. Add fix task (severity=high) → requires_approval=True automatically
+8. Approval queue includes the task
+9. approve → start → complete lifecycle works; completed_at stamped
+10. Queue empty after completion
+11. Monthly report generates with all 6 spec sections; what_we_fixed
+    pulls from completed tasks
+12. Dashboard updates to 2 projects, 1 audit, 1 report, 0 queue
+13. Sage appears in /api/partners with live metrics
+14. Delete project cascades audit + report history
+15. Empty client_name → 400
+16. Unknown project → 404
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+0/5 on the v10.0 diff (8 false positives in app.js for the regex
+catching `sage-task-action` substring — verified clean by hand).
+Christian Kovac untouched.
+
+**Safety perimeter — every spec constraint honored:**
+
+- ❌ NO auto-publishing of website changes
+- ❌ NO live Google Business Profile changes
+- ❌ NO OAuth / API connections (Phase 3+ in roadmap)
+- ❌ NO scraping, NO paid APIs, NO OpenAI calls
+- ❌ NO new Python dependencies (stdlib only)
+- ✅ Audit is a STATIC TEMPLATE; user works it manually
+- ✅ Approval required before high+critical fixes can be implemented
+- ✅ Reports are local-template synthesis from project state
+- ✅ All state is local JSON; data/seo_*.json all gitignored
+- ✅ Atomic writes via tempfile + os.replace
+- ✅ All inputs length-capped + enum-validated
 
 ---
 

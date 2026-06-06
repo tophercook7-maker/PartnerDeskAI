@@ -52,6 +52,7 @@ import scout_queue as scout_mod  # noqa: E402
 import lead_missions as missions_mod  # noqa: E402
 import youtube_partner as yt_mod  # noqa: E402
 import video_partner as vp_mod  # noqa: E402
+import seo_partner as sage_mod  # noqa: E402  (v10.0: Sage SEO Partner)
 import lead_candidates as cand_mod  # noqa: E402
 import overpass_discovery as overpass_mod  # noqa: E402  (v8.9: OSM Overpass client)
 import discovery as discovery_mod  # noqa: E402  (v9.3: pluggable provider registry)
@@ -1241,6 +1242,55 @@ class VideoPackageIn(BaseModel):
     body:   str | None = None
 
 
+# v10.0: Sage SEO Partner — agency, projects, fix-tasks, reports.
+class SeoAgencyIn(BaseModel):
+    """Single-record agency profile. All optional so PUT can patch."""
+    name:         str | None = None
+    tagline:      str | None = None
+    website_url:  str | None = None
+    service_area: str | None = None
+    notes:        str | None = None
+
+
+class SeoProjectIn(BaseModel):
+    """Client SEO project. project_name auto-derived from client_name
+    when omitted (format: 'MMS - <Client> - SEO')."""
+    client_name:           str | None = None
+    project_name:          str | None = None
+    website_url:           str | None = None
+    business_type:         str | None = None
+    location:              str | None = None
+    main_goal:             str | None = None
+    target_keywords:       list[str] | None = None
+    connected_data_sources: list[dict] | None = None
+    current_status:        str | None = None
+    next_action:           str | None = None
+    notes:                 str | None = None
+
+
+class SeoFixTaskIn(BaseModel):
+    """Fix task. seo_partner._clean_fix_task enforces issue required +
+    validates severity / status enums."""
+    issue:             str | None = None
+    severity:          str | None = None
+    recommended_fix:   str | None = None
+    page_affected:     str | None = None
+    status:            str | None = None
+    requires_approval: bool | None = None
+    notes:             str | None = None
+
+
+class SeoAuditItemUpdateIn(BaseModel):
+    """Update one checklist item's status + notes inside an audit."""
+    status: str | None = None
+    notes:  str | None = None
+
+
+class SeoReportIn(BaseModel):
+    """Optional explicit month (YYYY-MM). Defaults to current."""
+    month: str | None = None
+
+
 class ScoutLeadIn(BaseModel):
     """v7.28: scout-queue input. All optional so PUT can omit fields.
     Server's scout_mod._clean enforces business_name required +
@@ -1625,6 +1675,223 @@ def api_video_packages_delete(pkg_id: str) -> dict:
     if not vp_mod.delete_package(pkg_id):
         raise HTTPException(status_code=404, detail=f"Package {pkg_id!r} not found")
     return {"ok": True, "id": pkg_id}
+
+
+# ---- v10.0: Sage SEO Partner -----------------------------------------
+# Agency (single record), projects (list w/ inline fix_tasks), audits
+# (history dict), reports (history dict). Approval-based fix workflow.
+# NO auto-publishing. NO OAuth. NO live GBP changes. NO scraping.
+# NO paid APIs. NO new Python deps.
+
+@app.get("/api/seo/agency")
+def api_seo_agency_get() -> dict:
+    """v10.0: load (or first-run-bootstrap) the single agency record."""
+    return sage_mod.load_agency()
+
+
+@app.put("/api/seo/agency")
+def api_seo_agency_put(body: SeoAgencyIn) -> dict:
+    try:
+        return sage_mod.save_agency(body.model_dump(exclude_none=True))
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/seo/dashboard")
+def api_seo_dashboard() -> dict:
+    """v10.0: agency-dashboard summary (total projects, audits run,
+    reports generated, approval queue length, agency profile)."""
+    return sage_mod.agency_dashboard()
+
+
+@app.get("/api/seo/projects")
+def api_seo_projects_list() -> dict:
+    """v10.0: list every SEO project. First call auto-creates
+    MMS - MixedMakerShop - SEO so the dashboard isn't empty."""
+    items = sage_mod.load_projects()
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/seo/projects")
+def api_seo_projects_add(body: SeoProjectIn) -> dict:
+    try:
+        return sage_mod.add_project(body.model_dump(exclude_none=True))
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/seo/projects/{pid}")
+def api_seo_projects_get(pid: str) -> dict:
+    try:
+        return sage_mod.find_project(pid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Project {pid!r} not found")
+
+
+@app.put("/api/seo/projects/{pid}")
+def api_seo_projects_update(pid: str, body: SeoProjectIn) -> dict:
+    try:
+        return sage_mod.update_project(pid, body.model_dump(exclude_none=True))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Project {pid!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/seo/projects/{pid}")
+def api_seo_projects_delete(pid: str) -> dict:
+    if not sage_mod.delete_project(pid):
+        raise HTTPException(status_code=404, detail=f"Project {pid!r} not found")
+    return {"ok": True, "id": pid}
+
+
+# ---- Fix-task endpoints (inline on project) ----
+
+@app.post("/api/seo/projects/{pid}/fix-tasks")
+def api_seo_fix_tasks_add(pid: str, body: SeoFixTaskIn) -> dict:
+    try:
+        return sage_mod.add_fix_task(pid, body.model_dump(exclude_none=True))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Project {pid!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/seo/projects/{pid}/fix-tasks/{tid}")
+def api_seo_fix_tasks_update(pid: str, tid: str, body: SeoFixTaskIn) -> dict:
+    try:
+        return sage_mod.update_fix_task(pid, tid, body.model_dump(exclude_none=True))
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/seo/projects/{pid}/fix-tasks/{tid}")
+def api_seo_fix_tasks_delete(pid: str, tid: str) -> dict:
+    if not sage_mod.delete_fix_task(pid, tid):
+        raise HTTPException(status_code=404, detail=f"Fix task {tid!r} not found")
+    return {"ok": True, "id": tid}
+
+
+@app.post("/api/seo/projects/{pid}/fix-tasks/{tid}/approve")
+def api_seo_fix_tasks_approve(pid: str, tid: str) -> dict:
+    try:
+        return sage_mod.approve_fix_task(pid, tid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Fix task {tid!r} not found")
+
+
+@app.post("/api/seo/projects/{pid}/fix-tasks/{tid}/start")
+def api_seo_fix_tasks_start(pid: str, tid: str) -> dict:
+    try:
+        return sage_mod.start_fix_task(pid, tid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Fix task {tid!r} not found")
+
+
+@app.post("/api/seo/projects/{pid}/fix-tasks/{tid}/complete")
+def api_seo_fix_tasks_complete(pid: str, tid: str) -> dict:
+    try:
+        return sage_mod.complete_fix_task(pid, tid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Fix task {tid!r} not found")
+
+
+@app.post("/api/seo/projects/{pid}/fix-tasks/{tid}/skip")
+def api_seo_fix_tasks_skip(pid: str, tid: str) -> dict:
+    try:
+        return sage_mod.skip_fix_task(pid, tid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Fix task {tid!r} not found")
+
+
+# ---- Approval queue ----
+
+@app.get("/api/seo/approval-queue")
+def api_seo_approval_queue() -> dict:
+    """v10.0: cross-project approval queue. Items requiring approval +
+    status='suggested'. Severity-sorted (critical first)."""
+    items = sage_mod.list_approval_queue()
+    return {"items": items, "count": len(items)}
+
+
+@app.get("/api/seo/projects/{pid}/approval-queue")
+def api_seo_project_approval_queue(pid: str) -> dict:
+    """Per-project approval queue."""
+    try:
+        # Validate the project exists.
+        sage_mod.find_project(pid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Project {pid!r} not found")
+    items = sage_mod.list_approval_queue(pid=pid)
+    return {"items": items, "count": len(items)}
+
+
+# ---- Audit endpoints ----
+
+@app.post("/api/seo/projects/{pid}/audits")
+def api_seo_audit_generate(pid: str) -> dict:
+    """v10.0: generate a fresh static-template audit checklist. Sage
+    does NOT crawl — the user works the checklist manually and updates
+    per-item statuses."""
+    try:
+        return sage_mod.generate_audit(pid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Project {pid!r} not found")
+
+
+@app.get("/api/seo/projects/{pid}/audits")
+def api_seo_audits_list(pid: str) -> dict:
+    try:
+        sage_mod.find_project(pid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Project {pid!r} not found")
+    history = sage_mod.list_audits(pid)
+    return {"items": history, "count": len(history),
+            "latest": history[-1] if history else None}
+
+
+@app.put("/api/seo/projects/{pid}/audits/{audit_id}/items/{item_id}")
+def api_seo_audit_item_update(
+    pid: str, audit_id: str, item_id: str, body: SeoAuditItemUpdateIn,
+) -> dict:
+    try:
+        return sage_mod.update_audit_item(
+            pid, audit_id, item_id,
+            status=body.status, notes=body.notes,
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---- Reports endpoints ----
+
+@app.post("/api/seo/projects/{pid}/reports")
+def api_seo_report_generate(pid: str, body: SeoReportIn | None = None) -> dict:
+    """v10.0: generate a client-friendly monthly report from project
+    state. Sections per spec: what we checked / fixed / wins / issues
+    / ranking notes / next actions."""
+    month = body.month if body else None
+    try:
+        return sage_mod.generate_monthly_report(pid, month=month)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Project {pid!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/seo/projects/{pid}/reports")
+def api_seo_reports_list(pid: str) -> dict:
+    try:
+        sage_mod.find_project(pid)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Project {pid!r} not found")
+    history = sage_mod.list_reports(pid)
+    return {"items": history, "count": len(history),
+            "latest": history[-1] if history else None}
 
 
 @app.get("/api/connected-accounts")
@@ -2581,6 +2848,23 @@ def api_partners() -> dict:
                     "approved": sum(1 for p in vp_mod.load_packages()
                                      if p.get("status") == "approved"),
                 },
+            },
+            {
+                # v10.0: Sage SEO Partner. Manages SEO audits, local
+                # SEO, website fixes, approval queues, and monthly
+                # reports for MixedMakerShop and client projects. No
+                # auto-publishing, no OAuth, no live GBP changes.
+                "key":    "sage",
+                "name":   "Sage SEO Partner",
+                "status": "active",
+                "role":   "SEO audits + project management",
+                "metrics": (lambda d: {
+                    "total_projects":     d["total_projects"],
+                    "active_projects":    d["active_projects"],
+                    "audits_run":         d["audits_run"],
+                    "reports_generated":  d["reports_generated"],
+                    "approval_queue_len": d["approval_queue_len"],
+                })(sage_mod.agency_dashboard()),
             },
             {
                 "key":    "olivia",

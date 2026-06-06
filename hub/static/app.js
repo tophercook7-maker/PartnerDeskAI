@@ -7606,5 +7606,447 @@ async function refreshSummaryOnly() {
     }
 }
 
+// ======================================================================
+// v10.0: Sage SEO Partner — agency dashboard, projects, audits, fix
+// tasks, approval queue, monthly reports.
+// ======================================================================
+
+let _sageProjects = [];
+let _sageOpenProjectId = null;
+let _sageOpenTab = 'overview';
+let _sageOpenAudit = null;    // latest audit for the open project
+let _sageOpenReports = [];
+
+async function loadSageDashboard() {
+    try {
+        const r = await fetch('/api/seo/dashboard');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        const ag = d.agency || {};
+        const set = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = val;
+        };
+        set('sage-agency-name', ag.name || 'MixedMakerShop');
+        set('sage-agency-tagline', ag.tagline || ag.service_area || '');
+        set('sage-stat-projects', d.total_projects);
+        set('sage-stat-active', d.active_projects);
+        set('sage-stat-audits', d.audits_run);
+        set('sage-stat-reports', d.reports_generated);
+        set('sage-stat-queue', d.approval_queue_len);
+    } catch (err) { /* leave defaults */ }
+}
+
+function _renderSageProjectCard(p) {
+    const pid = _escape(p.id);
+    const name = _escape(p.project_name || '');
+    const status = _escape(p.current_status || 'active');
+    const url = p.website_url
+        ? `<a href="${_escape(p.website_url)}" target="_blank" rel="noopener noreferrer">${_escape(p.website_url)}</a>`
+        : '<span class="muted">no website on file</span>';
+    const meta = [];
+    if (p.business_type) meta.push(_escape(p.business_type));
+    if (p.location)      meta.push(_escape(p.location));
+    const next = p.next_action ? `<div class="sage-proj-meta"><strong>Next:</strong> ${_escape(p.next_action)}</div>` : '';
+    return (
+        `<div class="sage-proj-card" data-sage-pid="${pid}">` +
+          `<div class="sage-proj-head">` +
+            `<div class="sage-proj-name">${name}</div>` +
+            `<span class="sage-proj-status">${status}</span>` +
+          `</div>` +
+          `<div class="sage-proj-meta">${url}${meta.length ? ' · ' + meta.join(' · ') : ''}</div>` +
+          (p.main_goal ? `<div class="sage-proj-goal">${_escape(p.main_goal)}</div>` : '') +
+          next +
+          `<div class="sage-proj-actions">` +
+            `<button type="button" class="row-action primary" data-sage-action="open" data-sage-pid="${pid}">Open project</button>` +
+            `<button type="button" class="row-action" data-sage-action="audit" data-sage-pid="${pid}">Generate audit</button>` +
+            `<button type="button" class="row-action" data-sage-action="report" data-sage-pid="${pid}">Monthly report</button>` +
+          `</div>` +
+        `</div>`
+    );
+}
+
+async function loadSageProjects() {
+    const list = document.getElementById('sage-projects-list');
+    const count = document.getElementById('sage-projects-count');
+    if (!list) return;
+    try {
+        const r = await fetch('/api/seo/projects');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _sageProjects = d.items || [];
+        if (count) count.textContent = `(${_sageProjects.length})`;
+        if (_sageProjects.length === 0) {
+            list.innerHTML = '<div class="muted">No projects yet.</div>';
+        } else {
+            list.innerHTML = _sageProjects.map(_renderSageProjectCard).join('');
+        }
+    } catch (err) {
+        list.innerHTML = '<div class="muted">Could not load projects.</div>';
+    }
+}
+
+async function loadSageApprovalQueue() {
+    const list = document.getElementById('sage-queue-list');
+    const count = document.getElementById('sage-queue-count');
+    if (!list) return;
+    try {
+        const r = await fetch('/api/seo/approval-queue');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        const items = d.items || [];
+        if (count) count.textContent = items.length ? `(${items.length} waiting)` : '';
+        if (items.length === 0) {
+            list.innerHTML = '<div class="muted">Empty — nothing waiting for approval.</div>';
+            return;
+        }
+        list.innerHTML = items.map(t => {
+            const sev = _escape(t.severity || 'medium');
+            return (
+                `<div class="sage-queue-item">` +
+                  `<div class="sage-fix-head">` +
+                    `<span class="sage-fix-sev sage-fix-sev-${sev}">${sev}</span>` +
+                    `<span class="sage-fix-issue">${_escape(t.issue || '')}</span>` +
+                  `</div>` +
+                  `<div class="sage-fix-detail">In ${_escape(t.project_name || '')} · ${_escape(t.page_affected || 'site-wide')}</div>` +
+                  (t.recommended_fix ? `<div class="sage-fix-detail">Recommended: ${_escape(t.recommended_fix)}</div>` : '') +
+                  `<div class="sage-fix-actions">` +
+                    `<button type="button" class="row-action primary" data-sage-task-action="approve" data-sage-pid="${_escape(t.project_id || '')}" data-sage-tid="${_escape(t.id)}">Approve</button>` +
+                    `<button type="button" class="row-action" data-sage-task-action="skip" data-sage-pid="${_escape(t.project_id || '')}" data-sage-tid="${_escape(t.id)}">Skip</button>` +
+                  `</div>` +
+                `</div>`
+            );
+        }).join('');
+    } catch (err) {
+        list.innerHTML = '<div class="muted">Could not load approval queue.</div>';
+    }
+}
+
+function _renderSageAuditChecklist(audit) {
+    if (!audit) return '<div class="muted">No audit generated yet. Click "Generate audit" above.</div>';
+    const sections = audit.checklist || {};
+    const labels = { technical_seo: 'Technical SEO', on_page_seo: 'On-Page SEO', local_seo: 'Local SEO' };
+    return Object.keys(sections).map(key => {
+        const items = sections[key] || [];
+        return (
+            `<div class="sage-audit-section">` +
+              `<h4>${labels[key] || key}</h4>` +
+              items.map(it => {
+                  const sel = ['pending','passing','failing','needs_check'].map(s =>
+                      `<option value="${s}"${it.status === s ? ' selected':''}>${s}</option>`
+                  ).join('');
+                  return (
+                      `<div class="sage-audit-item">` +
+                        `<select data-sage-audit-status data-audit-id="${_escape(audit.id)}" data-item-id="${_escape(it.id)}">${sel}</select>` +
+                        `<span>${_escape(it.item || '')}</span>` +
+                      `</div>`
+                  );
+              }).join('') +
+            `</div>`
+        );
+    }).join('');
+}
+
+function _renderSageFixTasks(project) {
+    const tasks = project.fix_tasks || [];
+    if (!tasks.length) return '<div class="muted">No fix tasks yet. Add one below or generate them from a failing audit item.</div>';
+    return tasks.map(t => {
+        const sev = _escape(t.severity || 'medium');
+        const st = _escape(t.status || 'suggested');
+        const pid = _escape(project.id);
+        const tid = _escape(t.id);
+        const actions = [];
+        if (st === 'suggested') {
+            actions.push(`<button type="button" class="row-action primary" data-sage-task-action="approve" data-sage-pid="${pid}" data-sage-tid="${tid}">Approve</button>`);
+            actions.push(`<button type="button" class="row-action" data-sage-task-action="skip" data-sage-pid="${pid}" data-sage-tid="${tid}">Skip</button>`);
+        } else if (st === 'approved') {
+            actions.push(`<button type="button" class="row-action primary" data-sage-task-action="start" data-sage-pid="${pid}" data-sage-tid="${tid}">Start</button>`);
+        } else if (st === 'in_progress') {
+            actions.push(`<button type="button" class="row-action primary" data-sage-task-action="complete" data-sage-pid="${pid}" data-sage-tid="${tid}">Mark complete</button>`);
+        }
+        actions.push(`<button type="button" class="row-action danger" data-sage-task-action="delete" data-sage-pid="${pid}" data-sage-tid="${tid}">Delete</button>`);
+        return (
+            `<div class="sage-fix-card">` +
+              `<div class="sage-fix-head">` +
+                `<span class="sage-fix-sev sage-fix-sev-${sev}">${sev}</span>` +
+                `<span class="sage-fix-status sage-fix-status-${st}">${st.replace('_',' ')}</span>` +
+                `<span class="sage-fix-issue">${_escape(t.issue || '')}</span>` +
+              `</div>` +
+              (t.page_affected ? `<div class="sage-fix-detail">Page: ${_escape(t.page_affected)}</div>` : '') +
+              (t.recommended_fix ? `<div class="sage-fix-detail">Recommended: ${_escape(t.recommended_fix)}</div>` : '') +
+              (t.requires_approval ? `<div class="sage-fix-detail muted">⚠ requires approval before implementation</div>` : '') +
+              `<div class="sage-fix-actions">${actions.join('')}</div>` +
+            `</div>`
+        );
+    }).join('');
+}
+
+function _renderSageReports() {
+    if (!_sageOpenReports || _sageOpenReports.length === 0) {
+        return '<div class="muted">No reports generated yet.</div>';
+    }
+    return _sageOpenReports.slice().reverse().map(rep => {
+        const sectionHtml = Object.keys(rep.sections || {}).map(key => {
+            const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const items = rep.sections[key] || [];
+            return (
+                `<div class="sage-report-section">` +
+                  `<h4>${_escape(label)}</h4>` +
+                  `<ul>${items.map(i => `<li>${_escape(i)}</li>`).join('')}</ul>` +
+                `</div>`
+            );
+        }).join('');
+        return (
+            `<div class="sage-report-card">` +
+              `<div style="font-weight:600;color:#1c4f8f;font-size:0.88rem;">${_escape(rep.month || '')} — ${_escape(rep.client_name || '')}</div>` +
+              `<div class="muted" style="font-size:0.74rem;">Generated ${_escape(rep.generated_at || '')}</div>` +
+              sectionHtml +
+            `</div>`
+        );
+    }).join('');
+}
+
+function _renderSageOverview(project) {
+    return (
+        `<div class="sage-fix-detail"><strong>Client:</strong> ${_escape(project.client_name || '')}</div>` +
+        `<div class="sage-fix-detail"><strong>Website:</strong> ${project.website_url ? `<a href="${_escape(project.website_url)}" target="_blank" rel="noopener noreferrer">${_escape(project.website_url)}</a>` : '—'}</div>` +
+        `<div class="sage-fix-detail"><strong>Business type:</strong> ${_escape(project.business_type || '—')}</div>` +
+        `<div class="sage-fix-detail"><strong>Location:</strong> ${_escape(project.location || '—')}</div>` +
+        `<div class="sage-fix-detail"><strong>Main goal:</strong> ${_escape(project.main_goal || '—')}</div>` +
+        `<div class="sage-fix-detail"><strong>Target keywords:</strong> ${(project.target_keywords || []).map(_escape).join(', ') || '—'}</div>` +
+        `<div class="sage-fix-detail"><strong>Status:</strong> ${_escape(project.current_status || 'active')}</div>` +
+        `<div class="sage-fix-detail"><strong>Next action:</strong> ${_escape(project.next_action || '—')}</div>`
+    );
+}
+
+async function _openSageProject(pid) {
+    const project = _sageProjects.find(p => p.id === pid);
+    if (!project) return;
+    _sageOpenProjectId = pid;
+    _sageOpenTab = _sageOpenTab || 'overview';
+    // Load latest audit + reports in parallel.
+    const [aRes, rRes] = await Promise.all([
+        fetch(`/api/seo/projects/${encodeURIComponent(pid)}/audits`).then(r => r.json()).catch(() => ({})),
+        fetch(`/api/seo/projects/${encodeURIComponent(pid)}/reports`).then(r => r.json()).catch(() => ({})),
+    ]);
+    _sageOpenAudit = aRes.latest || null;
+    _sageOpenReports = rRes.items || [];
+    _renderSageProjectDetail(project);
+}
+
+function _renderSageProjectDetail(project) {
+    const el = document.getElementById('sage-project-detail');
+    if (!el) return;
+    const tabs = ['overview', 'audit', 'fixes', 'reports'];
+    const tabLabels = { overview: 'Overview', audit: 'Audit', fixes: 'Website Fixes', reports: 'Reports' };
+    const tabsHtml = tabs.map(t =>
+        `<button type="button" class="sage-tab${t === _sageOpenTab ? ' is-active' : ''}" data-sage-tab="${t}">${tabLabels[t]}</button>`
+    ).join('');
+    let body = '';
+    if (_sageOpenTab === 'overview') body = _renderSageOverview(project);
+    else if (_sageOpenTab === 'audit') {
+        body = `<div style="margin-bottom:0.4rem;">` +
+                 `<button type="button" class="row-action primary" data-sage-action="audit" data-sage-pid="${_escape(project.id)}">${_sageOpenAudit ? 'Generate new audit' : 'Generate audit'}</button>` +
+               `</div>` +
+               _renderSageAuditChecklist(_sageOpenAudit);
+    }
+    else if (_sageOpenTab === 'fixes') {
+        body = _renderSageFixTasks(project) +
+               `<details style="margin-top:0.5rem;">` +
+                 `<summary>+ Add fix task</summary>` +
+                 `<form id="sage-fix-add-form" data-sage-pid="${_escape(project.id)}" class="leads-form" style="margin-top:0.3rem;">` +
+                   `<input class="leads-input" name="issue" placeholder="Issue (e.g. Homepage title too generic)" required>` +
+                   `<input class="leads-input" name="page_affected" placeholder="Page affected (e.g. /, /services)">` +
+                   `<textarea class="leads-input" name="recommended_fix" rows="2" placeholder="Recommended fix"></textarea>` +
+                   `<select class="leads-input" name="severity">` +
+                     `<option value="medium">medium</option>` +
+                     `<option value="critical">critical</option>` +
+                     `<option value="high">high</option>` +
+                     `<option value="low">low</option>` +
+                   `</select>` +
+                   `<div class="leads-form-actions"><button type="submit" class="primary">Add fix task</button></div>` +
+                 `</form>` +
+               `</details>`;
+    }
+    else if (_sageOpenTab === 'reports') {
+        body = `<div style="margin-bottom:0.4rem;">` +
+                 `<button type="button" class="row-action primary" data-sage-action="report" data-sage-pid="${_escape(project.id)}">Generate this month's report</button>` +
+               `</div>` +
+               _renderSageReports();
+    }
+    el.innerHTML =
+        `<div class="sage-detail-h">${_escape(project.project_name || '')}` +
+        ` <button type="button" class="row-action" data-sage-action="close" style="float:right;">← Back to projects</button>` +
+        `</div>` +
+        `<div class="sage-detail-tabs">${tabsHtml}</div>` +
+        `<div class="sage-tab-body">${body}</div>`;
+    el.hidden = false;
+    document.getElementById('sage-projects-list').hidden = true;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function _closeSageProject() {
+    _sageOpenProjectId = null;
+    const el = document.getElementById('sage-project-detail');
+    if (el) { el.hidden = true; el.innerHTML = ''; }
+    const list = document.getElementById('sage-projects-list');
+    if (list) list.hidden = false;
+}
+
+// Sage event delegator — captures clicks across all Sage UI.
+document.addEventListener('click', async (e) => {
+    const aBtn = e.target.closest('button[data-sage-action]');
+    const tBtn = e.target.closest('button[data-sage-task-action]');
+    const tab  = e.target.closest('button[data-sage-tab]');
+    if (tab) {
+        _sageOpenTab = tab.dataset.sageTab;
+        const proj = _sageProjects.find(p => p.id === _sageOpenProjectId);
+        if (proj) _renderSageProjectDetail(proj);
+        return;
+    }
+    if (aBtn) {
+        const action = aBtn.dataset.sageAction;
+        const pid = aBtn.dataset.sagePid;
+        const status = document.getElementById('cmd-status');
+        try {
+            if (action === 'open') {
+                await _openSageProject(pid);
+            } else if (action === 'close') {
+                _closeSageProject();
+            } else if (action === 'audit') {
+                const r = await fetch(`/api/seo/projects/${encodeURIComponent(pid)}/audits`, { method: 'POST' });
+                if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || 'http ' + r.status); }
+                if (status) status.textContent = 'New audit generated. Work the checklist manually.';
+                if (_sageOpenProjectId === pid) await _openSageProject(pid);
+                await loadSageDashboard();
+            } else if (action === 'report') {
+                const r = await fetch(`/api/seo/projects/${encodeURIComponent(pid)}/reports`, { method: 'POST' });
+                if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || 'http ' + r.status); }
+                if (status) status.textContent = 'Monthly report generated.';
+                if (_sageOpenProjectId === pid) await _openSageProject(pid);
+                await loadSageDashboard();
+            }
+        } catch (err) {
+            if (status) status.textContent = 'Sage action failed: ' + (err.message || err);
+        }
+        return;
+    }
+    if (tBtn) {
+        const action = tBtn.dataset.sageTaskAction;
+        const pid = tBtn.dataset.sagePid;
+        const tid = tBtn.dataset.sageTid;
+        const status = document.getElementById('cmd-status');
+        try {
+            let url;
+            let method = 'POST';
+            if (action === 'delete') {
+                if (!confirm('Delete this fix task?')) return;
+                url = `/api/seo/projects/${encodeURIComponent(pid)}/fix-tasks/${encodeURIComponent(tid)}`;
+                method = 'DELETE';
+            } else {
+                url = `/api/seo/projects/${encodeURIComponent(pid)}/fix-tasks/${encodeURIComponent(tid)}/${action}`;
+            }
+            const r = await fetch(url, { method });
+            if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || 'http ' + r.status); }
+            await loadSageProjects();
+            await loadSageApprovalQueue();
+            await loadSageDashboard();
+            if (_sageOpenProjectId) {
+                const proj = (await (await fetch(`/api/seo/projects/${encodeURIComponent(_sageOpenProjectId)}`)).json());
+                _renderSageProjectDetail(proj);
+            }
+            if (status) status.textContent = `Task ${action}.`;
+        } catch (err) {
+            if (status) status.textContent = 'Task action failed: ' + (err.message || err);
+        }
+    }
+});
+
+// Sage form handlers (delegated since forms render dynamically).
+document.addEventListener('submit', async (e) => {
+    const addProj = e.target.closest('#sage-project-add-form');
+    const addFix  = e.target.closest('#sage-fix-add-form');
+    if (addProj) {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(addProj).entries());
+        const status = document.getElementById('cmd-status');
+        try {
+            const r = await fetch('/api/seo/projects', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            addProj.reset();
+            if (status) status.textContent = `Created project: ${d.project_name}`;
+            await loadSageProjects();
+            await loadSageDashboard();
+        } catch (err) {
+            if (status) status.textContent = 'Add project failed: ' + (err.message || err);
+        }
+        return;
+    }
+    if (addFix) {
+        e.preventDefault();
+        const pid = addFix.dataset.sagePid;
+        const data = Object.fromEntries(new FormData(addFix).entries());
+        const status = document.getElementById('cmd-status');
+        try {
+            const r = await fetch(`/api/seo/projects/${encodeURIComponent(pid)}/fix-tasks`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            addFix.reset();
+            if (status) status.textContent = 'Fix task added.';
+            await loadSageProjects();
+            await loadSageApprovalQueue();
+            await loadSageDashboard();
+            if (_sageOpenProjectId === pid) await _openSageProject(pid);
+        } catch (err) {
+            if (status) status.textContent = 'Add fix task failed: ' + (err.message || err);
+        }
+    }
+});
+
+// Audit item status updates (delegated change handler).
+document.addEventListener('change', async (e) => {
+    const sel = e.target.closest('select[data-sage-audit-status]');
+    if (!sel) return;
+    const auditId = sel.dataset.auditId;
+    const itemId  = sel.dataset.itemId;
+    const pid = _sageOpenProjectId;
+    if (!pid) return;
+    try {
+        await fetch(`/api/seo/projects/${encodeURIComponent(pid)}/audits/${encodeURIComponent(auditId)}/items/${encodeURIComponent(itemId)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: sel.value }),
+        });
+    } catch (err) { /* surface only on visible failure */ }
+});
+
+async function refreshSage() {
+    await Promise.all([
+        loadSageDashboard(),
+        loadSageProjects(),
+        loadSageApprovalQueue(),
+    ]);
+}
+
+// Refresh Sage when the user opens the Sage section.
+const _sageDetailsEl = document.getElementById('sage-details');
+if (_sageDetailsEl) {
+    _sageDetailsEl.addEventListener('toggle', () => {
+        if (_sageDetailsEl.open) refreshSage();
+    });
+}
+
 // Initial load on page open.
 refreshAll();
+// Kick off a first Sage refresh so the partner-summary metrics are
+// populated even when the user hasn't expanded the section.
+refreshSage();
