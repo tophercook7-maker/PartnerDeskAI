@@ -1420,6 +1420,24 @@
         .cand-enrich-status-partial       { background: #fff6e0; color: #8a6320; }
         .cand-enrich-status-needs_research{ background: #fde2e2; color: #b34a4a; }
         .cand-enrich-status-failed        { background: #f1d4d4; color: #7a2424; }
+        /* ===== v9.3: Discovery provider chips ========================== */
+        .discovery-providers {
+            display: flex; flex-wrap: wrap; gap: 0.3rem;
+            align-items: center; margin: 0.15rem 0 0.3rem;
+        }
+        .provider-chip {
+            padding: 0.18rem 0.55rem; border-radius: 999px;
+            border: 1px solid #cbd5e1; background: #fff;
+            font-size: 0.75rem; color: #475569;
+            cursor: pointer;
+        }
+        .provider-chip:hover { background: #f1f5f9; }
+        .provider-chip.is-active {
+            background: #1f2937; color: #fff; border-color: #1f2937;
+        }
+        .provider-chip[disabled] {
+            opacity: 0.5; cursor: not-allowed;
+        }
         /* ===== v9.1: One-Click Lead Desk =============================== */
         .one-click-btn {
             font-size: 1rem; padding: 0.55rem 1.1rem; font-weight: 600;
@@ -2793,6 +2811,19 @@
                     </button>
                 </div>
             </form>
+            <!-- v9.3: Discovery source chips. Populated from
+                 GET /api/lead-candidates/discovery-providers so new
+                 providers appear here automatically. "Auto" runs the
+                 default chain (OSM + research_missions). -->
+            <div id="discovery-providers" class="discovery-providers"
+                 role="toolbar" aria-label="Discovery source">
+                <span class="muted" style="font-size:0.75rem;margin-right:0.3rem;">
+                    Source:
+                </span>
+                <button type="button" class="provider-chip is-active"
+                        data-provider="auto">⚡ Auto</button>
+                <!-- Other chips inserted by JS -->
+            </div>
             <div class="muted" style="margin: 0 0 0.5rem; font-size: 0.78rem;">
                 One click: Logan discovers, enriches, ranks, and prepares
                 outreach drafts. No auto-contact, no auto-send — you still

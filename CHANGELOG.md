@@ -1,6 +1,129 @@
 # PartnerDeskAI Changelog
 
-Newest first. v9.2 is the current shipped version.
+Newest first. v9.3 is the current shipped version.
+
+---
+
+## v9.3 — Discovery Sources First (pluggable provider system)
+
+Logan was hardwired to OpenStreetMap. `lead_candidates.py` imported
+`overpass_discovery` directly and called it by name. Adding any other
+source — CSV importer, chamber list, directory feed — would have meant
+editing the lead engine.
+
+v9.3 architects discovery as a registry of pluggable providers. The
+lead engine no longer knows the names of any specific source; it asks
+the registry for one. Adding a new provider is now: create
+`automation/discovery/your_provider.py`, register it in
+`automation/discovery/__init__.py`, done.
+
+**New package `automation/discovery/`:**
+
+- `__init__.py` — registry (`PROVIDERS`, `register`, `get_provider`,
+  `list_providers`), chain orchestrator (`discover_chain`), default
+  chain constant (`DEFAULT_CHAIN = ("osm", "research_missions")`),
+  shared dedup helper.
+- `osm.py` — thin adapter over the existing `overpass_discovery`
+  module. Same Nominatim + Overpass behavior, byte-for-byte. Carries
+  the standard NAME / DISPLAY_NAME / DESCRIPTION / REQUIRES_NETWORK /
+  ERROR_CLASS metadata and exposes `discover()` returning the
+  standardized ProviderResult shape.
+- `research_missions.py` — promoted from a buried fallback inside
+  `discover_via_overpass` to a first-class provider. Pure-local, zero
+  outbound calls. Now invokable standalone (`provider=research_missions`)
+  as well as chained behind OSM.
+
+**Provider interface** (duck-typed; modules, not classes):
+
+```python
+NAME              str  # kebab-case slug
+DISPLAY_NAME      str  # human label
+DESCRIPTION       str  # one-line UI hint
+REQUIRES_NETWORK  bool # makes outbound HTTP calls?
+ERROR_CLASS       type # exception this provider may raise
+
+def is_available() -> bool: ...
+def discover(category, city_state, count, **opts) -> ProviderResult: ...
+```
+
+`ProviderResult` standardized:
+
+```python
+{
+  "candidates":  list[dict],   # rows ready for lead_candidates._clean()
+  "total_found": int,
+  "provider":    str,
+  "message":     str,
+  # optional passthrough extras (display_name, resolved_city, etc.)
+}
+```
+
+**Backward-compatible refactor of `lead_candidates.py`:**
+
+- `discover_via_overpass()` keeps its public signature and response
+  shape — same `osm_added`, `research_missions_added`,
+  `fallback_triggered`, `display_name`, spec-verbatim message lines
+  — but routes through `discovery.discover_chain()` under the hood.
+- `generate_research_missions()` delegates stub generation to the
+  research_missions provider; persistence stays in the lead engine.
+- New optional `provider` arg on both — `None` / `"auto"` runs the
+  default chain; an explicit NAME runs only that provider.
+- `do_it_all()` accepts the same `provider` arg.
+
+**Hub API (`hub/app.py`):**
+
+- `GET /api/lead-candidates/discovery-providers` (NEW) returns
+  `{providers: [...], default_chain, auto_name}` so the UI can
+  enumerate registered sources without hardcoding names.
+- `CandidateFindIn` extended with optional `provider: str | None`.
+- `/discover` and `/do-it-all` honor `body.provider`. Unknown
+  provider → 404 with helpful detail listing registered names.
+
+**UI:**
+
+- Provider chip row under the one-click form, populated from
+  `/discovery-providers`. Default chip is ⚡ Auto (chain). Each
+  registered provider gets a chip with display_name + tooltip
+  describing requires_network. Click to switch source.
+- New providers show up here automatically the next time the page
+  loads — no UI code change needed.
+- Form submit sends `provider` field with the selected chip's name.
+  In-flight status line names the active provider when not Auto.
+
+**Live verification (8 tests):**
+
+```
+1. GET /discovery-providers returns osm + research_missions,
+   default_chain = ["osm", "research_missions"]
+2. provider=research_missions: 4 stubs added, zero OSM call
+3. provider=osm: 3 OSM candidates, NO fallback even when count > result
+4. provider=auto: 1 OSM + 4 RM = 5 total (chain fills gap)
+5. No provider key: same as auto (v9.2 back-compat verified)
+6. Unknown provider → 404 with helpful registered-names list
+7. Picks endpoint still works after refactor
+8. Full integration: research_mission → enrich → fill → convert →
+   schedule-follow-up — every v9.0/v9.1/v9.2 surface intact
+```
+
+**Bug fixed during testing:** the chain's dedup key collapsed all
+empty-name candidates into one bucket (`("", city)` collision). Fixed
+to use `("phrase:" + search_phrase, city)` when business_name is empty,
+matching the persist-time dedup in `lead_candidates.py`.
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+0/7 on the v9.3 diff. Christian Kovac safe across the whole cycle.
+
+**Safety perimeter — every constraint preserved:**
+
+- ❌ No new scraping, no paid APIs, no OAuth, no new Python deps.
+- ❌ Pure-local providers (like research_missions) stay pure-local;
+  network providers (like osm) keep the same two-call read-only flow.
+- ✅ Per-provider errors in the chain are captured, not propagated —
+  one provider's failure doesn't abort the whole chain (this is how
+  v8.9.1's "OSM 502 → research missions take over" behavior survives
+  the refactor).
+- ✅ Default behavior with no `provider` field is **identical** to v9.2
+  — same chain, same fallback semantics, same response shape.
 
 ---
 

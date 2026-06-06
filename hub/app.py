@@ -54,6 +54,7 @@ import youtube_partner as yt_mod  # noqa: E402
 import video_partner as vp_mod  # noqa: E402
 import lead_candidates as cand_mod  # noqa: E402
 import overpass_discovery as overpass_mod  # noqa: E402  (v8.9: OSM Overpass client)
+import discovery as discovery_mod  # noqa: E402  (v9.3: pluggable provider registry)
 import linkedin_oauth  # noqa: E402
 import meta_app_state  # noqa: E402
 import social_posters  # noqa: E402
@@ -1813,11 +1814,15 @@ class CandidateIn(BaseModel):
 
 
 class CandidateFindIn(BaseModel):
-    """v8.8: 'Find Leads For Me' input."""
+    """v8.8: 'Find Leads For Me' input. v9.3 adds optional `provider`:
+    when None or 'auto', /discover and /do-it-all run the default chain
+    (OSM + research_missions); when a registered provider NAME, only
+    that provider runs."""
     category:              str
     city_state:            str
     count:                 int = 10
     website_status_target: str | None = None
+    provider:              str | None = None
 
 
 class CandidateBulkIn(BaseModel):
@@ -1865,6 +1870,30 @@ def api_missions_convert(mission_id: str, body: MissionCaptureIn) -> dict:
 # from the spec's exact rule set. Convert path creates a v8.4 lead with
 # outreach_status='not_started' — the user still clicks Prepare Outreach
 # manually before anything outbound happens.
+
+@app.get("/api/lead-candidates/discovery-providers")
+def api_candidates_discovery_providers() -> dict:
+    """v9.3: list discovery providers registered with Logan. The UI
+    uses this to populate the provider chip row under the Find Leads
+    For Me form. Adding a new provider means a new entry shows up here
+    automatically — no UI code change needed.
+
+    Returns:
+      {
+        providers: [
+          {name, display_name, description, requires_network, available},
+          ...
+        ],
+        default_chain: ["osm", "research_missions"],
+        auto_name:     "auto",
+      }
+    """
+    return {
+        "providers":     discovery_mod.list_providers(),
+        "default_chain": list(discovery_mod.DEFAULT_CHAIN),
+        "auto_name":     discovery_mod.AUTO_NAME,
+    }
+
 
 @app.get("/api/lead-candidates")
 def api_candidates_list() -> dict:
@@ -2010,18 +2039,21 @@ def api_candidates_picks(k: int = 5) -> dict:
 
 @app.post("/api/lead-candidates/do-it-all")
 def api_candidates_do_it_all(body: CandidateFindIn) -> dict:
-    """v9.1 'Do It All For Me' (a.k.a. the big Find-Leads-For-Me button):
-    runs OSM discover → auto-enrich just-added rows → return server-
-    computed picks (top 5 across the whole queue). One round trip
-    for the whole pipeline."""
+    """v9.1 'Do It All For Me' — v9.3 routes through the pluggable
+    discovery registry. Same one-round-trip pipeline (discover →
+    auto-enrich → server-computed picks). body.provider works the same
+    as on /discover."""
     try:
         result = cand_mod.do_it_all(
             category=body.category,
             city_state=body.city_state,
             count=body.count,
             website_status_target=body.website_status_target or "any local business",
+            provider=body.provider,
         )
         return result
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except overpass_mod.OverpassError as e:
@@ -2054,18 +2086,17 @@ def api_candidates_bulk(body: CandidateBulkIn) -> dict:
 
 @app.post("/api/lead-candidates/discover")
 def api_candidates_discover(body: CandidateFindIn) -> dict:
-    """v8.9 'Discover Real Businesses': queries OpenStreetMap via
-    Overpass for real local businesses matching category + city_state.
-    v8.9.1: if OSM returns fewer than `count`, Logan tops up the gap
-    with research-mission stubs so the user never lands on an empty
-    queue. Reuses CandidateFindIn so the UI form is symmetric with /find.
-    """
+    """v8.9 'Discover Real Businesses' — v9.3 routes through the
+    pluggable discovery registry. body.provider can be omitted/'auto'
+    to run the default chain, or a registered NAME (e.g. 'osm',
+    'research_missions') to target a single source."""
     try:
         result = cand_mod.discover_via_overpass(
             category=body.category,
             city_state=body.city_state,
             count=body.count,
             website_status_target=body.website_status_target or "any local business",
+            provider=body.provider,
         )
         return {
             "ok":                     True,
@@ -2080,7 +2111,11 @@ def api_candidates_discover(body: CandidateFindIn) -> dict:
             "resolved_state":         result["resolved_state"],
             "display_name":           result.get("display_name", ""),
             "message":                result["message"],
+            "provider":               result.get("provider", ""),
+            "providers":              result.get("providers", []),
         }
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except overpass_mod.OverpassError as e:

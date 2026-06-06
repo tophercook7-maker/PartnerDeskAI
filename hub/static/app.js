@@ -5102,6 +5102,60 @@ loadCandidates = async function() {
     renderCandidateGroups();
 };
 
+// ======================================================================
+// v9.3: Discovery provider chips — populate from registry endpoint,
+// track selection, pass through to /do-it-all body.
+// ======================================================================
+
+let _selectedProvider = 'auto';
+
+async function loadDiscoveryProviders() {
+    const el = document.getElementById('discovery-providers');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/lead-candidates/discovery-providers');
+        if (!r.ok) return;
+        const d = await r.json();
+        const providers = d.providers || [];
+        // Keep the Auto chip (always present), append one chip per
+        // registered provider. Iconography stays minimal — display_name
+        // is the human label.
+        const ICONS = { osm: '🌍', research_missions: '🔍' };
+        const chipsHtml = providers.map(p => {
+            const icon = ICONS[p.name] || '🔌';
+            const disabled = p.available === false ? ' disabled' : '';
+            const title = (p.description || '') +
+                (p.requires_network ? ' (makes outbound HTTP calls)' : ' (local-only)');
+            return `<button type="button" class="provider-chip" ` +
+                   `data-provider="${_escape(p.name)}"${disabled} ` +
+                   `title="${_escape(title)}">${icon} ${_escape(p.display_name || p.name)}</button>`;
+        }).join('');
+        // Reset and rebuild: keep the static label + Auto chip, append the rest.
+        el.innerHTML =
+            `<span class="muted" style="font-size:0.75rem;margin-right:0.3rem;">Source:</span>` +
+            `<button type="button" class="provider-chip is-active" data-provider="auto" ` +
+              `title="Run the default chain (OSM + research missions)">⚡ Auto</button>` +
+            chipsHtml;
+    } catch (err) {
+        // Leave the static Auto chip in place if the load failed.
+    }
+}
+
+const _providerChipsEl = document.getElementById('discovery-providers');
+if (_providerChipsEl) {
+    _providerChipsEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-provider]');
+        if (!btn || btn.disabled) return;
+        _selectedProvider = btn.dataset.provider;
+        _providerChipsEl.querySelectorAll('.provider-chip').forEach(b =>
+            b.classList.toggle('is-active', b.dataset.provider === _selectedProvider)
+        );
+    });
+}
+
+// Load providers shortly after page load. Don't block initial render.
+setTimeout(loadDiscoveryProviders, 100);
+
 // v9.1: One-click "Find Leads For Me" form handler.
 const _candidatesDoForm = document.getElementById('candidates-do-form');
 if (_candidatesDoForm) {
@@ -5113,11 +5167,15 @@ if (_candidatesDoForm) {
             city_state: data.city_state,
             count:      parseInt(data.count, 10) || 10,
             website_status_target: 'any local business',
+            // v9.3: tag the call with the user's chosen provider chip.
+            // 'auto' is the default chain.
+            provider:   _selectedProvider || 'auto',
         };
         const status = document.getElementById('cmd-status');
         const btn = document.getElementById('candidates-do-it-all');
         if (status) status.textContent =
-            `Logan is finding, enriching, and ranking leads for ${body.category} in ${body.city_state}…`;
+            `Logan is finding, enriching, and ranking leads for ${body.category} in ${body.city_state}` +
+            (_selectedProvider && _selectedProvider !== 'auto' ? ` via ${_selectedProvider}` : '') + '…';
         if (btn) btn.disabled = true;
         try {
             const r = await fetch('/api/lead-candidates/do-it-all', {

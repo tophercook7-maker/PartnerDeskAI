@@ -541,19 +541,21 @@ def find_for_me(
     return new_rows
 
 
-# --- v8.9: Discover via OpenStreetMap Overpass ------------------------
-# v8.9.1: when OSM coverage is thin (count requested > count returned),
-# the discover path tops up the gap with research-mission stubs so the
-# user never lands on an empty queue.
+# --- v9.3: Pluggable discovery via the discovery registry --------------
+# The lead engine no longer imports OSM directly. It talks to the
+# discovery package, which lets any provider (OSM today; CSV / chamber /
+# directory tomorrow) feed the candidate queue.
 
-import overpass_discovery as _overpass_mod  # two read-only HTTPS calls per discover
+import discovery as _discovery_mod
+import discovery.research_missions as _rm_provider
 
 
 def _search_urls_for(category: str, city_state: str, phrase: str) -> list[dict]:
     """
-    Build the three search-platform URLs the spec asks for. All client-
-    safe (target=_blank, rel=noopener noreferrer applied by the renderer).
-    No external calls — these are just URL strings.
+    Build the three search-platform URLs the spec asks for. Pure string
+    construction — no outbound calls. Kept here (not just in the
+    research_missions provider) because the OSM post-processing step
+    also needs to attach them to OSM rows.
     """
     base_q = f"{category} {city_state}".strip()
     return [
@@ -572,45 +574,6 @@ def _search_urls_for(category: str, city_state: str, phrase: str) -> list[dict]:
     ]
 
 
-def _make_research_mission_row(
-    category: str,
-    city_state: str,
-    phrase_idx: int,
-    items_for_id: list[dict],
-) -> dict:
-    """
-    Pure builder for one research-mission candidate row. Does not
-    persist. Caller batches and saves.
-
-    Lands with:
-      - discovery_source='research_mission'
-      - approval_status='needs_research' (spec: status='needs research')
-      - search_phrase + search_urls populated
-      - business_name="" — the user fills in after researching
-    """
-    tmpl = _RESEARCH_PHRASE_TMPL[phrase_idx % len(_RESEARCH_PHRASE_TMPL)]
-    phrase = tmpl.format(cat=category, city=city_state)
-    google_url = "https://www.google.com/search?q=" + quote_plus(phrase)
-    cleaned = _clean({
-        "business_name":          "",
-        "category":               category,
-        "city_state":             city_state,
-        "website_status":         "",  # unknown until researched
-        "search_url":             google_url,  # primary, for "Open Search" parity
-        "source_url":             google_url,
-        "search_phrase":          phrase,
-        "search_urls":            _search_urls_for(category, city_state, phrase),
-        "discovery_source":       "research_mission",
-        "approval_status":        "needs_research",
-        "is_local_service":       True,
-        "suggested_offer_angle":  _GENERIC_OFFER,
-    })
-    cleaned["id"] = _next_id(items_for_id)
-    cleaned["created_at"] = _now()
-    cleaned["updated_at"] = cleaned["created_at"]
-    return cleaned
-
-
 def generate_research_missions(
     category: str,
     city_state: str,
@@ -618,10 +581,9 @@ def generate_research_missions(
     phrase_offset: int = 0,
 ) -> list[dict]:
     """
-    Public entry point for the 'Find More Anyway' button. Generates N
-    research-mission stubs scoped to (category, city_state) and persists
-    them. Phrase rotation starts at phrase_offset so successive calls
-    don't repeat the same templates.
+    'Find More Anyway' entry point. Delegates stub generation to the
+    research_missions provider, then persists. The provider stays
+    stateless — persistence + id assignment belongs to the lead engine.
     """
     category = (category or "").strip()
     city_state = (city_state or "").strip()
@@ -631,13 +593,20 @@ def generate_research_missions(
         raise ValueError("count must be a positive integer")
     if count > MAX_FIND_COUNT:
         raise ValueError(f"count {count} exceeds limit of {MAX_FIND_COUNT}")
+    result = _rm_provider.discover(
+        category=category,
+        city_state=city_state,
+        count=count,
+        phrase_offset=phrase_offset,
+    )
     items = load()
     new_rows: list[dict] = []
-    for i in range(count):
-        row = _make_research_mission_row(
-            category, city_state, phrase_offset + i, items + new_rows,
-        )
-        new_rows.append(row)
+    for cand in result["candidates"]:
+        cleaned = _clean(cand)
+        cleaned["id"] = _next_id(items + new_rows)
+        cleaned["created_at"] = _now()
+        cleaned["updated_at"] = cleaned["created_at"]
+        new_rows.append(cleaned)
     if new_rows:
         items.extend(new_rows)
         _save(items)
@@ -649,43 +618,45 @@ def discover_via_overpass(
     city_state: str,
     count: int = 10,
     website_status_target: str = "any local business",
+    provider: str | None = None,
 ) -> dict:
     """
-    Logan asks OpenStreetMap for real local businesses matching
-    (category, city_state) and queues them for Topher to review.
+    v9.3: same public signature + return shape as before — the chain
+    behavior is preserved verbatim — but routing now goes through the
+    discovery registry.
 
-    v8.9.1 fallback: if OSM returns fewer than `count` businesses,
-    Logan tops up the gap with research-mission stubs (status=
-    'needs_research') so the user never lands on an empty queue.
+    The `provider` argument is new:
+      - None / "auto" → run the default chain (OSM + research_missions)
+        with the same v8.9.1 fallback semantics.
+      - any registered NAME → run only that provider.
 
-    - Two read-only HTTPS calls to OSM per discover (Nominatim + Overpass).
-    - No auth, no key, no paid plan, no scraping.
-    - Dedupes against existing candidates by (lowered name, lowered city_state)
-      so re-running the same query is idempotent.
-    - Returns whatever OSM had, up to count, plus research missions
-      to bring the total to count when needed.
-    - Candidates land with approval_status='pending' (OSM rows) or
-      'needs_research' (research-mission stubs) — Topher still
-      approves + converts manually before anything outbound happens.
-
-    Returns: {
-        added, added_count, osm_added, research_missions_added,
-        fallback_triggered, found, skipped_duplicates, message,
-        resolved_city, resolved_state, display_name,
-    }
+    Backward-compatible return shape:
+      {added, added_count, osm_added, research_missions_added,
+       fallback_triggered, found, skipped_duplicates, message,
+       resolved_city, resolved_state, display_name, provider}
     """
     if not isinstance(count, int) or count < 1:
         raise ValueError("count must be a positive integer")
     if count > MAX_FIND_COUNT:
-        raise ValueError(
-            f"count {count} exceeds limit of {MAX_FIND_COUNT}"
-        )
-    result = _overpass_mod.discover(
+        raise ValueError(f"count {count} exceeds limit of {MAX_FIND_COUNT}")
+
+    requested = (provider or _discovery_mod.AUTO_NAME).strip().lower()
+    if requested == _discovery_mod.AUTO_NAME:
+        chain_names = list(_discovery_mod.DEFAULT_CHAIN)
+    else:
+        # Validate the name before we run anything.
+        _discovery_mod.get_provider(requested)
+        chain_names = [requested]
+
+    chain_result = _discovery_mod.discover_chain(
+        names=chain_names,
         category=category,
         city_state=city_state,
         count=count,
         website_status_target=website_status_target,
     )
+
+    # Persist the candidates with cross-queue dedup (vs existing rows).
     items = load()
     existing_keys = {
         ((it.get("business_name") or "").strip().lower(),
@@ -694,47 +665,56 @@ def discover_via_overpass(
     }
     added: list[dict] = []
     skipped_duplicates = 0
-    for cand in result["candidates"]:
-        key = (cand["business_name"].strip().lower(),
-               cand["city_state"].strip().lower())
+    per_provider_added: dict[str, int] = {}
+    for cand in chain_result["candidates"]:
+        name_key = (cand.get("business_name") or "").strip().lower()
+        city_key = (cand.get("city_state") or "").strip().lower()
+        # Empty-name candidates (research missions) can't collide on
+        # name — dedup them on phrase instead so re-running doesn't
+        # produce duplicates of the same SERP angle.
+        if not name_key:
+            phrase = (cand.get("search_phrase") or "").strip().lower()
+            key = (f"_phrase:{phrase}", city_key)
+        else:
+            key = (name_key, city_key)
         if key in existing_keys:
             skipped_duplicates += 1
             continue
         existing_keys.add(key)
-        # v8.9.1: tag OSM-discovered candidates so the UI shows the
-        # right affordances (verified-via-OSM vs needs-research-stub).
-        cand["discovery_source"] = "osm"
-        # Also attach the three search URLs so users can double-check
-        # OSM data via FB / Maps with one click.
-        cand["search_urls"] = _search_urls_for(
-            cand["category"], cand["city_state"], cand["business_name"] or cand["category"],
-        )
+        # Make sure every persisted candidate carries search_urls so
+        # the UI's per-card search strip works regardless of provider.
+        if not cand.get("search_urls"):
+            cand["search_urls"] = _search_urls_for(
+                cand.get("category") or category,
+                cand.get("city_state") or city_state,
+                (cand.get("business_name") or "")
+                  or (cand.get("search_phrase") or "")
+                  or (cand.get("category") or category),
+            )
         cleaned = _clean(cand)
         cleaned["id"] = _next_id(items + added)
         cleaned["created_at"] = _now()
         cleaned["updated_at"] = cleaned["created_at"]
         added.append(cleaned)
-    osm_added = len(added)
-
-    # v8.9.1 fallback: top up to `count` with research-mission stubs.
-    research_added: list[dict] = []
-    gap = count - osm_added
-    if gap > 0:
-        for i in range(gap):
-            row = _make_research_mission_row(
-                category, city_state, i, items + added + research_added,
-            )
-            research_added.append(row)
-        added.extend(research_added)
-    fallback_triggered = bool(research_added)
-
+        ds = cleaned.get("discovery_source") or "manual"
+        per_provider_added[ds] = per_provider_added.get(ds, 0) + 1
     if added:
         items.extend(added)
         _save(items)
 
-    # Build the message per spec wording.
+    osm_added = per_provider_added.get("osm", 0)
+    research_missions_added = per_provider_added.get("research_mission", 0)
+    fallback_triggered = (
+        "research_missions" in chain_names and research_missions_added > 0
+    )
+
+    extras = chain_result.get("extras") or {}
+    display_name = extras.get("display_name", "")
+    resolved_city = extras.get("resolved_city", "")
+    resolved_state = extras.get("resolved_state", "")
+
+    # Spec-verbatim messaging preserved.
     if fallback_triggered and osm_added == 0:
-        # Exact spec sentence.
         msg = (
             "OSM did not have enough businesses for this search, so "
             "Logan created research missions instead."
@@ -742,26 +722,28 @@ def discover_via_overpass(
     elif fallback_triggered and osm_added > 0:
         msg = (
             f"OSM returned {osm_added} business{'es' if osm_added != 1 else ''} for "
-            f"{category} in {result.get('display_name', city_state)}; "
-            f"Logan added {len(research_added)} research mission"
-            f"{'s' if len(research_added) != 1 else ''} so you have "
+            f"{category} in {display_name or city_state}; "
+            f"Logan added {research_missions_added} research mission"
+            f"{'s' if research_missions_added != 1 else ''} so you have "
             f"{len(added)} total to work."
         )
     else:
-        msg = result["message"]
+        msg = chain_result.get("message") or ""
 
     return {
         "added":                   added,
         "added_count":             len(added),
         "osm_added":               osm_added,
-        "research_missions_added": len(research_added),
+        "research_missions_added": research_missions_added,
         "fallback_triggered":      fallback_triggered,
-        "found":                   result["total_found"],
+        "found":                   int(chain_result.get("total_found") or 0),
         "skipped_duplicates":      skipped_duplicates,
-        "resolved_city":           result.get("resolved_city", ""),
-        "resolved_state":          result.get("resolved_state", ""),
-        "display_name":            result.get("display_name", ""),
+        "resolved_city":           resolved_city,
+        "resolved_state":          resolved_state,
+        "display_name":            display_name,
         "message":                 msg,
+        "provider":                chain_result.get("primary") or requested,
+        "providers":               chain_result.get("providers") or [],
     }
 
 
@@ -1487,11 +1469,13 @@ def do_it_all(
     city_state: str,
     count: int = 10,
     website_status_target: str = "any local business",
+    provider: str | None = None,
 ) -> dict:
     """
     The v9.1 one-click pipeline:
-      1. discover_via_overpass (OSM + research-mission fallback) — same
-         honest behavior as v8.9.1
+      1. discover_via_overpass (which v9.3 routes through the discovery
+         registry — default chain is OSM + research_missions; honors an
+         explicit provider name)
       2. bulk_enrich the just-added candidates — same local-only
          derivation as v9.0
       3. compute Logan's Picks (top 5) from the WHOLE current queue,
@@ -1510,6 +1494,7 @@ def do_it_all(
         city_state=city_state,
         count=count,
         website_status_target=website_status_target,
+        provider=provider,
     )
     new_ids = [r["id"] for r in discover_result["added"] if r.get("id")]
     enrichment_result = {"enriched_count": 0, "failed_count": 0, "failed": []}
@@ -1550,6 +1535,8 @@ def do_it_all(
             "found":                  discover_result["found"],
             "skipped_duplicates":     discover_result["skipped_duplicates"],
             "display_name":           discover_result.get("display_name", ""),
+            "provider":               discover_result.get("provider", ""),
+            "providers":              discover_result.get("providers", []),
         },
         "enrichment": enrichment_result,
         "picks":      picks,
