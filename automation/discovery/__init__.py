@@ -297,6 +297,8 @@ def _provider_to_source(name: str) -> str:
 
 from . import osm as _osm                          # noqa: E402,F401
 from . import research_missions as _research       # noqa: E402,F401
+from . import csv_import as _csv                   # noqa: E402,F401
 
 register(_osm)
 register(_research)
+register(_csv)

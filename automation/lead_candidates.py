@@ -63,7 +63,7 @@ DEFAULT_APPROVAL = "pending"
 # v8.9.1: track how each candidate landed so the UI can show the right
 # affordances (research-mission cards get Google/FB/Maps + Mark Researched;
 # OSM cards already have a verifiable business; manual cards are bare).
-ALLOWED_DISCOVERY_SOURCES = ("osm", "research_mission", "manual")
+ALLOWED_DISCOVERY_SOURCES = ("osm", "research_mission", "csv_import", "manual")
 DEFAULT_DISCOVERY_SOURCE = "manual"
 
 # v9.0 Lead Enrichment Engine.

@@ -5120,7 +5120,7 @@ async function loadDiscoveryProviders() {
         // Keep the Auto chip (always present), append one chip per
         // registered provider. Iconography stays minimal — display_name
         // is the human label.
-        const ICONS = { osm: '🌍', research_missions: '🔍' };
+        const ICONS = { osm: '🌍', research_missions: '🔍', csv_import: '📄' };
         const chipsHtml = providers.map(p => {
             const icon = ICONS[p.name] || '🔌';
             const disabled = p.available === false ? ' disabled' : '';
@@ -5141,11 +5141,25 @@ async function loadDiscoveryProviders() {
     }
 }
 
+// v9.4: per-provider hints surfaced when a disabled chip is clicked.
+// Helps the user understand WHY a source isn't available right now.
+const _PROVIDER_DISABLED_HINTS = {
+    csv_import: 'CSV Import is unavailable because data/imports/ is empty. ' +
+                'Drop a .csv there and reload the page to enable it.',
+};
+
 const _providerChipsEl = document.getElementById('discovery-providers');
 if (_providerChipsEl) {
     _providerChipsEl.addEventListener('click', (e) => {
         const btn = e.target.closest('button[data-provider]');
-        if (!btn || btn.disabled) return;
+        if (!btn) return;
+        if (btn.disabled) {
+            const status = document.getElementById('cmd-status');
+            const hint = _PROVIDER_DISABLED_HINTS[btn.dataset.provider] ||
+                'That source is currently unavailable.';
+            if (status) status.textContent = hint;
+            return;
+        }
         _selectedProvider = btn.dataset.provider;
         _providerChipsEl.querySelectorAll('.provider-chip').forEach(b =>
             b.classList.toggle('is-active', b.dataset.provider === _selectedProvider)

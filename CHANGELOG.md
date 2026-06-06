@@ -1,6 +1,102 @@
 # PartnerDeskAI Changelog
 
-Newest first. v9.3 is the current shipped version.
+Newest first. v9.4 is the current shipped version.
+
+---
+
+## v9.4 — CSV import provider
+
+The v9.3 architecture promised "adding a provider means a new file +
+one register line, no lead-engine changes." v9.4 proves it by adding
+the second non-OSM provider.
+
+**New `automation/discovery/csv_import.py`** — local-only discovery
+from CSV files dropped into `data/imports/`.
+
+Workflow:
+1. User saves a CSV anywhere (chamber roster, exported business
+   directory, hand-built spreadsheet, even an LLM-generated list)
+   into `data/imports/`.
+2. User clicks Find Leads For Me with the **📄 CSV Import** chip
+   selected.
+3. The provider reads every `*.csv` in that folder, maps headers via
+   a synonym table, filters by category + city when those columns
+   exist, returns matching rows as candidate dicts.
+
+**Header-tolerant matching** — canonical fields with common synonyms:
+- `business_name`: business name | name | company | company name | title
+- `phone`: phone | phone number | telephone | tel | cell | mobile
+- `email`: email | e-mail | email address | contact email
+- `website_url`: website | url | web | site | homepage
+- `city_state`: city, state | city | town | location
+- `category`: category | type | industry | vertical
+- `evidence_notes`: notes | description | about
+- `source_url`, `facebook_url`, `instagram_url` — same pattern
+
+**Filtering semantics:** if a CSV has a `category` column, the user's
+category arg becomes a loose substring filter against that column.
+If the CSV doesn't have a category column, every row inherits the
+user's category arg. Same for city. CSV doesn't need to be perfect.
+
+**Safety constraints baked in:**
+- Reads ONLY from `data/imports/`. Path-traversal guarded — even when
+  the optional `source` arg names a specific file, only the basename
+  is used.
+- 10 MB per file cap; files larger are skipped with a clear message.
+- 5,000 rows per file cap; larger files truncated with warning.
+- `data/imports/*.csv` added to `.gitignore` — business lists never
+  leave the local machine via git.
+- Stdlib `csv` only. No new Python deps.
+- `is_available()` returns False when the folder is empty or missing
+  — the UI chip auto-disables.
+- Per-file parse errors are surfaced in the result message; one bad
+  CSV doesn't poison a multi-file import.
+- No outbound calls of any kind. Pure local file read.
+
+**Registration:** two-line change to
+`automation/discovery/__init__.py` — `from . import csv_import` +
+`register(_csv)`. Exactly what the v9.3 architecture promised.
+
+**Schema fix found during testing:** the `ALLOWED_DISCOVERY_SOURCES`
+enum in `lead_candidates.py` didn't include `csv_import`, so CSV
+candidates were silently falling back to `discovery_source='manual'`.
+Added `csv_import` to the enum. Future-providers will need the same
+one-line addition (or we generalize the enum to accept any
+registered NAME — left as a future cleanup).
+
+**UI:**
+- 📄 CSV Import chip appears automatically next to the existing
+  Auto / 🌍 OSM / 🔍 Research Missions chips.
+- When the folder is empty, the chip is disabled and clicking it
+  surfaces the spec-helpful hint: *"CSV Import is unavailable
+  because data/imports/ is empty. Drop a .csv there and reload."*
+
+**New file: `data/imports.SAMPLE.csv`** — a committed 5-row sample
+the user can copy to `data/imports/sample.csv` to test the workflow
+without needing to source a real CSV.
+
+**Live verification (6 tests):**
+
+```
+1. csv_import shows up in /discovery-providers (available=True with
+   sample.csv present, requires_network=False)
+2. provider=csv_import + plumber/Mountain View → 1 row, ds=csv_import
+3. coffee/Hot Springs filter → 1 match (Joe's Coffee Shop)
+4. Re-run same query → 0 new (dedup works)
+5. Empty folder → available=False, helpful "drop a .csv" message
+6. Full pipeline: CSV → enrich → convert → schedule-follow-up works
+   end-to-end with discovery_source='csv_import' preserved through
+   the Logan lead conversion
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+0/6 on the v9.4 diff. Christian Kovac safe.
+
+**Architecture validation:** zero edits to `lead_candidates.py` were
+needed for the new provider to work end-to-end (other than the
+enum fix, which is a one-liner each time, not a refactor). Chain
+composition, dedup, persistence, enrichment, conversion all worked
+unchanged. The v9.3 design is sound.
 
 ---
 

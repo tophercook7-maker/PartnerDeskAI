@@ -42,6 +42,9 @@ data/video_profile.json
 data/.video_profile.*.tmp
 data/video_packages.json
 data/.video_packages.*.tmp
+# v9.4: user-imported CSV business lists — never check these in
+data/imports/*.csv
+data/imports/*.CSV
 reports/*.md
 
 # OS
