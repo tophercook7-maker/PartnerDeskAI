@@ -1788,6 +1788,267 @@
         .adv-w-icon { font-size: 1.1rem; }
         .adv-w-sub  { font-size: 0.78rem; }
 
+        /* ===== v12.4: Office Polish ====================================
+           Bigger characters. Plain language. Per-partner animations.
+           Mission whiteboard. Office room atmosphere. Results card. */
+
+        /* HQ sign + atmosphere */
+        .office-head-v124 {
+            display: flex; flex-wrap: wrap; align-items: center;
+            gap: 0.8rem; position: relative;
+        }
+        .hq-sign {
+            display: flex; align-items: center; gap: 0.4rem;
+            background: #6b4a18; color: #fff5e0;
+            padding: 0.35rem 0.7rem; border-radius: 6px;
+            font-weight: 700; font-size: 0.95rem;
+            box-shadow: 0 2px 0 #4a3210, inset 0 1px 0 rgba(255,255,255,0.15);
+            letter-spacing: 0.02em;
+        }
+        .hq-sign-emoji { font-size: 1.1rem; }
+        .office-room-details {
+            margin-left: auto; display: flex; gap: 0.6rem;
+            font-size: 1.3rem; opacity: 0.55;
+        }
+        .office-detail-ac { animation: ac-blow 3s infinite ease-in-out; }
+        @keyframes ac-blow {
+            0%, 100% { transform: translateX(0); opacity: 0.5; }
+            50%      { transform: translateX(-2px); opacity: 0.75; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .office-detail-ac { animation: none; }
+        }
+
+        /* Today's Mission whiteboard */
+        .mission-board {
+            background: #fdfdf5;
+            border: 1px solid #ddd5b8;
+            border-radius: 10px;
+            padding: 0.7rem 0.9rem;
+            margin: 0.6rem 0 0.7rem;
+            position: relative;
+            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.02), 0 1px 2px rgba(180,140,40,0.05);
+        }
+        /* Subtle dashed border to evoke whiteboard texture */
+        .mission-board::before {
+            content: ''; position: absolute; inset: 6px;
+            border: 1px dashed #cbd5e1; border-radius: 6px;
+            pointer-events: none; opacity: 0.4;
+        }
+        .mission-board-header {
+            font-size: 0.78rem; color: #6b4a18;
+            text-transform: uppercase; letter-spacing: 0.06em;
+            font-weight: 700; margin-bottom: 0.3rem;
+        }
+        .mission-board-text {
+            font-size: 1.1rem; color: #1f2937; font-weight: 600;
+            line-height: 1.3; margin-bottom: 0.5rem;
+        }
+        .mission-board-next {
+            display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;
+            font-size: 0.85rem; color: #475569;
+            border-top: 1px dashed #ddd5b8;
+            padding-top: 0.4rem;
+        }
+        .mission-board-next-label {
+            font-weight: 600; color: #8a6320;
+        }
+        .mission-board-next-text { color: #1f2937; flex: 1 1 60%; min-width: 0; }
+        .mission-board-next-btn {
+            padding: 0.3rem 0.8rem;
+            background: #1f2937; color: #fff;
+            border: 1px solid #1f2937; border-radius: 6px;
+            font-size: 0.82rem; font-weight: 600;
+            cursor: pointer;
+        }
+        .mission-board-next-btn:hover { background: #111827; }
+
+        /* v12.4 DESKS — bigger characters, speech bubble, single big button */
+        .office-desks { gap: 0.7rem; }
+        .office-desk {
+            padding: 0.7rem 0.75rem 0.7rem;
+            min-height: 9.5rem;
+            display: flex; flex-direction: column; gap: 0.35rem;
+        }
+        .office-desk .desk-head {
+            display: flex; gap: 0.55rem; align-items: flex-start;
+        }
+        .office-desk .desk-avatar {
+            font-size: 3rem; line-height: 1; flex-shrink: 0;
+            width: 3.2rem; height: 3.2rem;
+            display: flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #fff8ed 0%, #fff 100%);
+            border: 1px solid #f0d9a6;
+            border-radius: 50%;
+            box-shadow: inset 0 -2px 0 rgba(180,140,40,0.05);
+        }
+        .office-desk.is-olivia .desk-avatar {
+            background: linear-gradient(135deg, #f0f6ff 0%, #fff 100%);
+            border-color: #cfe1ff;
+        }
+        .office-desk .desk-name {
+            font-size: 0.95rem; font-weight: 700;
+        }
+        .office-desk .desk-role { font-size: 0.74rem; }
+        /* v12.4 speech bubble shows current chatter (italic, blank when idle) */
+        .desk-speech {
+            background: #f8fafc; border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 0.35rem 0.5rem;
+            font-size: 0.78rem; color: #475569; font-style: italic;
+            position: relative;
+            min-height: 1.6rem;
+        }
+        .desk-speech::before {
+            content: ''; position: absolute;
+            left: 0.8rem; top: -5px;
+            width: 0.5rem; height: 0.5rem;
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+            border-left: 1px solid #e2e8f0;
+            transform: rotate(45deg);
+        }
+        .desk-speech-empty { color: #94a3b8; }
+        /* Single big primary button per desk */
+        .office-desk .desk-actions {
+            margin-top: auto; padding-top: 0.4rem;
+            border-top: 1px dashed #f1f5f9;
+            display: flex; gap: 0.35rem; flex-wrap: wrap;
+        }
+        .office-desk .desk-doit {
+            flex: 1 1 auto; min-width: 0;
+            font-size: 0.85rem;
+            padding: 0.4rem 0.7rem;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .office-desk .desk-ask {
+            font-size: 0.78rem; padding: 0.4rem 0.65rem;
+            border-radius: 6px;
+        }
+
+        /* v12.4 per-partner working animations.
+           Triggered when the desk has `data-busy="true"`.
+           Each desk picks an animation from a small CSS-only set tied
+           to the partner's id. */
+        .office-desk[data-busy="true"][data-team-desk="logan"] .desk-avatar {
+            animation: logan-pin-bounce 0.85s ease-in-out infinite;
+        }
+        @keyframes logan-pin-bounce {
+            0%, 100% { transform: translateY(0); }
+            50%      { transform: translateY(-4px); }
+        }
+        .office-desk[data-busy="true"][data-team-desk="sage"] .desk-avatar {
+            animation: sage-screen-glow 1.6s ease-in-out infinite;
+        }
+        @keyframes sage-screen-glow {
+            0%, 100% { box-shadow: inset 0 -2px 0 rgba(180,140,40,0.05),
+                                   0 0 0 0 rgba(28,79,143,0.0); }
+            50%      { box-shadow: inset 0 -2px 0 rgba(180,140,40,0.05),
+                                   0 0 14px 2px rgba(28,79,143,0.45); }
+        }
+        .office-desk[data-busy="true"][data-team-desk="parker"] .desk-avatar {
+            animation: parker-shuffle 0.6s ease-in-out infinite;
+        }
+        @keyframes parker-shuffle {
+            0%, 100% { transform: rotate(-3deg); }
+            50%      { transform: rotate(3deg); }
+        }
+        .office-desk[data-busy="true"][data-team-desk="video"] .desk-avatar::after {
+            content: ''; position: absolute;
+            width: 6px; height: 6px; border-radius: 50%;
+            background: #b34a4a; top: 4px; right: 6px;
+            animation: video-blink 1.2s ease-in-out infinite;
+        }
+        .office-desk[data-busy="true"][data-team-desk="video"] .desk-avatar { position: relative; }
+        @keyframes video-blink {
+            0%, 100% { opacity: 0.3; }
+            50%      { opacity: 1; }
+        }
+        .office-desk[data-busy="true"][data-team-desk="youtube"] .desk-avatar {
+            animation: yt-thumb-pulse 1.4s ease-in-out infinite;
+        }
+        @keyframes yt-thumb-pulse {
+            0%, 100% { box-shadow: inset 0 -2px 0 rgba(180,140,40,0.05),
+                                   0 0 0 0 rgba(179,74,74,0.0); }
+            50%      { box-shadow: inset 0 -2px 0 rgba(180,140,40,0.05),
+                                   0 0 14px 2px rgba(179,74,74,0.4); }
+        }
+        .office-desk[data-busy="true"][data-team-desk="olivia"] .desk-avatar::after {
+            content: '✓'; position: absolute;
+            font-size: 0.7rem; color: #4aa05c;
+            top: 4px; right: 4px;
+            animation: olivia-check 1.6s ease-in-out infinite;
+        }
+        .office-desk[data-busy="true"][data-team-desk="olivia"] .desk-avatar { position: relative; }
+        @keyframes olivia-check {
+            0%   { opacity: 0; transform: scale(0.5); }
+            30%  { opacity: 1; transform: scale(1.1); }
+            70%  { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(0.5); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .office-desk .desk-avatar { animation: none !important; }
+            .office-desk[data-busy="true"] .desk-avatar::after { animation: none !important; }
+        }
+
+        /* v12.4 RESULTS CARD — "Done. Here's what we found: ... Next best action: [button]" */
+        .office-results {
+            background: #fff;
+            border: 1px solid #4aa05c;
+            border-radius: 10px;
+            padding: 0.7rem 0.9rem;
+            margin: 0 0 0.7rem;
+            position: relative;
+            animation: results-pop 320ms ease-out;
+        }
+        @keyframes results-pop {
+            from { opacity: 0; transform: translateY(-4px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .office-results { animation: none; }
+        }
+        .results-done {
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            background: #d8efd8; color: #2d6a3a;
+            padding: 0.2rem 0.55rem; border-radius: 999px;
+            font-size: 0.72rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.05em;
+            margin-bottom: 0.4rem;
+        }
+        .results-headline {
+            font-size: 1.05rem; font-weight: 700; color: #1f2937;
+            margin-bottom: 0.3rem;
+        }
+        .results-bullets {
+            margin: 0.2rem 0 0.6rem;
+            padding-left: 1.2rem;
+            font-size: 0.9rem; color: #334155;
+        }
+        .results-bullets li { margin: 0.18rem 0; }
+        .results-next-row {
+            display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+            border-top: 1px dashed #d8efd8;
+            padding-top: 0.5rem;
+        }
+        .results-next-label {
+            font-size: 0.78rem; color: #475569; font-weight: 600;
+        }
+        .results-next-btn {
+            padding: 0.5rem 1rem;
+            background: #2d6a3a; color: #fff;
+            border: 1px solid #2d6a3a; border-radius: 7px;
+            font-size: 0.92rem; font-weight: 700;
+            cursor: pointer;
+        }
+        .results-next-btn:hover { background: #1e4d28; }
+        .results-dismiss {
+            margin-left: auto;
+            background: transparent; border: none; color: #94a3b8;
+            font-size: 0.85rem; cursor: pointer;
+        }
+
         /* ===== v12.1: Onboarding overlay =============================== */
         .onboarding-overlay {
             position: fixed; inset: 0; z-index: 200;
@@ -3274,15 +3535,41 @@
          panel + every partner dashboard now live under "Advanced
          workspaces" below — the office is the primary surface. -->
     <section id="team-office-section" class="team-office-section office-room">
-        <div class="office-head">
-            <h2 class="office-title">🏢 MixedMakerShop Agency Office</h2>
+        <!-- v12.4: HQ sign + room atmosphere details (water cooler, A/C vent) -->
+        <div class="office-head office-head-v124">
+            <div class="hq-sign">
+                <span class="hq-sign-emoji">🏢</span>
+                <span class="hq-sign-text" id="hq-sign-text">MixedMakerShop HQ</span>
+            </div>
             <div class="office-tagline">Your team is here. Tell us what to work on.</div>
+            <div class="office-room-details" aria-hidden="true">
+                <span class="office-detail office-detail-cooler" title="Water cooler">💧</span>
+                <span class="office-detail office-detail-ac"     title="AC vent">💨</span>
+                <span class="office-detail office-detail-clock"  title="Office clock">🕐</span>
+            </div>
+        </div>
+
+        <!-- v12.4: Today's Mission whiteboard. -->
+        <div id="mission-board" class="mission-board">
+            <div class="mission-board-header">📋 Today's Mission</div>
+            <div class="mission-board-text" id="mission-board-text">Loading the whiteboard…</div>
+            <div class="mission-board-next">
+                <span class="mission-board-next-label">Next move:</span>
+                <span class="mission-board-next-text" id="mission-board-next-text">—</span>
+                <button type="button" class="mission-board-next-btn" id="mission-board-next-btn" hidden>—</button>
+            </div>
         </div>
 
         <!-- Morning briefing — Olivia speaks. -->
         <div id="office-briefing" class="office-briefing">
             <div class="muted">Olivia is reviewing the desks…</div>
         </div>
+
+        <!-- v12.4: Latest results card — when a partner finishes work,
+             we render a "Done. Here's what we found: ... Next best
+             action: [big button]" panel here above the desks so the
+             user sees what just happened. Hidden when empty. -->
+        <div id="office-results" class="office-results" hidden></div>
 
         <!-- 6 desks arranged as a 2×3 grid (Olivia first as office manager) -->
         <div id="team-desks" class="office-desks">
@@ -3323,19 +3610,19 @@
 
         <!-- Work queue + shared documents — collapsed by default. -->
         <details class="team-side-details" id="team-work-details">
-            <summary><strong>🗂️ Work Queue</strong>
+            <summary><strong>🗂️ Team Tasks</strong>
                 <span id="team-work-count" class="muted"></span>
             </summary>
             <div id="team-work-list" class="team-work-list">
-                <div class="muted">No work items yet.</div>
+                <div class="muted">No tasks yet.</div>
             </div>
         </details>
         <details class="team-side-details" id="team-docs-details">
-            <summary><strong>📄 Shared Documents</strong>
+            <summary><strong>📄 Shared Files</strong>
                 <span id="team-docs-count" class="muted"></span>
             </summary>
             <div id="team-docs-list" class="team-docs-list">
-                <div class="muted">No shared documents yet.</div>
+                <div class="muted">No shared files yet.</div>
             </div>
         </details>
     </section>

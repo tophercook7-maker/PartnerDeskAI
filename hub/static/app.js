@@ -8059,10 +8059,11 @@ let _teamSuggestionChips = [];
 let _teamTyping = false;  // v12.0 typing indicator
 
 async function loadTeamSummary() {
+    let d = null;
     try {
         const r = await fetch('/api/team-office/summary');
         if (!r.ok) throw new Error('http ' + r.status);
-        const d = await r.json();
+        d = await r.json();
         _teamDesks = d.desks || [];
         _teamGreeting = d.greeting || '';
         _teamSuggestionChips = d.suggestion_chips || [];
@@ -8071,6 +8072,8 @@ async function loadTeamSummary() {
     // Re-render messages so the empty-state greeting picks up the new
     // greeting + chip text.
     renderTeamMessages();
+    // v12.4: refresh the mission whiteboard from the same payload.
+    if (d && d.mission) _renderMissionBoard(d.mission);
 }
 
 function renderTeamDesks() {
@@ -8080,9 +8083,9 @@ function renderTeamDesks() {
         el.innerHTML = '<div class="muted">Setting up the desks…</div>';
         return;
     }
-    // v12.3: living office layout — desks render with role-specific
-    // decor items + animated status pulse on busy desks. Olivia
-    // styled distinctly as the office manager.
+    // v12.4: bigger character avatars, speech bubble showing current
+    // chatter, one big primary button per desk. Per-partner working
+    // animations triggered via data-busy attribute.
     el.innerHTML = _teamDesks.map(d => {
         const busy = (d.status === 'active' || d.status === 'thinking' || d.status === 'waiting');
         const cls = [
@@ -8090,34 +8093,30 @@ function renderTeamDesks() {
             d.id === 'olivia' ? 'is-olivia' : '',
             busy ? 'is-busy' : '',
         ].filter(Boolean).join(' ');
-        // v12.3 desk decor — role-specific items rendered as a row
-        const decor = (d.desk_items || []).length
-            ? `<div class="desk-items">` + (d.desk_items || [])
-                .map(it => `<span>${_escape(it)}</span>`).join('') + `</div>`
-            : '';
-        const chatter = d.chatter
-            ? `<div class="desk-chatter">· ${_escape(d.chatter)}</div>`
-            : '';
+        const speech = d.chatter
+            ? `<div class="desk-speech">${_escape(d.chatter)}</div>`
+            : `<div class="desk-speech desk-speech-empty">…at the desk</div>`;
+        const shortName = d.short_name || d.name.split(' ')[0];
         const tasksTag = d.task_count > 0
             ? `<span class="desk-tasks">${d.task_count} task${d.task_count === 1 ? '' : 's'}</span>`
             : '';
-        const shortName = d.short_name || d.name.split(' ')[0];
         return (
-            `<div class="${cls}" data-team-desk="${_escape(d.id)}" title="${_escape(d.description || '')}">` +
+            `<div class="${cls}" data-team-desk="${_escape(d.id)}" ` +
+              `data-busy="${busy ? 'true' : 'false'}" ` +
+              `title="${_escape(d.description || '')}">` +
               `<div class="desk-head">` +
                 `<span class="desk-avatar">${d.emoji}</span>` +
                 `<div class="desk-name-block">` +
                   `<div class="desk-name">${_escape(d.name)}</div>` +
                   `<div class="desk-role">${_escape(d.role)}</div>` +
+                  `<div class="desk-status-line">` +
+                    `<span class="status-pulse is-${_escape(d.status)}"></span>` +
+                    `<span class="desk-status-text">${_escape(d.status)}</span>` +
+                    tasksTag +
+                  `</div>` +
                 `</div>` +
               `</div>` +
-              decor +
-              chatter +
-              `<div class="desk-status-line">` +
-                `<span class="status-pulse is-${_escape(d.status)}"></span>` +
-                `<span class="desk-status-text">${_escape(d.status)}</span>` +
-                tasksTag +
-              `</div>` +
+              speech +
               `<div class="desk-actions">` +
                 `<button type="button" class="desk-doit" data-team-desk-doit="${_escape(d.id)}">${_escape(d.do_it_label)}</button>` +
                 `<button type="button" class="desk-ask" data-team-desk-ask="${_escape(d.id)}">Ask ${_escape(shortName)}</button>` +
@@ -8260,6 +8259,87 @@ function _startActivityPolling() {
         loadActivityFeed();
     }, 12000);
 }
+
+// v12.4: mission board — "Today's Mission" whiteboard at the top.
+// Renders from the `mission` field on /api/team-office/summary.
+let _missionAction = null;
+function _renderMissionBoard(mission) {
+    const txt   = document.getElementById('mission-board-text');
+    const nxtTx = document.getElementById('mission-board-next-text');
+    const nxtBt = document.getElementById('mission-board-next-btn');
+    const hq    = document.getElementById('hq-sign-text');
+    if (!mission) return;
+    if (txt) txt.textContent = mission.mission || '—';
+    if (nxtTx) nxtTx.textContent = mission.next_move || '—';
+    if (hq && mission.hq_name) hq.textContent = `${mission.hq_name} HQ`;
+    _missionAction = mission.next_action || null;
+    if (nxtBt) {
+        if (_missionAction && _missionAction.label) {
+            nxtBt.textContent = _missionAction.label;
+            nxtBt.hidden = false;
+        } else {
+            nxtBt.hidden = true;
+        }
+    }
+}
+
+// v12.4: results card — "Done. Here's what we found: ... Next best
+// action: [big button]". Shown after start_work() completes.
+function _showResultsCard(result) {
+    const el = document.getElementById('office-results');
+    if (!el || !result) return;
+    const headline = result.headline || 'Done.';
+    const bullets  = result.bullets || [];
+    const next     = result.next_action || null;
+    const bulletsHtml = bullets.length
+        ? `<ol class="results-bullets">` + bullets.map(b =>
+            `<li>${_escape(b)}</li>`).join('') + `</ol>`
+        : '';
+    const nextBtnHtml = next
+        ? `<button type="button" class="results-next-btn" data-results-next='${_escape(JSON.stringify(next))}'>${_escape(next.label || 'Next')}</button>`
+        : '';
+    el.innerHTML =
+        `<div class="results-done">✓ Done</div>` +
+        `<div class="results-headline">${_escape(headline)}</div>` +
+        bulletsHtml +
+        (nextBtnHtml ? (
+            `<div class="results-next-row">` +
+              (next.label ? `<span class="results-next-label">Next best action →</span>` : '') +
+              nextBtnHtml +
+              `<button type="button" class="results-dismiss" data-results-dismiss>Dismiss</button>` +
+            `</div>`
+        ) : '');
+    el.hidden = false;
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function _hideResultsCard() {
+    const el = document.getElementById('office-results');
+    if (el) { el.hidden = true; el.innerHTML = ''; }
+}
+
+// Delegator for the results card's Next button + dismiss
+document.addEventListener('click', async (e) => {
+    const nextBtn = e.target.closest('button[data-results-next]');
+    const dismiss = e.target.closest('button[data-results-dismiss]');
+    const missionBtn = e.target.closest('#mission-board-next-btn');
+    if (dismiss) { _hideResultsCard(); return; }
+    if (nextBtn) {
+        let action;
+        try { action = JSON.parse(nextBtn.dataset.resultsNext); } catch { return; }
+        // Reuse the existing action runner.
+        if (typeof _runTeamAction === 'function') {
+            await _runTeamAction(action);
+        }
+        _hideResultsCard();
+        return;
+    }
+    if (missionBtn && _missionAction) {
+        if (typeof _runTeamAction === 'function') {
+            await _runTeamAction(_missionAction);
+        }
+    }
+});
 
 function renderTeamMessages() {
     const el = document.getElementById('team-messages');
@@ -8537,6 +8617,8 @@ async function _runTeamDoItForMe(partnerId) {
         // Reload from server so we render the canonical message log
         // (start_work appended the partner's reply).
         await loadTeamMessages();
+        // v12.4: show the focused results card if the partner returned one.
+        if (d && d.result_card) _showResultsCard(d.result_card);
         // Refresh desks + work queue + documents + briefing + activity
         // feed — counts likely changed.
         await Promise.all([

@@ -67,7 +67,7 @@ PARTNERS: dict[str, dict] = {
             "everyone", "everyone is", "team", "summary", "status",
             "what's", "what is",
         ),
-        "do_it_label": "Tell Me What To Do Next",
+        "do_it_label": "Tell Me Next Step",
         # v12.3: 3 desk decor items rendered as a row under the desk's
         # role line so each partner's desk looks distinct.
         "desk_items":  ("📋", "✅", "☕"),
@@ -84,7 +84,7 @@ PARTNERS: dict[str, dict] = {
             "clients", "discover", "find", "outreach", "csv",
             "import", "candidates",
         ),
-        "do_it_label": "Find Leads For Me",
+        "do_it_label": "Find Clients",
         "desk_items":  ("🗺️", "📞", "📒"),
         "short_name":  "Logan",
     },
@@ -99,7 +99,7 @@ PARTNERS: dict[str, dict] = {
             "business profile", "monthly report", "report", "sage",
             "fix", "fixes", "approval",
         ),
-        "do_it_label": "Improve SEO For Me",
+        "do_it_label": "Check My Website",
         "desk_items":  ("📊", "📈", "💻"),
         "short_name":  "Sage",
     },
@@ -113,7 +113,7 @@ PARTNERS: dict[str, dict] = {
             "posts", "marketing", "campaign copy", "announcement",
             "parker", "promote",
         ),
-        "do_it_label": "Create Promotion For Me",
+        "do_it_label": "Make Promo",
         "desk_items":  ("🎨", "💡", "📌"),
         "short_name":  "Parker",
     },
@@ -127,7 +127,7 @@ PARTNERS: dict[str, dict] = {
             "campaign", "reels", "tiktok", "short", "video partner",
             "ad script",
         ),
-        "do_it_label": "Create Video Campaign For Me",
+        "do_it_label": "Make Video",
         "desk_items":  ("📷", "🎞️", "💡"),
         "short_name":  "Video",
     },
@@ -141,7 +141,7 @@ PARTNERS: dict[str, dict] = {
             "hook", "video ideas", "growth", "youtube growth",
             "shorts",
         ),
-        "do_it_label": "Find Video Opportunities For Me",
+        "do_it_label": "Find Video Ideas",
         "desk_items":  ("🖼️", "📈", "🎯"),
         "short_name":  "YouTube",
     },
@@ -1224,13 +1224,14 @@ def office_greeting() -> str:
 
 
 def office_suggestion_chips() -> list[str]:
-    """v12.0: a tiny set of one-tap suggestions for the empty console.
-    Picks live next to the greeting."""
+    """v12.4: the 5 spec-mandated one-tap suggestions Olivia offers
+    when the user opens the office. Plain words, action-shaped."""
     return [
-        "What should I do next?",
-        "Find me leads",
-        "Have Sage audit MixedMakerShop",
-        "Show me what everyone is working on",
+        "Get me clients",
+        "Improve my website",
+        "Make a promo",
+        "Make a video",
+        "Tell me what to do next",
     ]
 
 
@@ -1284,13 +1285,34 @@ def _start_olivia() -> dict:
         "role": "olivia", "partner": "olivia",
         "text": text, "actions": actions,
     })
+    # v12.4: pull the top-3 lines out of Olivia's text as bullets for
+    # the result card, then surface the first action as next-action.
+    bullets: list[str] = []
+    for line in text.split("\n"):
+        line = line.strip()
+        if line and (line[0].isdigit() or line.startswith("•")
+                     or line.startswith("-")):
+            # Strip leading "1." / "2." / "•" / "-".
+            cleaned = line.lstrip("0123456789.• -")
+            if cleaned:
+                bullets.append(cleaned.strip())
+        if len(bullets) >= 3:
+            break
+    if not bullets:
+        bullets = [text.split("\n", 1)[0]] if text else ["You're up to date."]
+    next_action = actions[0] if actions else None
     return {
-        "ok":             True,
-        "partner":        "olivia",
-        "messages":       [msg],
-        "documents":      [],
-        "work_item":      None,
-        "summary":        "Olivia ranked the next 3 things to do.",
+        "ok":          True,
+        "partner":     "olivia",
+        "messages":    [msg],
+        "documents":   [],
+        "work_item":   None,
+        "summary":     "Olivia ranked the next 3 things to do.",
+        "result_card": {
+            "headline":    "Here's what I'd do next:",
+            "bullets":     bullets,
+            "next_action": next_action,
+        },
     }
 
 
@@ -1363,13 +1385,47 @@ def _start_logan() -> dict:
     })
 
     wi = _bump_work_item("logan")
+
+    # v12.4: spec-format results card. Plain language ("possible
+    # clients" / "best one is"); top-3 bullets explain WHY they
+    # stand out; next action is one obvious button.
+    bullets: list[str] = []
+    for p in picks[:3]:
+        name = p.get("business_name") or "(unnamed)"
+        flags = p.get("weak_presence_flags") or []
+        why = ""
+        if "Facebook only" in flags:
+            why = "on Facebook only"
+        elif "No website found" in flags:
+            why = "no website yet"
+        elif "Old or weak website" in flags:
+            why = "dated website"
+        elif "Gmail/Yahoo/Outlook email" in flags:
+            why = "uses a free email"
+        bullets.append(f"{name}{' — ' + why if why else ''}")
+    if not bullets:
+        bullets = [f"{total} possible client{'s' if total != 1 else ''} added in {city}."]
+    result_card = {
+        "headline":  (
+            f"I found {len(picks)} possible client{'s' if len(picks) != 1 else ''} "
+            f"in {city}."
+        ),
+        "bullets":   bullets,
+        "next_action": {
+            "label":   "See the list",
+            "kind":    "scroll",
+            "target":  "logan-details",
+        },
+    }
+
     return {
-        "ok":        True,
-        "partner":   "logan",
-        "messages":  [msg],
-        "documents": [doc],
-        "work_item": wi,
-        "summary":   f"Logan queued {total} candidates ({osm_n} OSM + {rm_n} research).",
+        "ok":          True,
+        "partner":     "logan",
+        "messages":    [msg],
+        "documents":   [doc],
+        "work_item":   wi,
+        "summary":     f"Logan found {total} possible clients ({osm_n} from maps + {rm_n} from research).",
+        "result_card": result_card,
     }
 
 
@@ -1401,20 +1457,37 @@ def _start_sage() -> dict:
 
     sections = audit.get("checklist") or {}
     counts = {k: len(v) for k, v in sections.items() if isinstance(v, list)}
-    body_lines = [
-        f"Audit run for {mms.get('project_name', 'MMS')}.",
-        f"Website: {mms.get('website_url', '?')}",
-        "",
+    proj_name = mms.get('project_name', 'your website')
+    site_url = mms.get('website_url', '?')
+
+    # v12.4: spec section 9 — plain-language recommendations, NOT
+    # "technical SEO" as the headline. Lead with the most relatable
+    # opportunity: clarity + local signals.
+    plain_recommendations = [
+        "Make it clearer what you sell and where you serve.",
+        "Add local service terms (city + service) to titles and headings.",
+        "Add clear calls to action on every page.",
+        "Check page titles and meta descriptions are unique.",
     ]
-    for section, count in counts.items():
-        body_lines.append(f"  {section.replace('_', ' ').title()}: {count} checklist items.")
+
+    body_lines = [
+        f"I checked {site_url}.",
+        "",
+        "The first thing I'd improve is making it clearer what you sell "
+        "and where you serve.",
+        "",
+        "Other things I'd do, in order:",
+    ]
+    for rec in plain_recommendations[1:]:
+        body_lines.append(f"  • {rec}")
     body_lines.append("")
     body_lines.append(
-        "Work the checklist manually inside Sage; flag failing items "
-        "and approve fixes you want shipped."
+        "(Behind this list I built a full check covering "
+        f"{sum(counts.values())} items — Technical, On-Page, and Local. "
+        "Open my section if you want to walk it.)"
     )
     doc = create_document({
-        "title":      f"SEO audit — {mms.get('project_name', 'MMS')}",
+        "title":      f"Website check — {proj_name}",
         "type":       "seo_audit",
         "created_by": "sage",
         "shared_with": ["olivia", "parker"],
@@ -1423,30 +1496,52 @@ def _start_sage() -> dict:
         "status":     "ready",
     })
 
-    summary_lines = [
-        f"Audit's ready for {mms.get('project_name', 'MMS')}.",
-        "  Technical SEO: " + str(counts.get("technical_seo", 0)) + " items.",
-        "  On-Page SEO: " + str(counts.get("on_page_seo", 0)) + " items.",
-        "  Local SEO: " + str(counts.get("local_seo", 0)) + " items.",
+    # v12.4: Sage's console reply leads with the plain-language headline.
+    chat_lines = [
+        f"I checked your website.",
         "",
-        "I don't crawl — walk the checklist with me and we'll triage.",
+        "The first thing I'd improve is making it clearer what you sell "
+        "and where you serve. Here are the top things I'd do:",
+        "",
+        "  • Fix homepage wording",
+        "  • Add local service terms",
+        "  • Improve page titles",
+        "  • Add calls to action",
     ]
     msg = append_message({
         "role": "sage", "partner": "sage",
-        "text": _wrap_with_voice("sage", "\n".join(summary_lines), "start"),
+        "text": _wrap_with_voice("sage", "\n".join(chat_lines), "start"),
         "actions": [
             {"label": "Open Sage", "kind": "scroll", "target": "sage-details"},
         ],
     })
 
     wi = _bump_work_item("sage")
+
+    # v12.4 spec-format results card.
+    result_card = {
+        "headline":    f"I checked {proj_name}.",
+        "bullets":     [
+            "Fix homepage wording",
+            "Add local service terms",
+            "Improve page titles",
+            "Add calls to action",
+        ],
+        "next_action": {
+            "label":  "Open the checklist",
+            "kind":   "scroll",
+            "target": "sage-details",
+        },
+    }
+
     return {
-        "ok":        True,
-        "partner":   "sage",
-        "messages":  [msg],
-        "documents": [doc],
-        "work_item": wi,
-        "summary":   f"Sage generated audit ({sum(counts.values())} items).",
+        "ok":          True,
+        "partner":     "sage",
+        "messages":    [msg],
+        "documents":   [doc],
+        "work_item":   wi,
+        "summary":     f"Sage finished your website check.",
+        "result_card": result_card,
     }
 
 
@@ -1511,13 +1606,28 @@ def _start_parker() -> dict:
         ],
     })
     wi = _bump_work_item("parker")
+    free_offer = profile.get("free_offer", "Free homepage mockup")
+    paid_offer = profile.get("paid_offer", "Starter website fix from $150")
     return {
-        "ok":        True,
-        "partner":   "parker",
-        "messages":  [msg],
-        "documents": [doc],
-        "work_item": wi,
-        "summary":   "Parker drafted promo copy.",
+        "ok":          True,
+        "partner":     "parker",
+        "messages":    [msg],
+        "documents":   [doc],
+        "work_item":   wi,
+        "summary":     "Parker wrote a promo for you to review.",
+        "result_card": {
+            "headline":    f"I wrote a promo built around \"{free_offer}\".",
+            "bullets":     [
+                f"Free offer baked in: {free_offer}",
+                f"Paid follow-up offer: {paid_offer}",
+                "Friendly, not pushy, no \"3 free fixes\" language",
+            ],
+            "next_action": {
+                "label":  "Read it",
+                "kind":   "scroll",
+                "target": "parker-details",
+            },
+        },
     }
 
 
@@ -1568,12 +1678,25 @@ def _start_video() -> dict:
     })
     wi = _bump_work_item("video")
     return {
-        "ok":        True,
-        "partner":   "video",
-        "messages":  [msg],
-        "documents": [doc],
-        "work_item": wi,
-        "summary":   "Video Partner generated short script.",
+        "ok":          True,
+        "partner":     "video",
+        "messages":    [msg],
+        "documents":   [doc],
+        "work_item":   wi,
+        "summary":     "Video Partner wrote a short script.",
+        "result_card": {
+            "headline":    f"I wrote a short video script for \"{topic}\".",
+            "bullets":     [
+                "Phone-first, friendly tone",
+                "Built for Reels / TikTok / Shorts",
+                "No publishing — review-only",
+            ],
+            "next_action": {
+                "label":  "Read it",
+                "kind":   "scroll",
+                "target": "video-details",
+            },
+        },
     }
 
 
@@ -1617,12 +1740,25 @@ def _start_youtube() -> dict:
     })
     wi = _bump_work_item("youtube")
     return {
-        "ok":        True,
-        "partner":   "youtube",
-        "messages":  [msg],
-        "documents": [doc],
-        "work_item": wi,
-        "summary":   "YouTube Growth generated full package.",
+        "ok":          True,
+        "partner":     "youtube",
+        "messages":    [msg],
+        "documents":   [doc],
+        "work_item":   wi,
+        "summary":     "YouTube Growth found video ideas.",
+        "result_card": {
+            "headline":    f"I found video ideas for \"{topic}\".",
+            "bullets":     [
+                "Title ideas, hooks, and a video concept",
+                "Approval-based — I prep, you decide",
+                "Nothing publishes automatically",
+            ],
+            "next_action": {
+                "label":  "See the ideas",
+                "kind":   "scroll",
+                "target": "youtube-details",
+            },
+        },
     }
 
 
@@ -1676,15 +1812,14 @@ def _partner_status_line(pid: str) -> tuple[str, dict | None]:
             count = len(picks)
             if count == 0:
                 return ("", None)
-            top = picks[0].get("business_name") or "your top lead"
+            top = picks[0].get("business_name") or "your top one"
             ready = sum(1 for p in picks if p.get("ready_for_outreach"))
             if ready:
-                s = (f"Logan has {count} ranked candidate"
-                     f"{'s' if count != 1 else ''} — {top} is ready to send.")
+                s = (f"Logan has {count} possible client"
+                     f"{'s' if count != 1 else ''} — {top} is ready to reach out to.")
             else:
-                s = (f"Logan has {count} ranked candidate"
-                     f"{'s' if count != 1 else ''} on the board — "
-                     f"strongest is {top}.")
+                s = (f"Logan has {count} possible client"
+                     f"{'s' if count != 1 else ''} on the board — best one is {top}.")
             return (s, {"label": "Open Logan", "kind": "scroll",
                         "target": "logan-details"})
         if pid == "sage":
@@ -1693,14 +1828,12 @@ def _partner_status_line(pid: str) -> tuple[str, dict | None]:
             projects = _sp.load_projects()
             if queue:
                 top = queue[0]
-                s = (f"Sage has {len(queue)} SEO fix"
-                     f"{'es' if len(queue) != 1 else ''} waiting for your "
-                     f"approval — top one is the "
-                     f"{(top.get('severity') or 'high')}-priority "
-                     f"\"{top.get('issue', 'website fix')}\".")
+                s = (f"Sage has {len(queue)} website fix"
+                     f"{'es' if len(queue) != 1 else ''} waiting for your OK — "
+                     f"top one: \"{top.get('issue', 'a quick fix')}\".")
                 return (s, {"label": "Open Sage", "kind": "scroll",
                             "target": "sage-details"})
-            # No queue — is the latest audit walked yet?
+            # No queue — is the latest website check walked yet?
             if projects:
                 audits = _sp.list_audits(projects[0]["id"])
                 if audits:
@@ -1712,9 +1845,9 @@ def _partner_status_line(pid: str) -> tuple[str, dict | None]:
                     pending = sum(1 for it in items
                                   if (it.get("status") or "") == "pending")
                     if pending:
-                        s = (f"Sage's audit on {projects[0].get('project_name', 'MMS')} "
-                             f"has {pending} checklist item"
-                             f"{'s' if pending != 1 else ''} still to walk.")
+                        s = (f"Sage's website check on {projects[0].get('project_name', 'your site')} "
+                             f"still has {pending} item"
+                             f"{'s' if pending != 1 else ''} to walk through.")
                         return (s, {"label": "Open Sage", "kind": "scroll",
                                     "target": "sage-details"})
             return ("", None)
@@ -1725,7 +1858,7 @@ def _partner_status_line(pid: str) -> tuple[str, dict | None]:
                       if (p.get("status") or "draft") == "draft"]
             if drafts:
                 top = drafts[-1]
-                s = (f"YouTube has {len(drafts)} package"
+                s = (f"YouTube has {len(drafts)} video idea"
                      f"{'s' if len(drafts) != 1 else ''} drafted — "
                      f"latest is \"{top.get('title', 'untitled')}\".")
                 return (s, {"label": "Open YouTube Growth", "kind": "scroll",
@@ -1738,7 +1871,7 @@ def _partner_status_line(pid: str) -> tuple[str, dict | None]:
                       if (p.get("status") or "draft") == "draft"]
             if drafts:
                 top = drafts[-1]
-                s = (f"Video has {len(drafts)} draft"
+                s = (f"Video has {len(drafts)} script"
                      f"{'s' if len(drafts) != 1 else ''} on the desk — "
                      f"newest is \"{top.get('title', 'untitled')}\".")
                 return (s, {"label": "Open Video Partner", "kind": "scroll",
@@ -1748,14 +1881,14 @@ def _partner_status_line(pid: str) -> tuple[str, dict | None]:
             docs = list_documents(partner="parker", type_="promo_copy")
             if docs:
                 top = docs[-1]
-                s = (f"Parker has a promo draft on file — "
+                s = (f"Parker has a promo waiting for you — "
                      f"\"{top.get('title', 'untitled')}\".")
                 return (s, {"label": "Open Parker", "kind": "scroll",
                             "target": "parker-details"})
             wis = list_work_items(partner="parker", status="new")
             if wis:
-                s = (f"Parker has a promo task waiting — \"{wis[0].get('title', 'a draft')}\".")
-                return (s, {"label": "Make Promo For Me", "kind": "do_it_for_me",
+                s = (f"Parker has a promo to draft — \"{wis[0].get('title', 'a draft')}\".")
+                return (s, {"label": "Make Promo", "kind": "do_it_for_me",
                             "partner": "parker"})
             return ("", None)
     except Exception:
@@ -1763,23 +1896,101 @@ def _partner_status_line(pid: str) -> tuple[str, dict | None]:
     return ("", None)
 
 
+def mission_board() -> dict:
+    """
+    v12.4: 'Today's Mission' whiteboard at the top of the office.
+    Reads the agency profile + live partner state to surface ONE main
+    mission + ONE next recommended move. No persistence.
+    """
+    try:
+        import onboarding as _ob
+        profile = _ob.load_agency_profile() or {}
+    except Exception:
+        profile = {}
+
+    agency = profile.get("agency_name") or "MixedMakerShop"
+    area   = profile.get("default_search_area") or "your area"
+    free   = profile.get("free_offer") or "Free homepage mockup"
+
+    # Default mission is the agency's headline goal.
+    main_goal = (profile.get("main_goal") or
+                 f"Get {agency} more local clients in {area}.")
+
+    # Compute next-move using the same signals Olivia uses for the
+    # next-actions list, but in plain language.
+    next_text = ""
+    next_action: dict | None = None
+    try:
+        import lead_candidates as _lc
+        ready = [p for p in _lc.compute_picks(k=10)
+                 if p.get("ready_for_outreach")]
+        if ready:
+            next_text = (
+                f"Use {ready[0].get('business_name') or 'your top client'} — "
+                f"Logan already prepped the outreach. Copy it and send."
+            )
+            next_action = {"label": "Open Logan",
+                           "kind":  "scroll", "target": "logan-details"}
+    except Exception:
+        pass
+
+    if not next_text:
+        try:
+            import seo_partner as _sp
+            queue = _sp.list_approval_queue()
+            if queue:
+                top = queue[0]
+                next_text = (
+                    f"Approve Sage's website fix — \"{top.get('issue', 'a quick fix')}\"."
+                )
+                next_action = {"label": "Open Sage",
+                               "kind": "scroll", "target": "sage-details"}
+        except Exception:
+            pass
+
+    if not next_text:
+        # Default: kick off the team to find the first batch of clients.
+        next_text = (
+            f"Ask Logan to find clients in {area}, then Parker to write outreach."
+        )
+        next_action = {"label": "Get me clients",
+                       "kind":  "ask_partner",
+                       "partner": "olivia",
+                       "prompt":  "Get me clients"}
+
+    return {
+        "mission":      main_goal,
+        "next_move":    next_text,
+        "next_action":  next_action,
+        "hq_name":      agency,
+        "hq_area":      area,
+        "free_offer":   free,
+    }
+
+
 def morning_briefing() -> dict:
     """
-    Compose the morning briefing card. Time-aware greeting + Olivia's
-    summary of what each partner has prepared. Reads live data; no
-    persistence.
+    Compose the morning briefing card. v12.4: spec-mandated leading
+    line — "Hey Topher, I'm running the office today. Tell me what
+    you need, or pick one of these." — then a soft summary of what
+    each partner has on their desk. Plain language throughout.
     """
     hour = datetime.now().hour
     if hour < 5:
-        opener = "Still up, Topher?"
+        time_word = "tonight"
     elif hour < 12:
-        opener = "Good morning, Topher."
+        time_word = "this morning"
     elif hour < 17:
-        opener = "Good afternoon, Topher."
+        time_word = "this afternoon"
     elif hour < 22:
-        opener = "Good evening, Topher."
+        time_word = "this evening"
     else:
-        opener = "Late night, Topher."
+        time_word = "tonight"
+
+    opener = (
+        f"Hey Topher, I'm running the office {time_word}. "
+        f"Tell me what you need, or pick one of these."
+    )
 
     partner_lines: list[str] = []
     actions: list[dict] = []
@@ -1791,29 +2002,18 @@ def morning_briefing() -> dict:
                 actions.append(action)
 
     if partner_lines:
-        team_summary = " The team is ready.\n\n  " + "\n  ".join(
-            f"• {l}" for l in partner_lines
-        )
-        closer = "\n\nWhat would you like us to work on today?"
+        team_summary = "\n\nWhile you decide, here's what's already on our desks:\n  " + \
+            "\n  ".join(f"• {l}" for l in partner_lines)
     else:
-        team_summary = (
-            " The team is here and ready. No backlog yet — "
-            "tell us what you want done and I'll route it."
-        )
-        closer = ""
+        team_summary = "\n\nThe whole team is fresh — nothing on our desks yet."
 
-    text = opener + team_summary + closer
+    text = opener + team_summary
     return {
         "text":             text,
         "actions":          actions,
-        "suggestion_chips": [
-            "Get me more clients",
-            "Improve our SEO",
-            "Make a campaign",
-            "Tell me what to do next",
-        ],
-        "opener":  opener,
-        "lines":   partner_lines,
+        "suggestion_chips": office_suggestion_chips(),
+        "opener":           opener,
+        "lines":            partner_lines,
     }
 
 
@@ -2150,4 +2350,6 @@ def summary() -> dict:
         "suggestion_chips": office_suggestion_chips(),
         # v12.3 office atmosphere:
         "briefing":         morning_briefing(),
+        # v12.4 office atmosphere:
+        "mission":          mission_board(),
     }

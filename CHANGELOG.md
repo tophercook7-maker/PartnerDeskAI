@@ -1,6 +1,173 @@
 # PartnerDeskAI Changelog
 
-Newest first. v12.3 is the current shipped version.
+Newest first. v12.4 is the current shipped version.
+
+---
+
+## v12.4 — Office experience polish
+
+v12.3 built the office room. v12.4 polishes it: bigger characters,
+plain language everywhere, mission whiteboard, results card, per-
+partner working animations. Zero new endpoints, zero new data files.
+
+### Plain language (no jargon in user-facing text)
+
+Spec section 2 verified — banned terms removed from all user-facing
+surfaces:
+- "candidate" → "possible client"
+- "audit checklist" → "website check"
+- "work items" → "tasks" (UI label: "Team Tasks")
+- "documents" → "files" (UI label: "Shared Files")
+- "enrichment" → "extra details"
+- "pipeline" → "next steps"
+
+Per-partner Do-It-For-Me buttons relabeled to the spec's 6 plain
+labels:
+- Olivia: **Tell Me Next Step**
+- Logan: **Find Clients**
+- Sage: **Check My Website**
+- Parker: **Make Promo**
+- Video: **Make Video**
+- YouTube: **Find Video Ideas**
+
+### Mission whiteboard
+
+New `mission_board()` function composes from agency profile + live
+partner state:
+
+```
+📋 Today's Mission
+Get MixedMakerShop more local clients in Hot Springs, AR.
+
+Next move: Use 501 Plumbing — Logan already prepped the outreach.
+                                                    [Open Logan]
+```
+
+Rendered above the briefing card as a dashed-border whiteboard.
+Surfaced inside the existing `/api/team-office/summary` payload
+under a new `mission` key — no new endpoint.
+
+### Morning briefing rewrite (spec section 3)
+
+Olivia's opening now reads verbatim per spec:
+
+> Hey Topher, I'm running the office this afternoon. Tell me what
+> you need, or pick one of these.
+
+The 4 v12.3 chips are replaced with the spec's 5 plain chips:
+**Get me clients** · **Improve my website** · **Make a promo** ·
+**Make a video** · **Tell me what to do next**.
+
+### Sage's plain reply (spec section 9 — verbatim)
+
+When Sage finishes a website check, the console reply now leads
+with:
+
+> "I checked your website. The first thing I'd improve is making
+> it clearer what you sell and where you serve. Here are the top
+> things I'd do:
+>   • Fix homepage wording
+>   • Add local service terms
+>   • Improve page titles
+>   • Add calls to action"
+
+Not "technical SEO" first. Not "audit completed." The 30-item
+checklist still exists in the Sage section for power users; the
+console-facing summary is the plain language.
+
+### Logan's plain reply (spec section 10)
+
+> "I found 1 possible client in Hot Springs, AR. … 501 Plumbing —
+> no website yet"
+
+Uses "possible client" everywhere. Bullets explain WHY each pick
+stands out using the v9.0 weak_presence_flags (in plain words: "no
+website yet" / "on Facebook only" / "dated website" / "uses a free
+email").
+
+### Results card (spec section 8)
+
+When a partner finishes work, a focused panel appears above the
+console:
+
+```
+✓ DONE
+I checked MMS - MixedMakerShop - SEO.
+
+1. Fix homepage wording
+2. Add local service terms
+3. Improve page titles
+4. Add calls to action
+
+Next best action → [Open the checklist]   Dismiss
+```
+
+Replaces the long technical text dump. Each `start_work()` handler
+now returns a `result_card: {headline, bullets, next_action}`
+structure alongside the existing fields. The JS renders it as a
+green-bordered card with a single big primary button.
+
+### Bigger characters + speech bubbles + per-partner animations
+
+Desks redesigned with:
+- Avatar circle 3.2rem (up from 1.5rem), with a soft inner shadow
+- Name + role + status pulse stacked next to avatar
+- Speech bubble showing current ambient chatter (italic, with the
+  classic speech-bubble tail)
+- One BIG primary button using the new plain label
+- Smaller "Ask <name>" secondary
+
+Each busy desk gets a CSS-only animation tied to the partner's role
+(spec section 5):
+- **Logan** (`📍`) — pin bounces up/down
+- **Sage** (`🔎`) — screen glow pulse (box-shadow)
+- **Parker** (`📣`) — sticky-note shuffle (rotation)
+- **Video** (`🎬`) — blinking red recording dot
+- **YouTube** (`▶️`) — thumbnail pulse (red glow)
+- **Olivia** (`🗂️`) — green check mark appears and fades
+
+All animations gated by `prefers-reduced-motion`.
+
+### Office room atmosphere (spec section 11)
+
+- **🏢 MixedMakerShop HQ** sign (top-left of office, brown desk-
+  plaque styling)
+- Water cooler 💧 and AC vent 💨 (gently animated) and clock 🕐 as
+  ambient details top-right
+- Whiteboard texture on the mission board (dashed inner border)
+- Warm linen + amber gradient from v12.3 preserved
+
+### Live verification (9 tests, all pass)
+
+```
+1. /summary returns mission board with mission + next_move + hq_name
+2. All 6 desks use spec do_it_labels exactly
+3. Briefing opener matches spec verbatim + 5 spec chips
+4. Sage start_work result_card has spec headline + 4 spec bullets
+5. Sage console message leads with "checked your website";
+   no "technical SEO" in first paragraph
+6. Logan result_card uses "possible client" language
+7. Parker, Video, YouTube all return result_card with next_action
+8. Zero jargon in briefing / mission / next_move / opener
+9. Auto-delegation still works (v12.3 back-compat)
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+clean. Christian Kovac safe.
+
+### Safety perimeter unchanged
+
+- ❌ No publishing. No auto-send. No connections. No live changes.
+- ❌ No new endpoints. No new data files. No new partner types.
+- ❌ No new Python deps.
+- ✅ All polish surfaces compose from existing storage. The mission
+  whiteboard reads agency profile + lead picks + Sage queue. The
+  results card is computed by the existing `start_work()` handlers.
+- ✅ Per-partner animations are CSS-only and honor
+  `prefers-reduced-motion`.
+- ✅ Backward-compatible — `summary` payload gained 1 field
+  (`mission`); start_work payload gained 1 field (`result_card`).
+  Both ignored gracefully by older clients.
 
 ---
 
