@@ -1831,6 +1831,26 @@ def api_team_reset() -> dict:
     return team_mod.clear_console()
 
 
+@app.post("/api/team-office/start-work/{partner_id}")
+def api_team_start_work(partner_id: str) -> dict:
+    """v12.2: actually do the partner's first piece of work and surface
+    it visibly. Replaces the v11.0 scroll-and-status pattern for the
+    'Do It For Me' buttons. Returns the new console messages + any
+    documents created + any related work item bumped to
+    waiting_approval.
+
+    Logan's path makes the existing OSM HTTPS calls (~5-15s); other
+    partners are pure local generation. Nothing publishes, nothing
+    sends, nothing connects."""
+    try:
+        return team_mod.start_work(partner_id)
+    except KeyError:
+        raise HTTPException(status_code=404,
+                            detail=f"Unknown partner {partner_id!r}")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/team-office/work-items")
 def api_team_work_items_list(
     status: str | None = None, partner: str | None = None,

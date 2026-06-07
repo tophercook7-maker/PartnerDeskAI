@@ -1141,6 +1141,425 @@ def office_suggestion_chips() -> list[str]:
     ]
 
 
+# ======================================================================
+# v12.2 — start_work(partner_id)
+# ----------------------------------------------------------------------
+# The "Do It For Me" buttons (on the onboarding success screen AND on
+# each partner desk in the Agency Office) used to scroll-and-status —
+# Sage actually ran the audit, but everyone else just navigated.
+# v12.2 makes Olivia actually start the work: each partner produces a
+# real artifact (audit / lead picks / promo draft / video script /
+# YouTube package), saves it to the shared document library, posts a
+# message to the console showing what they made, and updates any
+# related work item to status="waiting_approval".
+#
+# Safety: nothing publishes, nothing sends, nothing connects. Logan's
+# discovery still uses the existing OSM client. Everything else is
+# pure local generation.
+# ======================================================================
+
+def _agency_profile() -> dict:
+    """Lazy-load v12.1 agency profile so missing onboarding doesn't
+    crash start_work."""
+    try:
+        import onboarding as _ob
+        return _ob.load_agency_profile() or {}
+    except Exception:
+        return {}
+
+
+def _bump_work_item(partner: str, new_status: str = "waiting_approval") -> dict | None:
+    """Find the most recent 'new' work item assigned to this partner
+    and flip it to waiting_approval. If none, returns None silently."""
+    items = list_work_items(partner=partner, status="new")
+    if not items:
+        return None
+    # Most recently created first.
+    items.sort(key=lambda it: it.get("created_at") or "", reverse=True)
+    target = items[0]
+    try:
+        return update_work_item_status(target["id"], new_status)
+    except Exception:
+        return None
+
+
+def _start_olivia() -> dict:
+    """Olivia's 'Tell me what to do next' — already worked in v11.0,
+    just structures the response in the new start_work shape."""
+    text, actions = _olivia_next_actions_text()
+    msg = append_message({
+        "role": "olivia", "partner": "olivia",
+        "text": text, "actions": actions,
+    })
+    return {
+        "ok":             True,
+        "partner":        "olivia",
+        "messages":       [msg],
+        "documents":      [],
+        "work_item":      None,
+        "summary":        "Olivia ranked the next 3 things to do.",
+    }
+
+
+def _start_logan() -> dict:
+    """Run the v9.1 do_it_all pipeline with the agency-profile defaults.
+    Real OSM discovery + bulk-enrich + ranking in one round trip."""
+    profile = _agency_profile()
+    category = "plumber"  # OSM-friendly default; user can refine in Logan
+    city = profile.get("default_search_area") or "Hot Springs, AR"
+    try:
+        import lead_candidates as _lc
+        result = _lc.do_it_all(category=category, city_state=city, count=10)
+    except Exception as e:
+        msg = append_message({
+            "role": "logan", "partner": "logan",
+            "text": (
+                f"I tried to start hunting in {city} but hit a snag: {e}. "
+                "Open my section and run Find Leads For Me manually with "
+                "the category you want — I'll pick up from there."
+            ),
+            "actions": [{"label": "Open Logan", "kind": "scroll",
+                         "target": "logan-details"}],
+        })
+        return {"ok": False, "partner": "logan", "messages": [msg],
+                "documents": [], "work_item": None,
+                "summary": f"Logan stalled: {e}"}
+
+    disc = result.get("discover") or {}
+    picks = result.get("picks") or []
+    osm_n = disc.get("osm_added") or 0
+    rm_n  = disc.get("research_missions_added") or 0
+    total = disc.get("added_count") or 0
+
+    # Build a lead-list document so the shared library shows what Logan did.
+    body_lines = [
+        f"First discovery run — category={category}, area={city}, count=10.",
+        f"OSM hits: {osm_n}. Research missions: {rm_n}. Total queued: {total}.",
+        "",
+        "Top picks:",
+    ]
+    for i, p in enumerate(picks[:5], 1):
+        body_lines.append(
+            f"  {i}. {p.get('business_name') or '(unnamed)'} — "
+            f"score {p.get('score', 0)} ({p.get('confidence', '?')})"
+        )
+    doc = create_document({
+        "title":      f"Lead picks — {city} {category}",
+        "type":       "lead_list",
+        "created_by": "logan",
+        "shared_with": ["olivia", "parker"],
+        "body":       "\n".join(body_lines),
+        "status":     "ready",
+    })
+
+    # Post a Logan message with the picks summary.
+    reply_body = (
+        f"I ran a first pass on **{category}** in **{city}** — OSM gave "
+        f"me {osm_n} real businesses, plus {rm_n} research missions to "
+        f"fill the gap. {len(picks)} ranked picks ready for you. "
+        f"I picked plumbers to start; tell me what category you want next."
+    )
+    msg = append_message({
+        "role": "logan", "partner": "logan",
+        "text": _wrap_with_voice("logan", reply_body, "start"),
+        "actions": [
+            {"label": "Open Logan", "kind": "scroll", "target": "logan-details"},
+            {"label": "Show me what's next", "kind": "ask_partner",
+             "partner": "olivia", "prompt": "What should I do next?"},
+        ],
+    })
+
+    wi = _bump_work_item("logan")
+    return {
+        "ok":        True,
+        "partner":   "logan",
+        "messages":  [msg],
+        "documents": [doc],
+        "work_item": wi,
+        "summary":   f"Logan queued {total} candidates ({osm_n} OSM + {rm_n} research).",
+    }
+
+
+def _start_sage() -> dict:
+    """Generate the SEO audit on MMS — Sage's audit was already real in
+    v12.1; v12.2 adds the visible console message + shared document so
+    the user sees what Sage produced."""
+    try:
+        import seo_partner as _sp
+        projects = _sp.load_projects()
+        if not projects:
+            raise RuntimeError("no SEO projects bootstrapped")
+        mms = projects[0]
+        # Generate fresh audit
+        audit = _sp.generate_audit(mms["id"])
+    except Exception as e:
+        msg = append_message({
+            "role": "sage", "partner": "sage",
+            "text": (
+                f"I couldn't start the audit — {e}. Open my section and "
+                "try Generate Audit on the MixedMakerShop project."
+            ),
+            "actions": [{"label": "Open Sage", "kind": "scroll",
+                         "target": "sage-details"}],
+        })
+        return {"ok": False, "partner": "sage", "messages": [msg],
+                "documents": [], "work_item": None,
+                "summary": f"Sage stalled: {e}"}
+
+    sections = audit.get("checklist") or {}
+    counts = {k: len(v) for k, v in sections.items() if isinstance(v, list)}
+    body_lines = [
+        f"Audit run for {mms.get('project_name', 'MMS')}.",
+        f"Website: {mms.get('website_url', '?')}",
+        "",
+    ]
+    for section, count in counts.items():
+        body_lines.append(f"  {section.replace('_', ' ').title()}: {count} checklist items.")
+    body_lines.append("")
+    body_lines.append(
+        "Work the checklist manually inside Sage; flag failing items "
+        "and approve fixes you want shipped."
+    )
+    doc = create_document({
+        "title":      f"SEO audit — {mms.get('project_name', 'MMS')}",
+        "type":       "seo_audit",
+        "created_by": "sage",
+        "shared_with": ["olivia", "parker"],
+        "related_project_id": mms.get("id"),
+        "body":       "\n".join(body_lines),
+        "status":     "ready",
+    })
+
+    summary_lines = [
+        f"Audit's ready for {mms.get('project_name', 'MMS')}.",
+        "  Technical SEO: " + str(counts.get("technical_seo", 0)) + " items.",
+        "  On-Page SEO: " + str(counts.get("on_page_seo", 0)) + " items.",
+        "  Local SEO: " + str(counts.get("local_seo", 0)) + " items.",
+        "",
+        "I don't crawl — walk the checklist with me and we'll triage.",
+    ]
+    msg = append_message({
+        "role": "sage", "partner": "sage",
+        "text": _wrap_with_voice("sage", "\n".join(summary_lines), "start"),
+        "actions": [
+            {"label": "Open Sage", "kind": "scroll", "target": "sage-details"},
+        ],
+    })
+
+    wi = _bump_work_item("sage")
+    return {
+        "ok":        True,
+        "partner":   "sage",
+        "messages":  [msg],
+        "documents": [doc],
+        "work_item": wi,
+        "summary":   f"Sage generated audit ({sum(counts.values())} items).",
+    }
+
+
+# Parker doesn't have a generation module like Sage / Video / YouTube,
+# so v12.2 ships a local template that mixes the agency profile's
+# free/paid offers into a friendly promo draft. Hand-tuned to keep the
+# spec-required language ("free homepage mockup" — no "3 free fixes").
+def _make_parker_promo(profile: dict) -> str:
+    name  = profile.get("agency_name")        or "MixedMakerShop"
+    free  = profile.get("free_offer")         or "Free homepage mockup"
+    paid  = profile.get("paid_offer")         or "Starter website fix from $150"
+    area  = profile.get("default_search_area") or "your area"
+    customers = profile.get("target_customers") or ["local businesses"]
+    target_str = ", ".join(customers[:3]) or "local businesses"
+    return (
+        f"📣 PROMO — {free}\n"
+        f"\n"
+        f"Hey {area} businesses — quick offer from {name}.\n"
+        f"\n"
+        f"I make {free.lower()} for {target_str}. No commitment. "
+        f"You'll get a clean, phone-first homepage you can keep — just "
+        f"so you can see what a refresh would look like.\n"
+        f"\n"
+        f"If you like what you see, I do {paid.lower()} — pay once, "
+        f"no subscription.\n"
+        f"\n"
+        f"Reply 'mockup' and I'll start one this week.\n"
+        f"\n"
+        f"— {name}\n"
+        f"\n"
+        f"(Internal note: this is a draft — review and personalize the "
+        f"area + customer language before sending. Never publish without "
+        f"approval.)"
+    )
+
+
+def _start_parker() -> dict:
+    profile = _agency_profile()
+    body = _make_parker_promo(profile)
+    doc = create_document({
+        "title":      f"Promo draft — {profile.get('free_offer', 'Free homepage mockup')}",
+        "type":       "promo_copy",
+        "created_by": "parker",
+        "shared_with": ["olivia", "video"],
+        "body":       body,
+        "status":     "ready",
+    })
+    reply_body = (
+        f"I drafted a promo built around your free offer "
+        f"(**{profile.get('free_offer', 'Free homepage mockup')}**) and the "
+        f"paid follow-up. It's in the shared library — review-only, nothing "
+        f"goes out without you. If you want a Reels version, hand it to Video Partner."
+    )
+    msg = append_message({
+        "role": "parker", "partner": "parker",
+        "text": _wrap_with_voice("parker", reply_body, "start",
+                                 add_banter_for="video"),
+        "actions": [
+            {"label": "Open Parker", "kind": "scroll", "target": "parker-details"},
+            {"label": "Send to Video Partner", "kind": "ask_partner",
+             "partner": "video", "prompt": "Turn the new promo into a short script."},
+        ],
+    })
+    wi = _bump_work_item("parker")
+    return {
+        "ok":        True,
+        "partner":   "parker",
+        "messages":  [msg],
+        "documents": [doc],
+        "work_item": wi,
+        "summary":   "Parker drafted promo copy.",
+    }
+
+
+def _start_video() -> dict:
+    """Generate a short_script via video_partner.generate_package using
+    the agency's free offer as the topic."""
+    profile = _agency_profile()
+    topic = profile.get("free_offer") or "Free homepage mockup"
+    try:
+        import video_partner as _vp
+        package = _vp.generate_package(content_type="short_script", topic=topic)
+    except Exception as e:
+        msg = append_message({
+            "role": "video", "partner": "video",
+            "text": f"Couldn't generate a script — {e}. Open Video Partner to try manually.",
+            "actions": [{"label": "Open Video Partner", "kind": "scroll",
+                         "target": "video-details"}],
+        })
+        return {"ok": False, "partner": "video", "messages": [msg],
+                "documents": [], "work_item": None,
+                "summary": f"Video stalled: {e}"}
+
+    # Mirror the package into shared documents so the office library
+    # shows what Video Partner produced.
+    doc = create_document({
+        "title":      package.get("title") or f"Short script — {topic}",
+        "type":       "video_script",
+        "created_by": "video",
+        "shared_with": ["olivia", "parker", "youtube"],
+        "body":       package.get("body") or "",
+        "status":     "ready",
+    })
+    reply_body = (
+        f"Short script's ready — built around **{topic}**. It's in the "
+        f"library as a draft. Hand it to YouTube Growth if you want title "
+        f"ideas on the same hook."
+    )
+    msg = append_message({
+        "role": "video", "partner": "video",
+        "text": _wrap_with_voice("video", reply_body, "start",
+                                 add_banter_for="youtube"),
+        "actions": [
+            {"label": "Open Video Partner", "kind": "scroll", "target": "video-details"},
+            {"label": "Send to YouTube Growth", "kind": "ask_partner",
+             "partner": "youtube",
+             "prompt": "Turn the new short script into title ideas."},
+        ],
+    })
+    wi = _bump_work_item("video")
+    return {
+        "ok":        True,
+        "partner":   "video",
+        "messages":  [msg],
+        "documents": [doc],
+        "work_item": wi,
+        "summary":   "Video Partner generated short script.",
+    }
+
+
+def _start_youtube() -> dict:
+    """Generate a full YouTube package from the agency's free offer."""
+    profile = _agency_profile()
+    topic = profile.get("free_offer") or "Free homepage mockup"
+    try:
+        import youtube_partner as _yt
+        package = _yt.generate_package(content_type="full", topic=topic)
+    except Exception as e:
+        msg = append_message({
+            "role": "youtube", "partner": "youtube",
+            "text": f"Couldn't generate ideas — {e}. Open YouTube Growth to try manually.",
+            "actions": [{"label": "Open YouTube Growth", "kind": "scroll",
+                         "target": "youtube-details"}],
+        })
+        return {"ok": False, "partner": "youtube", "messages": [msg],
+                "documents": [], "work_item": None,
+                "summary": f"YouTube stalled: {e}"}
+
+    doc = create_document({
+        "title":      package.get("title") or f"YouTube package — {topic}",
+        "type":       "campaign_package",
+        "created_by": "youtube",
+        "shared_with": ["olivia", "video", "parker"],
+        "body":       package.get("body") or "",
+        "status":     "ready",
+    })
+    reply_body = (
+        f"Full package drafted — title angles, hooks, and a concept all "
+        f"around **{topic}**. Sitting in the library for your review. "
+        f"Approval-based — nothing publishes."
+    )
+    msg = append_message({
+        "role": "youtube", "partner": "youtube",
+        "text": _wrap_with_voice("youtube", reply_body, "start"),
+        "actions": [
+            {"label": "Open YouTube Growth", "kind": "scroll", "target": "youtube-details"},
+        ],
+    })
+    wi = _bump_work_item("youtube")
+    return {
+        "ok":        True,
+        "partner":   "youtube",
+        "messages":  [msg],
+        "documents": [doc],
+        "work_item": wi,
+        "summary":   "YouTube Growth generated full package.",
+    }
+
+
+def start_work(partner_id: str) -> dict:
+    """
+    v12.2 — actually do the partner's first piece of work and surface
+    it visibly. Olivia delegates → partner produces → user sees.
+
+    Returns a structured response:
+        {
+          ok, partner, messages: [...], documents: [...],
+          work_item: { ... | None }, summary,
+        }
+
+    Raises KeyError for unknown partners.
+    """
+    partner_id = (partner_id or "").strip().lower()
+    handlers = {
+        "olivia":  _start_olivia,
+        "logan":   _start_logan,
+        "sage":    _start_sage,
+        "parker":  _start_parker,
+        "video":   _start_video,
+        "youtube": _start_youtube,
+    }
+    if partner_id not in handlers:
+        raise KeyError(partner_id)
+    return handlers[partner_id]()
+
+
 def summary() -> dict:
     """
     One-shot UI payload: every partner's desk status + task count.

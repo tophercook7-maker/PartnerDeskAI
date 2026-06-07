@@ -8413,70 +8413,42 @@ document.addEventListener('click', async (e) => {
     }
 });
 
-// Dispatch a "Do It For Me" action for one partner.
+// v12.2: Dispatch a "Do It For Me" action — actually run the work,
+// not just navigate. Calls POST /api/team-office/start-work/{partner}.
+// Logan's path can take ~5-15s (OSM round trip); the typing indicator
+// in the console makes the wait obvious.
 async function _runTeamDoItForMe(partnerId) {
     const status = document.getElementById('cmd-status');
+    // Make the office visible so the user sees the work land in the
+    // console regardless of where the click came from (onboarding
+    // success screen, partner desk, or message action card).
+    const office = document.getElementById('team-office-section');
+    if (office) office.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Typing indicator while in flight.
+    _teamTyping = partnerId;
+    renderTeamMessages();
     try {
-        if (partnerId === 'olivia') {
-            // Ask Olivia what to do next via the regular ask flow so
-            // the response lands in the console.
-            const r = await fetch(`/api/team-office/partner/olivia/ask`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: 'What should I do next?' }),
-            });
-            const d = await r.json();
-            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
-            await loadTeamMessages();
-            return;
-        }
-        if (partnerId === 'logan') {
-            _openDetailsAndScroll(document.getElementById('logan-details'));
-            const cat = document.querySelector('#candidates-do-form input[name=category]');
-            if (cat) cat.focus();
-            if (status) status.textContent = 'Logan is ready. Type a business type + location, then Find Leads For Me.';
-            return;
-        }
-        if (partnerId === 'sage') {
-            // Auto-create audit on the first project (MMS bootstrap).
-            const projRes = await fetch('/api/seo/projects');
-            const projects = (await projRes.json()).items || [];
-            if (!projects.length) {
-                if (status) status.textContent = 'No SEO projects yet.';
-                return;
-            }
-            const mms = projects[0];
-            const auditsRes = await fetch(`/api/seo/projects/${encodeURIComponent(mms.id)}/audits`);
-            const existing = await auditsRes.json();
-            if (!existing.latest) {
-                const r = await fetch(`/api/seo/projects/${encodeURIComponent(mms.id)}/audits`, { method: 'POST' });
-                if (!r.ok) throw new Error('audit creation failed');
-            }
-            _openDetailsAndScroll(document.getElementById('sage-details'));
-            await refreshSage();
-            if (status) status.textContent =
-                `Sage prepared the audit for ${mms.project_name}. Open Sage → ${mms.project_name} → Audit tab to work it.`;
-            return;
-        }
-        if (partnerId === 'parker') {
-            _openDetailsAndScroll(document.getElementById('parker-details'));
-            if (status) status.textContent =
-                'Parker is ready. Use the Generate / Approve workflow inside Parker for now.';
-            return;
-        }
-        if (partnerId === 'video') {
-            _openDetailsAndScroll(document.getElementById('video-details'));
-            if (status) status.textContent =
-                'Video Partner is ready. Pick a topic + content type to generate a campaign package.';
-            return;
-        }
-        if (partnerId === 'youtube') {
-            _openDetailsAndScroll(document.getElementById('youtube-details'));
-            if (status) status.textContent =
-                'YouTube Growth is ready. Pick a content type to generate ideas + titles + hooks.';
-            return;
-        }
+        const r = await fetch(
+            `/api/team-office/start-work/${encodeURIComponent(partnerId)}`,
+            { method: 'POST' },
+        );
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+        _teamTyping = false;
+        // Reload from server so we render the canonical message log
+        // (start_work appended the partner's reply).
+        await loadTeamMessages();
+        // Refresh desks + work queue + documents — counts likely changed.
+        await Promise.all([loadTeamSummary(), loadTeamWorkItems(), loadTeamDocs()]);
+        // Sage's "Open Sage" / Logan's discovery results also need
+        // the existing partner sections refreshed so their UIs reflect
+        // the new state.
+        if (partnerId === 'sage'  && typeof refreshSage === 'function') refreshSage();
+        if (partnerId === 'logan' && typeof loadCandidates === 'function') loadCandidates();
+        if (status) status.textContent = d.summary || `${partnerId} done.`;
     } catch (err) {
+        _teamTyping = false;
+        renderTeamMessages();
         if (status) status.textContent = 'Do It For Me failed: ' + (err.message || err);
     }
 }

@@ -1,6 +1,112 @@
 # PartnerDeskAI Changelog
 
-Newest first. v12.1 is the current shipped version.
+Newest first. v12.2 is the current shipped version.
+
+---
+
+## v12.2 — Olivia actually starts the work
+
+v12.1's onboarding success screen had four buttons — **Start SEO
+Audit**, **Find Leads**, **Make Promo**, **Go to Office** — but three
+of them just scrolled and set a status message. Sage was the only one
+that generated something real. v12.2 fixes that: every "Do It For Me"
+button now produces a real artifact, posts a message from the partner
+to the console, and saves the output to the shared document library.
+
+### Backend (`automation/team_office.py`, +~280 LOC)
+
+New `start_work(partner_id)` dispatcher + 6 per-partner handlers.
+Each handler:
+- Generates a real artifact (audit / picks / promo / script / package)
+- Saves it to `data/team_documents.json` (typed by partner role)
+- Posts a partner message to the console (in the partner's v12.0 voice)
+- Bumps any matching `status="new"` work item for that partner to
+  `waiting_approval`
+- Returns `{ok, partner, messages, documents, work_item, summary}`
+
+Per-partner work:
+
+- **`_start_olivia`** — runs the existing `_olivia_next_actions_text()`
+  (ranked top-3 across Logan picks + Sage approval queue + drafts +
+  team work items). Posts a single Olivia message with action cards.
+- **`_start_logan`** — calls `lead_candidates.do_it_all(category="plumber",
+  city_state=<agency profile's default_search_area>, count=10)`. Real
+  OSM discovery + bulk-enrich + ranking, 5-15s round trip. Saves picks
+  summary as a `lead_list` document shared with Olivia + Parker. Posts
+  Logan's message with the picks count + an action chip.
+- **`_start_sage`** — calls `seo_partner.generate_audit(mms.id)`. Saves
+  audit summary as a `seo_audit` document shared with Olivia + Parker.
+  Posts Sage's message with the checklist counts (Technical/On-Page/Local).
+- **`_start_parker`** — Parker doesn't have a generation module; v12.2
+  ships `_make_parker_promo(profile)` that builds promo copy from the
+  agency profile's `free_offer` + `paid_offer` + `agency_name` +
+  `default_search_area` + first 3 `target_customers`. Saves as
+  `promo_copy` document. Free-mockup CTA preserved verbatim, zero
+  "3 free fixes" language (verified by grep in test 3).
+- **`_start_video`** — calls `video_partner.generate_package(
+  content_type="short_script", topic=<free_offer>)`. Mirrors result
+  into `video_script` shared document.
+- **`_start_youtube`** — calls `youtube_partner.generate_package(
+  content_type="full", topic=<free_offer>)`. Mirrors into
+  `campaign_package` shared document.
+
+### New endpoint
+
+`POST /api/team-office/start-work/{partner_id}` — returns the
+structured `start_work` result. KeyError → 404, ValueError → 400.
+
+### Frontend (`hub/static/app.js`)
+
+`_runTeamDoItForMe(partnerId)` rewritten. Was a per-partner switch
+that scrolled + set a status message. Now:
+1. Scrolls the Agency Office into view so the user sees the work land
+2. Shows the typing indicator (partner-specific)
+3. POSTs to `/api/team-office/start-work/{partner}`
+4. On success: reloads messages, refreshes desk summary, refreshes
+   work queue + documents, refreshes the partner's own UI section
+   (Sage / candidates list / etc.)
+
+The same handler powers:
+- Onboarding success-screen buttons (4 of them)
+- Per-desk "Do It For Me" buttons in the Agency Office
+- Any action card from a console message with
+  `kind: "do_it_for_me"`
+
+### Live verification (8 tests, all pass)
+
+```
+1. start-work/olivia → ranked next-3 message
+2. start-work/sage → audit generated (30 items: 12 Tech + 8 On-Page +
+   10 Local), Sage's voice with sign-off, document type=seo_audit
+3. start-work/parker → promo draft document (type=promo_copy),
+   zero "3 free fixes", free-mockup CTA verbatim, agency profile
+   values interpolated correctly
+4. start-work/video → short_script document, Video's voice with
+   banter mentioning YouTube
+5. start-work/youtube → campaign_package document, YouTube's voice
+6. start-work/logan → real OSM discovery succeeded: 1 OSM + 9 research
+   missions = 10 ranked candidates; lead_list document created;
+   Logan's message reports actual counts
+7. Unknown partner → 404 with helpful detail
+8. Console reflects all 6 partners speaking after the test run
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+clean. Christian Kovac safe.
+
+### Safety perimeter unchanged
+
+- ❌ No publishing. No auto-send. No connections. No live website changes.
+- ❌ No OAuth. No paid APIs. No new Python deps.
+- ❌ No new data files (uses existing `team_documents.json` + the
+  partner-module storage).
+- ✅ Logan's discovery is the same OSM HTTPS POST already approved in
+  v8.9.1+ — no new outbound surface.
+- ✅ Every generated artifact lands as `status="ready"` in shared docs
+  (draft / review-only — no publishing path).
+- ✅ Work items bumped to `waiting_approval`, never auto-completed.
+- ✅ Spec-critical language compliance: zero "3 free fixes" in Parker's
+  promo template; free-mockup CTA verbatim.
 
 ---
 
