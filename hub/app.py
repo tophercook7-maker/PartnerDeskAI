@@ -53,6 +53,7 @@ import lead_missions as missions_mod  # noqa: E402
 import youtube_partner as yt_mod  # noqa: E402
 import video_partner as vp_mod  # noqa: E402
 import seo_partner as sage_mod  # noqa: E402  (v10.0: Sage SEO Partner)
+import team_office as team_mod  # noqa: E402  (v11.0: Team Office command system)
 import lead_candidates as cand_mod  # noqa: E402
 import overpass_discovery as overpass_mod  # noqa: E402  (v8.9: OSM Overpass client)
 import discovery as discovery_mod  # noqa: E402  (v9.3: pluggable provider registry)
@@ -1291,6 +1292,52 @@ class SeoReportIn(BaseModel):
     month: str | None = None
 
 
+# v11.0: Team Office command system models.
+class CommandIn(BaseModel):
+    """Plain-English request to the team. Olivia routes to the right
+    partner via keyword scoring."""
+    text: str
+
+
+class PartnerAskIn(BaseModel):
+    """Direct chat to one partner."""
+    text: str
+
+
+class WorkItemIn(BaseModel):
+    """Cross-partner work item. All optional so PUT can patch."""
+    title:               str | None = None
+    type:                str | None = None
+    source_partner:      str | None = None
+    assigned_partner:    str | None = None
+    related_partner_ids: list[str] | None = None
+    related_project_id:  str | None = None
+    related_lead_id:     str | None = None
+    status:              str | None = None
+    priority:            str | None = None
+    summary:             str | None = None
+    payload:             dict | None = None
+    needs_approval:      bool | None = None
+
+
+class DocumentIn(BaseModel):
+    """Shared team document."""
+    title:                 str | None = None
+    type:                  str | None = None
+    created_by:            str | None = None
+    shared_with:           list[str] | None = None
+    related_work_item_id:  str | None = None
+    related_project_id:    str | None = None
+    related_lead_id:       str | None = None
+    body:                  str | None = None
+    status:                str | None = None
+
+
+class ShareDocumentIn(BaseModel):
+    """Add a partner to a document's shared_with list."""
+    partner_id: str
+
+
 class ScoutLeadIn(BaseModel):
     """v7.28: scout-queue input. All optional so PUT can omit fields.
     Server's scout_mod._clean enforces business_name required +
@@ -1675,6 +1722,113 @@ def api_video_packages_delete(pkg_id: str) -> dict:
     if not vp_mod.delete_package(pkg_id):
         raise HTTPException(status_code=404, detail=f"Package {pkg_id!r} not found")
     return {"ok": True, "id": pkg_id}
+
+
+# ---- v11.0: Team Office command system -------------------------------
+# Local-only keyword routing + work items + documents + console log.
+# No external AI. No auto-send. Approval-based action cards.
+
+@app.get("/api/team-office/summary")
+def api_team_summary() -> dict:
+    """v11.0: desk status + counts for the Agency Office UI."""
+    return team_mod.summary()
+
+
+@app.get("/api/team-office/messages")
+def api_team_messages() -> dict:
+    """v11.0: console message history (chronological)."""
+    items = team_mod.load_messages()
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/team-office/command")
+def api_team_command(body: CommandIn) -> dict:
+    """v11.0: main entry point. Olivia routes to the right partner,
+    every partner that fires appends to the console log, and the
+    response carries everything the UI needs to render the next turn."""
+    try:
+        return team_mod.route_command(body.text)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/team-office/partner/{partner_id}/ask")
+def api_team_partner_ask(partner_id: str, body: PartnerAskIn) -> dict:
+    """v11.0: direct chat to one partner. Bypasses Olivia's routing —
+    used by per-desk Ask inputs."""
+    partner_id = (partner_id or "").lower()
+    if partner_id not in team_mod.PARTNERS:
+        raise HTTPException(status_code=404, detail=f"Unknown partner {partner_id!r}")
+    # Log the user message + the reply.
+    team_mod.append_message({
+        "role":    "user", "partner": "user", "text": body.text,
+    })
+    reply = team_mod.partner_reply(partner_id, body.text)
+    team_mod.append_message({
+        "role":    partner_id, "partner": partner_id,
+        "text":    reply["response_text"],
+        "actions": reply["actions"],
+    })
+    return reply
+
+
+@app.post("/api/team-office/reset")
+def api_team_reset() -> dict:
+    """v11.0: clear ONLY the console message log. Work items, documents,
+    and partner state are all preserved."""
+    return team_mod.clear_console()
+
+
+@app.get("/api/team-office/work-items")
+def api_team_work_items_list(
+    status: str | None = None, partner: str | None = None,
+) -> dict:
+    items = team_mod.list_work_items(status=status, partner=partner)
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/team-office/work-items")
+def api_team_work_items_create(body: WorkItemIn) -> dict:
+    try:
+        return team_mod.create_work_item(body.model_dump(exclude_none=True))
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/team-office/work-items/{wid}")
+def api_team_work_items_update(wid: str, body: WorkItemIn) -> dict:
+    try:
+        return team_mod.update_work_item(wid, body.model_dump(exclude_none=True))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Work item {wid!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/team-office/documents")
+def api_team_documents_list(
+    partner: str | None = None, type: str | None = None,
+) -> dict:
+    items = team_mod.list_documents(partner=partner, type_=type)
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/team-office/documents")
+def api_team_documents_create(body: DocumentIn) -> dict:
+    try:
+        return team_mod.create_document(body.model_dump(exclude_none=True))
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/team-office/documents/{doc_id}/share")
+def api_team_documents_share(doc_id: str, body: ShareDocumentIn) -> dict:
+    try:
+        return team_mod.share_document(doc_id, body.partner_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ---- v10.0: Sage SEO Partner -----------------------------------------

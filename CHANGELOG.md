@@ -1,6 +1,137 @@
 # PartnerDeskAI Changelog
 
-Newest first. v10.0 is the current shipped version.
+Newest first. v11.0 is the current shipped version.
+
+---
+
+## v11.0 — Team Office command system
+
+PartnerDeskAI's 6 individual partner dashboards were each fine in
+isolation but collectively felt like 6 separate apps. v11.0 introduces
+the **Agency Office** — a single command console + 6 cartoon desk
+cards — that becomes the new primary interface. Existing partner
+dashboards stay accessible by scrolling down (no removal); they're
+just no longer the first thing the user sees.
+
+**Core idea:** Olivia is the office dispatcher. The user types a
+plain-English request, a keyword-based router picks the right
+partner, and every partner that fires appends a personality-tuned
+reply to the persistent console. Multi-partner workflows route the
+primary then loop in secondaries.
+
+**New `automation/team_office.py`** (+~750 LOC) — pure-local, no
+external AI:
+
+- **PARTNERS registry** for all 6 (id, emoji, role, keywords,
+  do-it-for-me label, description).
+- **`route_command(text)`** — keyword scoring (longer phrases
+  weighted higher) → primary + secondary partners. Multi-partner
+  detection: any secondary with ≥50% of the top score gets looped in.
+- **`partner_reply(partner_id, text)`** — rule-based response
+  templates with light context awareness. Sage's "What do I do
+  first?" returns the spec-verbatim 5-step plan. Logan's reply
+  pulls live picks from `lead_candidates`. Olivia's "What should I
+  do next?" queries Logan + Sage + YouTube + work items to build a
+  ranked top-3 action list.
+- **Work items** — cross-partner task substrate with state machine
+  (`new → assigned → in_progress → waiting_approval → completed |
+  rejected`). CRUD + list-by-status/partner.
+- **Shared documents** — `lead_list`, `seo_audit`, `seo_report`,
+  `promo_copy`, `outreach_draft`, `video_script`, `campaign_package`,
+  `monthly_report`, `notes`, `next_actions` types. Sharing adds a
+  partner to the doc's `shared_with` list and flips status to
+  `shared`.
+- **Console message log** — ring buffer (200 messages). User
+  messages, partner replies, action cards all persist.
+- **`summary()`** — desk states + task counts. Each desk lazy-loads
+  from its partner module so a broken partner doesn't crash the
+  whole Office.
+- **`clear_console()`** — spec section 14: clears ONLY console
+  state; leads / SEO projects / reports / documents / work items
+  / partner data all preserved.
+
+**Hub API — 10 new endpoints:**
+
+- `GET /api/team-office/summary` — desks + counts
+- `GET /api/team-office/messages` — console history
+- `POST /api/team-office/command` — main entry; routes + replies
+- `POST /api/team-office/partner/{partner_id}/ask` — direct chat
+- `POST /api/team-office/reset` — clears console only
+- `GET/POST /api/team-office/work-items[/{id}]` + `PUT`
+- `GET/POST /api/team-office/documents` + share
+
+**UI — new Agency Office section at the top of the Hub:**
+
+- 6 cartoon partner desk cards (Olivia first, then Logan, Sage,
+  Parker, Video, YouTube). Each shows emoji avatar, role line,
+  status badge (idle / active / waiting / thinking), task count
+  pill, **Do It For Me** primary button, and **Ask <name>** secondary.
+- Central command console: scrolling message history with
+  user-vs-partner styling (color-coded per partner), action-card
+  buttons on each partner reply.
+- Bottom inputs: main command form, **Start Fresh Conversation**
+  button (with confirmation; clears console only).
+- Two collapsible side panels: **Work Queue** and **Shared
+  Documents**.
+- New CSS for cartoon desks, speech-bubble styling, color tints
+  per partner.
+
+**"Do It For Me" buttons wired meaningfully:**
+
+- **Olivia** → asks the next-actions endpoint; reply lands in console
+- **Logan** → scrolls to + focuses the existing Find Leads For Me
+  form
+- **Sage** → fetches MMS - MixedMakerShop - SEO; if no audit exists,
+  generates one; scrolls to Sage section + refreshes
+- **Parker / Video / YouTube** → scroll to the existing partner
+  section (their existing generators handle the heavy lift)
+
+**Existing partner sections preserved** — Today panel, Parker, Logan,
+Sage, Video, YouTube, Olivia all still work unchanged below the
+Agency Office. v11.0 wraps nothing; it just adds the new primary
+interface on top.
+
+**Live verification (12 tests):**
+
+```
+1. /summary returns 6 desks in correct order with Olivia first
+2. "Find me 25 lawn care leads" → primary=logan, secondary=parker
+3. "Have Sage audit MixedMakerShop" → primary=sage, intent=audit
+4. "What should I do next?" → olivia, reply with ranked actions
+   pulled from live partner state
+5. "Make a promo for the free homepage mockup" → parker
+6. Direct ask: POST /partner/sage/ask "What do I do first?" returns
+   the spec-verbatim 5-step plan
+7. Unknown partner → 404 with helpful detail
+8. Work item CRUD (create, list-by-status, update)
+9. Document CRUD + share (visible to shared partner)
+10. Messages persist across requests; reset clears ONLY console
+    (work items + documents preserved)
+11. Empty command → 400
+12. Multi-partner routing (logan + parker on "leads and outreach")
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+clean (apparent hits in team_office.py are false-positives from the
+`sk_` pattern matching `task_count` and `ask_partner`; verified by
+hand). Christian Kovac safe across the cycle.
+
+**Safety perimeter — every spec constraint honored:**
+
+- ❌ NO external AI / OpenAI / paid APIs
+- ❌ NO auto-sending outreach
+- ❌ NO auto-publishing
+- ❌ NO live website changes
+- ❌ NO OAuth / API connections
+- ❌ NO social posting / form submission
+- ❌ NO new Python dependencies (stdlib only)
+- ✅ Rule-based keyword router
+- ✅ Template-based personality replies
+- ✅ Action cards surface — user clicks to act
+- ✅ All major actions require user click; nothing fires automatically
+- ✅ Start Fresh clears console only — leads/projects/reports/
+  documents/work items/partner data all preserved
+- ✅ Existing partner sections untouched
 
 ---
 

@@ -8045,8 +8045,391 @@ if (_sageDetailsEl) {
     });
 }
 
+// ======================================================================
+// v11.0: Team Office — Agency Office UI, command console, desks,
+// shared work items + documents. All client-side rendering is driven
+// by GET /api/team-office/summary + GET /api/team-office/messages +
+// the POST /api/team-office/command response.
+// ======================================================================
+
+let _teamDesks = [];
+let _teamMessages = [];
+
+async function loadTeamSummary() {
+    try {
+        const r = await fetch('/api/team-office/summary');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _teamDesks = d.desks || [];
+    } catch (err) { _teamDesks = []; }
+    renderTeamDesks();
+}
+
+function renderTeamDesks() {
+    const el = document.getElementById('team-desks');
+    if (!el) return;
+    if (_teamDesks.length === 0) {
+        el.innerHTML = '<div class="muted">Office is loading…</div>';
+        return;
+    }
+    el.innerHTML = _teamDesks.map(d => {
+        const cls = ['team-desk', d.id === 'olivia' ? 'is-olivia' : ''].filter(Boolean).join(' ');
+        return (
+            `<div class="${cls}" data-team-desk="${_escape(d.id)}" title="${_escape(d.description || '')}">` +
+              `<div class="team-desk-row">` +
+                `<span class="team-desk-emoji">${d.emoji}</span>` +
+                `<div>` +
+                  `<div class="team-desk-name">${_escape(d.name)}</div>` +
+                  `<div class="team-desk-role">${_escape(d.role)}</div>` +
+                `</div>` +
+              `</div>` +
+              `<div class="team-desk-meta">` +
+                `<span class="team-desk-status team-desk-status-${_escape(d.status)}">${_escape(d.status)}</span>` +
+                (d.task_count > 0 ? `<span class="team-desk-tasks">${d.task_count} task${d.task_count === 1 ? '' : 's'}</span>` : '') +
+              `</div>` +
+              `<div class="team-desk-actions">` +
+                `<button type="button" class="team-desk-doit" data-team-desk-doit="${_escape(d.id)}">${_escape(d.do_it_label)}</button>` +
+                `<button type="button" class="team-desk-ask" data-team-desk-ask="${_escape(d.id)}">Ask ${_escape(d.name.split(' ')[0])}</button>` +
+              `</div>` +
+            `</div>`
+        );
+    }).join('');
+}
+
+function _renderTeamMessage(msg) {
+    const role = msg.role || 'system';
+    const partner = msg.partner || role;
+    const meta = (_teamDesks.find(d => d.id === partner)) || { emoji: '🤖', name: partner };
+    const cls = role === 'user'
+        ? 'team-msg team-msg-user'
+        : `team-msg team-msg-partner team-msg-${_escape(role)}`;
+    let name = role === 'user' ? 'You' : meta.name;
+    const emoji = role === 'user' ? '🧑' : meta.emoji;
+    const actionsHtml = (msg.actions || []).map((a, i) => {
+        const isPrimary = i === 0;
+        return `<button type="button" class="team-msg-action${isPrimary ? ' is-primary' : ''}" ` +
+               `data-team-action='${_escape(JSON.stringify(a))}'>${_escape(a.label || 'Action')}</button>`;
+    }).join('');
+    return (
+        `<div class="${cls}">` +
+          `<span class="team-msg-emoji">${emoji}</span>` +
+          `<div class="team-msg-body">` +
+            (role !== 'user' ? `<div class="team-msg-name">${_escape(name)}</div>` : '') +
+            `<div class="team-msg-text">${_escape(msg.text || '')}</div>` +
+            (actionsHtml ? `<div class="team-msg-actions">${actionsHtml}</div>` : '') +
+          `</div>` +
+        `</div>`
+    );
+}
+
+function renderTeamMessages() {
+    const el = document.getElementById('team-messages');
+    if (!el) return;
+    if (!_teamMessages.length) {
+        el.innerHTML = '<div class="muted team-msg-empty">Tell the team what you need…</div>';
+        return;
+    }
+    el.innerHTML = _teamMessages.map(_renderTeamMessage).join('');
+    el.scrollTop = el.scrollHeight;
+}
+
+async function loadTeamMessages() {
+    try {
+        const r = await fetch('/api/team-office/messages');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        _teamMessages = d.items || [];
+    } catch (err) { _teamMessages = []; }
+    renderTeamMessages();
+}
+
+async function loadTeamWorkItems() {
+    const list = document.getElementById('team-work-list');
+    const count = document.getElementById('team-work-count');
+    if (!list) return;
+    try {
+        const r = await fetch('/api/team-office/work-items');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        const items = d.items || [];
+        if (count) count.textContent = items.length ? `(${items.length})` : '';
+        if (items.length === 0) {
+            list.innerHTML = '<div class="muted">No work items yet.</div>';
+            return;
+        }
+        list.innerHTML = items.slice().reverse().map(w => (
+            `<div class="team-work-item">` +
+              `<span class="team-work-item-status">${_escape(w.status || 'new')}</span>` +
+              `<strong>${_escape(w.title || '')}</strong>` +
+              `<div class="muted" style="font-size:0.74rem;">` +
+                `from ${_escape(w.source_partner || '—')} → ${_escape(w.assigned_partner || 'unassigned')}` +
+                (w.priority ? ` · priority ${_escape(w.priority)}` : '') +
+              `</div>` +
+              (w.summary ? `<div style="font-size:0.78rem;margin-top:0.2rem;">${_escape(w.summary)}</div>` : '') +
+            `</div>`
+        )).join('');
+    } catch (err) {
+        list.innerHTML = '<div class="muted">Could not load work items.</div>';
+    }
+}
+
+async function loadTeamDocs() {
+    const list = document.getElementById('team-docs-list');
+    const count = document.getElementById('team-docs-count');
+    if (!list) return;
+    try {
+        const r = await fetch('/api/team-office/documents');
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        const items = d.items || [];
+        if (count) count.textContent = items.length ? `(${items.length})` : '';
+        if (items.length === 0) {
+            list.innerHTML = '<div class="muted">No shared documents yet.</div>';
+            return;
+        }
+        list.innerHTML = items.slice().reverse().map(doc => (
+            `<div class="team-doc-item">` +
+              `<span class="team-doc-item-type">${_escape(doc.type || 'notes')}</span>` +
+              `<strong>${_escape(doc.title || '')}</strong>` +
+              `<div class="muted" style="font-size:0.74rem;">` +
+                `by ${_escape(doc.created_by || '—')}` +
+                (doc.shared_with && doc.shared_with.length ? ` · shared with ${(doc.shared_with).join(', ')}` : '') +
+              `</div>` +
+              (doc.body ? `<div style="font-size:0.78rem;margin-top:0.2rem;white-space:pre-wrap;max-height:6rem;overflow:auto;">${_escape((doc.body || '').slice(0, 600))}</div>` : '') +
+            `</div>`
+        )).join('');
+    } catch (err) {
+        list.innerHTML = '<div class="muted">Could not load documents.</div>';
+    }
+}
+
+async function refreshTeamOffice() {
+    await Promise.all([
+        loadTeamSummary(),
+        loadTeamMessages(),
+        loadTeamWorkItems(),
+        loadTeamDocs(),
+    ]);
+}
+
+// Apply a partner-reply payload (messages + action cards) to the UI.
+function _appendTeamReplyMessages(messages) {
+    if (!Array.isArray(messages)) return;
+    _teamMessages.push(...messages);
+    renderTeamMessages();
+}
+
+// Main command submit.
+const _teamCommandForm = document.getElementById('team-command-form');
+if (_teamCommandForm) {
+    _teamCommandForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = document.getElementById('team-command-input');
+        const text = (input && input.value || '').trim();
+        if (!text) return;
+        const status = document.getElementById('cmd-status');
+        try {
+            const r = await fetch('/api/team-office/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            _appendTeamReplyMessages(d.messages || []);
+            if (input) input.value = '';
+            if (status) status.textContent =
+                `Routed to ${d.chosen_partner}${(d.secondary_partners || []).length ? ' + ' + d.secondary_partners.join(', ') : ''}.`;
+            // Refresh desks (task counts may have changed).
+            await Promise.all([loadTeamSummary(), loadTeamWorkItems(), loadTeamDocs()]);
+        } catch (err) {
+            if (status) status.textContent = 'Command failed: ' + (err.message || err);
+        }
+    });
+}
+
+// Reset console.
+const _teamResetBtn = document.getElementById('team-reset-btn');
+if (_teamResetBtn) {
+    _teamResetBtn.addEventListener('click', async () => {
+        if (!confirm('Clear the console messages? Leads, projects, documents, work items will all be preserved.')) return;
+        const status = document.getElementById('cmd-status');
+        try {
+            await fetch('/api/team-office/reset', { method: 'POST' });
+            _teamMessages = [];
+            renderTeamMessages();
+            if (status) status.textContent = 'Console cleared.';
+        } catch (err) {
+            if (status) status.textContent = 'Reset failed: ' + (err.message || err);
+        }
+    });
+}
+
+// Delegator for desk click / ask / Do It For Me + per-message action buttons.
+document.addEventListener('click', async (e) => {
+    const deskAskBtn = e.target.closest('button[data-team-desk-ask]');
+    const deskDoBtn  = e.target.closest('button[data-team-desk-doit]');
+    const desk       = e.target.closest('[data-team-desk]');
+    const actBtn     = e.target.closest('button[data-team-action]');
+    const status     = document.getElementById('cmd-status');
+
+    if (deskAskBtn) {
+        e.stopPropagation();
+        const pid = deskAskBtn.dataset.teamDeskAsk;
+        const prompt = window.prompt(`Ask ${pid} — what do you want?`);
+        if (!prompt) return;
+        try {
+            const r = await fetch(`/api/team-office/partner/${encodeURIComponent(pid)}/ask`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: prompt }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            await loadTeamMessages();
+            if (status) status.textContent = `${pid} replied.`;
+        } catch (err) {
+            if (status) status.textContent = 'Ask failed: ' + (err.message || err);
+        }
+        return;
+    }
+
+    if (deskDoBtn) {
+        e.stopPropagation();
+        const pid = deskDoBtn.dataset.teamDeskDoit;
+        await _runTeamDoItForMe(pid);
+        return;
+    }
+
+    if (actBtn) {
+        const raw = actBtn.dataset.teamAction;
+        let action;
+        try { action = JSON.parse(raw); } catch { return; }
+        await _runTeamAction(action);
+        return;
+    }
+
+    // Click on the desk body itself (not on a button) → focus the
+    // ask flow.
+    if (desk && !deskAskBtn && !deskDoBtn) {
+        const pid = desk.dataset.teamDesk;
+        const input = document.getElementById('team-command-input');
+        if (input) {
+            input.focus();
+            // Prefill with the partner name to nudge the user.
+            const meta = _teamDesks.find(d => d.id === pid);
+            if (meta && !input.value) {
+                input.placeholder = `Ask ${meta.name}…`;
+            }
+        }
+    }
+});
+
+// Dispatch a "Do It For Me" action for one partner.
+async function _runTeamDoItForMe(partnerId) {
+    const status = document.getElementById('cmd-status');
+    try {
+        if (partnerId === 'olivia') {
+            // Ask Olivia what to do next via the regular ask flow so
+            // the response lands in the console.
+            const r = await fetch(`/api/team-office/partner/olivia/ask`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: 'What should I do next?' }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            await loadTeamMessages();
+            return;
+        }
+        if (partnerId === 'logan') {
+            _openDetailsAndScroll(document.getElementById('logan-details'));
+            const cat = document.querySelector('#candidates-do-form input[name=category]');
+            if (cat) cat.focus();
+            if (status) status.textContent = 'Logan is ready. Type a business type + location, then Find Leads For Me.';
+            return;
+        }
+        if (partnerId === 'sage') {
+            // Auto-create audit on the first project (MMS bootstrap).
+            const projRes = await fetch('/api/seo/projects');
+            const projects = (await projRes.json()).items || [];
+            if (!projects.length) {
+                if (status) status.textContent = 'No SEO projects yet.';
+                return;
+            }
+            const mms = projects[0];
+            const auditsRes = await fetch(`/api/seo/projects/${encodeURIComponent(mms.id)}/audits`);
+            const existing = await auditsRes.json();
+            if (!existing.latest) {
+                const r = await fetch(`/api/seo/projects/${encodeURIComponent(mms.id)}/audits`, { method: 'POST' });
+                if (!r.ok) throw new Error('audit creation failed');
+            }
+            _openDetailsAndScroll(document.getElementById('sage-details'));
+            await refreshSage();
+            if (status) status.textContent =
+                `Sage prepared the audit for ${mms.project_name}. Open Sage → ${mms.project_name} → Audit tab to work it.`;
+            return;
+        }
+        if (partnerId === 'parker') {
+            _openDetailsAndScroll(document.getElementById('parker-details'));
+            if (status) status.textContent =
+                'Parker is ready. Use the Generate / Approve workflow inside Parker for now.';
+            return;
+        }
+        if (partnerId === 'video') {
+            _openDetailsAndScroll(document.getElementById('video-details'));
+            if (status) status.textContent =
+                'Video Partner is ready. Pick a topic + content type to generate a campaign package.';
+            return;
+        }
+        if (partnerId === 'youtube') {
+            _openDetailsAndScroll(document.getElementById('youtube-details'));
+            if (status) status.textContent =
+                'YouTube Growth is ready. Pick a content type to generate ideas + titles + hooks.';
+            return;
+        }
+    } catch (err) {
+        if (status) status.textContent = 'Do It For Me failed: ' + (err.message || err);
+    }
+}
+
+// Run an action from a message's action card.
+async function _runTeamAction(action) {
+    const status = document.getElementById('cmd-status');
+    if (!action || !action.kind) return;
+    try {
+        if (action.kind === 'scroll' && action.target) {
+            const el = document.getElementById(action.target);
+            if (el) {
+                if (el.tagName === 'DETAILS') _openDetailsAndScroll(el);
+                else el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            return;
+        }
+        if (action.kind === 'do_it_for_me') {
+            await _runTeamDoItForMe(action.partner);
+            return;
+        }
+        if (action.kind === 'ask_partner') {
+            const r = await fetch(`/api/team-office/partner/${encodeURIComponent(action.partner)}/ask`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: action.prompt || '' }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            await loadTeamMessages();
+            return;
+        }
+    } catch (err) {
+        if (status) status.textContent = 'Action failed: ' + (err.message || err);
+    }
+}
+
 // Initial load on page open.
 refreshAll();
 // Kick off a first Sage refresh so the partner-summary metrics are
 // populated even when the user hasn't expanded the section.
 refreshSage();
+// v11.0: refresh Team Office surfaces on first paint.
+refreshTeamOffice();

@@ -1420,6 +1420,149 @@
         .cand-enrich-status-partial       { background: #fff6e0; color: #8a6320; }
         .cand-enrich-status-needs_research{ background: #fde2e2; color: #b34a4a; }
         .cand-enrich-status-failed        { background: #f1d4d4; color: #7a2424; }
+        /* ===== v11.0: Team Office (Agency Office) ====================== */
+        .team-office-section {
+            margin: 0.4rem 0 1rem; padding: 0.7rem 0.9rem;
+            background: linear-gradient(180deg, #fff8ed 0%, #fff 100%);
+            border: 1px solid #f3d28a; border-radius: 10px;
+        }
+        .team-office-head { margin-bottom: 0.5rem; }
+        .team-office-head h2 {
+            margin: 0; color: #8a6320; font-size: 1.15rem;
+        }
+        .team-office-tagline { font-size: 0.85rem; margin-top: 0.1rem; }
+        .team-desks {
+            display: grid; gap: 0.45rem;
+            grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+            margin-bottom: 0.7rem;
+        }
+        .team-desk {
+            background: #fff; border: 1px solid #f3d28a; border-radius: 8px;
+            padding: 0.5rem 0.6rem;
+            display: flex; flex-direction: column; gap: 0.2rem;
+            cursor: pointer; transition: transform 100ms;
+        }
+        .team-desk:hover { transform: translateY(-1px); box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .team-desk.is-olivia { border-color: #cfe1ff; background: #f0f6ff; }
+        .team-desk-row {
+            display: flex; align-items: center; gap: 0.4rem;
+        }
+        .team-desk-emoji {
+            font-size: 1.5rem; line-height: 1; flex-shrink: 0;
+        }
+        .team-desk-name {
+            font-weight: 700; font-size: 0.92rem; color: #1f2937;
+        }
+        .team-desk-role { font-size: 0.74rem; color: #64748b; }
+        .team-desk-meta {
+            display: flex; gap: 0.3rem; align-items: center;
+            margin-top: 0.15rem;
+        }
+        .team-desk-status {
+            display: inline-block; padding: 0.05rem 0.4rem;
+            border-radius: 999px; font-size: 0.65rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .team-desk-status-idle     { background: #e2e8f0; color: #475569; }
+        .team-desk-status-active   { background: #d8efd8; color: #2d6a3a; }
+        .team-desk-status-waiting  { background: #fff6e0; color: #8a6320; }
+        .team-desk-status-thinking { background: #cfe1ff; color: #1c4f8f; }
+        .team-desk-tasks {
+            font-size: 0.7rem; color: #64748b;
+            background: #f8fafc; padding: 0.05rem 0.35rem; border-radius: 4px;
+        }
+        .team-desk-actions {
+            display: flex; gap: 0.25rem; flex-wrap: wrap; margin-top: 0.25rem;
+        }
+        .team-desk-doit {
+            font-size: 0.72rem; padding: 0.2rem 0.45rem;
+            background: #1f2937; color: #fff;
+            border: 1px solid #1f2937; border-radius: 5px; cursor: pointer;
+        }
+        .team-desk-ask {
+            font-size: 0.72rem; padding: 0.2rem 0.45rem;
+            background: #fff; color: #1f2937;
+            border: 1px solid #cbd5e1; border-radius: 5px; cursor: pointer;
+        }
+
+        /* Console */
+        .team-console {
+            background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+            padding: 0.5rem 0.6rem; margin-bottom: 0.5rem;
+        }
+        .team-messages {
+            max-height: 22rem; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 0.4rem;
+            padding: 0.2rem;
+        }
+        .team-msg-empty { padding: 0.4rem; font-style: italic; }
+        .team-msg {
+            display: flex; gap: 0.4rem;
+            padding: 0.35rem 0.5rem; border-radius: 6px;
+            font-size: 0.85rem; line-height: 1.4;
+            max-width: 92%;
+        }
+        .team-msg-user {
+            background: #1f2937; color: #fff; align-self: flex-end;
+        }
+        .team-msg-partner {
+            background: #f1f5f9; color: #1f2937; align-self: flex-start;
+            border: 1px solid #e2e8f0;
+        }
+        .team-msg-partner.team-msg-olivia { background: #f0f6ff; border-color: #cfe1ff; }
+        .team-msg-partner.team-msg-logan  { background: #fff5f5; border-color: #fde2e2; }
+        .team-msg-partner.team-msg-sage   { background: #f0f6ff; border-color: #cfe1ff; }
+        .team-msg-partner.team-msg-parker { background: #fff6e0; border-color: #f3d28a; }
+        .team-msg-partner.team-msg-video  { background: #f8fafc; border-color: #cbd5e1; }
+        .team-msg-partner.team-msg-youtube{ background: #fff5f5; border-color: #fde2e2; }
+        .team-msg-emoji { font-size: 1.1rem; line-height: 1.2; flex-shrink: 0; }
+        .team-msg-body  { flex: 1; min-width: 0; }
+        .team-msg-name  { font-weight: 600; font-size: 0.78rem; opacity: 0.85; margin-bottom: 0.05rem; }
+        .team-msg-text  { white-space: pre-wrap; word-break: break-word; }
+        .team-msg-actions {
+            display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem;
+        }
+        .team-msg-action {
+            font-size: 0.72rem; padding: 0.2rem 0.5rem;
+            background: #fff; border: 1px solid #cbd5e1;
+            border-radius: 5px; cursor: pointer;
+        }
+        .team-msg-action.is-primary { background: #1f2937; color: #fff; border-color: #1f2937; }
+
+        .team-command-form {
+            display: flex; flex-direction: column; gap: 0.3rem;
+            margin-top: 0.5rem;
+        }
+        .team-command-input {
+            width: 100%; box-sizing: border-box;
+            font-size: 0.95rem; padding: 0.5rem 0.7rem;
+        }
+        .team-command-actions {
+            display: flex; gap: 0.4rem; flex-wrap: wrap;
+        }
+        .team-side-details {
+            background: #fff; border: 1px solid #f3d28a; border-radius: 6px;
+            margin-bottom: 0.3rem;
+        }
+        .team-side-details summary {
+            cursor: pointer; padding: 0.4rem 0.5rem; font-size: 0.85rem;
+        }
+        .team-work-list, .team-docs-list { padding: 0.3rem 0.6rem 0.6rem; }
+        .team-work-item, .team-doc-item {
+            background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px;
+            padding: 0.35rem 0.5rem; margin-bottom: 0.3rem;
+            font-size: 0.82rem;
+        }
+        .team-work-item-status, .team-doc-item-type {
+            display: inline-block; padding: 0.05rem 0.35rem;
+            border-radius: 4px; font-size: 0.65rem; font-weight: 600;
+            background: #e2e8f0; color: #475569;
+            text-transform: uppercase; letter-spacing: 0.03em;
+            margin-right: 0.3rem;
+        }
+        @media (max-width: 720px) {
+            .team-desks { grid-template-columns: 1fr 1fr; }
+        }
         /* ===== v10.0: Sage SEO Partner ================================== */
         .sage-section { padding: 0.4rem 0 0; }
         .sage-dashboard {
@@ -2697,10 +2840,70 @@
         <button type="button" data-cp-action="verify-all-connections" class="cp-btn">Verify All Connections</button>
     </div>
 
+    <!-- v11.0: AGENCY OFFICE — the new primary interface. One command
+         console + 6 cartoon partner desks. Olivia is the dispatcher.
+         No external AI; rule-based routing. No auto-send, no publishing,
+         no live changes — every action surfaces a card the user clicks. -->
+    <section id="team-office-section" class="team-office-section">
+        <div class="team-office-head">
+            <h2>Agency Office</h2>
+            <div class="muted team-office-tagline">
+                Talk to your team. Olivia can route work to the right partner.
+            </div>
+        </div>
+
+        <!-- 6 cartoon partner desks -->
+        <div id="team-desks" class="team-desks">
+            <div class="muted">Loading the office…</div>
+        </div>
+
+        <!-- Central command console -->
+        <div class="team-console">
+            <div id="team-messages" class="team-messages">
+                <div class="muted team-msg-empty">
+                    Tell the team what you need…
+                </div>
+            </div>
+            <form id="team-command-form" class="team-command-form" aria-label="Talk to the team">
+                <input id="team-command-input" class="leads-input team-command-input"
+                       placeholder="Tell the team what you need… (e.g. ‘Find me 25 lawn care leads near Hot Springs’)"
+                       autocomplete="off">
+                <div class="team-command-actions">
+                    <button type="submit" class="primary one-click-btn">📨 Send</button>
+                    <button type="button" id="team-reset-btn" class="row-action"
+                            title="Clears only the console messages — leads, projects, documents, work items all preserved">
+                        🔄 Start Fresh Conversation
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Work queue + shared documents — compact, expandable. -->
+        <details class="team-side-details" id="team-work-details">
+            <summary><strong>🗂️ Work Queue</strong>
+                <span id="team-work-count" class="muted"></span>
+            </summary>
+            <div id="team-work-list" class="team-work-list">
+                <div class="muted">No work items yet.</div>
+            </div>
+        </details>
+        <details class="team-side-details" id="team-docs-details">
+            <summary><strong>📄 Shared Documents</strong>
+                <span id="team-docs-count" class="muted"></span>
+            </summary>
+            <div id="team-docs-list" class="team-docs-list">
+                <div class="muted">No shared documents yet.</div>
+            </div>
+        </details>
+    </section>
+
     <!-- v8.0: TODAY — replaces the old Mission Control + Partner
          Rooms panels. Four cards summarize the work that matters
          now; clicking a card expands the relevant partner/System
          section and scrolls to it.
+
+         v11.0: Today panel moves under the Agency Office. Existing
+         renderers + click handlers preserved unchanged.
 
          Legacy #mission-control + #partner-rooms divs are kept
          hidden so existing renderers don't choke on a missing

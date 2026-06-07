@@ -51,6 +51,13 @@ data/seo_audits.json
 data/.seo_audits.*.tmp
 data/seo_reports.json
 data/.seo_reports.*.tmp
+# v11.0: Team Office command system — console, work items, documents
+data/team_work_items.json
+data/.team_work_items.*.tmp
+data/team_documents.json
+data/.team_documents.*.tmp
+data/team_console.json
+data/.team_console.*.tmp
 # v9.4: user-imported CSV business lists — never check these in
 data/imports/*.csv
 data/imports/*.CSV
