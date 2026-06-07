@@ -2049,6 +2049,102 @@
             font-size: 0.85rem; cursor: pointer;
         }
 
+        /* ===== v12.5: Customer-facing polish ===========================
+           Skeleton loaders, slide-in messages, activity highlights,
+           desk wake-up animation, empty-state polish. All honors
+           prefers-reduced-motion. */
+
+        /* Skeleton shimmer used on initial-paint placeholders */
+        .skeleton-shimmer,
+        .skeleton-line {
+            background: linear-gradient(90deg,
+                #f1f5f9 0%, #fafbfd 50%, #f1f5f9 100%);
+            background-size: 200% 100%;
+            animation: skeleton-shimmer 1.6s infinite linear;
+            border-radius: 4px;
+        }
+        @keyframes skeleton-shimmer {
+            0%   { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        .office-desk.is-skeleton {
+            opacity: 0.85;
+            pointer-events: none;
+        }
+        .office-desk.is-skeleton .desk-avatar {
+            background: none; border: none;
+        }
+        .skeleton-line-name {
+            height: 0.8rem; width: 60%; margin: 0.15rem 0;
+        }
+        .skeleton-line-role {
+            height: 0.6rem; width: 75%; margin: 0.15rem 0;
+        }
+        .skeleton-line-long {
+            height: 0.6rem; width: 90%; margin: 0.25rem 0;
+        }
+        .skeleton-line-btn {
+            height: 1.6rem; width: 100%; margin-top: 0.2rem;
+            border-radius: 6px;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .skeleton-shimmer,
+            .skeleton-line { animation: none; background: #f1f5f9; }
+        }
+
+        /* New-message slide-in for the console */
+        .team-msg-wrap { display: contents; }
+        .team-msg-wrap.is-new .team-msg {
+            animation: msg-slide-in 320ms ease-out;
+        }
+        @keyframes msg-slide-in {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .team-msg-wrap.is-new .team-msg { animation: none; }
+        }
+
+        /* New activity event — soft gold highlight that fades */
+        .activity-event.is-new {
+            animation: activity-highlight 1800ms ease-out;
+        }
+        @keyframes activity-highlight {
+            0%   { background: #fff6e0; box-shadow: 0 0 0 1px #f3d28a; }
+            70%  { background: #fff6e0; box-shadow: 0 0 0 1px #f3d28a; }
+            100% { background: #fafbfd; box-shadow: 0 0 0 0 transparent; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .activity-event.is-new { animation: none; }
+        }
+
+        /* Activity feed empty state — friendly hint */
+        .activity-empty {
+            text-align: center; padding: 1.2rem 0.6rem;
+            display: flex; flex-direction: column;
+            align-items: center; gap: 0.4rem;
+        }
+        .activity-empty-icon {
+            font-size: 2.2rem; opacity: 0.55;
+        }
+        .activity-empty-text {
+            font-size: 0.82rem; color: #94a3b8;
+            line-height: 1.4; max-width: 16rem;
+        }
+
+        /* Desk wake-up pop — when status transitions idle → busy */
+        .office-desk.is-waking .desk-avatar {
+            animation: desk-wake 380ms ease-out;
+        }
+        @keyframes desk-wake {
+            0%   { transform: scale(1); }
+            45%  { transform: scale(1.12); }
+            100% { transform: scale(1); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .office-desk.is-waking .desk-avatar { animation: none; }
+        }
+
         /* ===== v12.1: Onboarding overlay =============================== */
         .onboarding-overlay {
             position: fixed; inset: 0; z-index: 200;

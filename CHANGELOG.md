@@ -1,6 +1,111 @@
 # PartnerDeskAI Changelog
 
-Newest first. v12.4 is the current shipped version.
+Newest first. v12.5 is the current shipped version.
+
+---
+
+## v12.5 — Real customer-facing polish
+
+v12.4 nailed the layout + plain language. v12.5 polishes the
+moment-to-moment experience — the in-flight feel that's the
+difference between "software" and "coworkers". All frontend +
+a tiny router keyword tweak. No new endpoints, no new data files.
+
+### Staged conversation arrival
+
+v12.3's auto-delegation returned all 5+ messages at once — Olivia
++ Logan + Parker + Video + Olivia would appear simultaneously, like
+batch output. v12.5 stages them client-side: each partner's
+message renders after a short typing pause (~350-750ms), with the
+typing indicator cycling between partners. The conversation feels
+live without changing the backend.
+
+Implementation: `_stageAutoDelegationMessages()` in app.js iterates
+the response's messages, sets `_teamTyping` to the next partner's
+id, sleeps, then pushes the message and re-renders. Skipping any
+message the user echo already showed.
+
+### Skeleton loaders replace placeholder text
+
+First paint used to flash "Setting up the desks…" / "Olivia is
+reviewing the desks…" / "Loading the whiteboard…" for a split
+second before real data arrived. v12.5 paints visual skeleton
+shimmer cards in the exact shape of the final layout. Calmer
+load, no jarring text swap.
+
+### Console message slide-in
+
+Each new console message gets an `is-new` class on first render
+that drives a 320ms slide-up + fade-in keyframe. Messages "arrive"
+instead of just "rendering."
+
+### Activity-feed new-event highlight
+
+The feed polls every 12s. New events (tracked via a Set of stable
+keys) get a soft gold border-glow that fades over 1.8s. You can
+spot what just happened without re-reading the whole list.
+
+### Desk wake-up pop
+
+When a desk transitions from `idle` → `active|thinking|waiting`, the
+avatar plays a 380ms scale pop (1.0 → 1.12 → 1.0). Subtle but
+unmistakable — you see the partner "wake up" the moment they get
+assigned work.
+
+### Empty-state polish
+
+Activity feed empty state goes from a flat "No recent activity"
+line to a centered ☕ icon + "Quiet morning. Click a desk or use the
+command box to get the team started." Friendlier on first run.
+
+### Reset clears the local message tracker
+
+Without this, console-reset would clear the message list but on the
+next reload, the same server-side messages would NOT animate in (the
+client thought it had already seen them). Now `_seenMessageIds` is
+cleared on reset so re-fetched messages animate in like new arrivals.
+
+### One small router fix (caught by tests)
+
+The Sage do-it button label is "Check My Website" but Sage's
+keyword list didn't include "website" or "check website" — so a
+user typing the same phrase Sage's button shows would route to
+Olivia instead. Added `"website"`, `"check website"`, `"check my
+website"`, `"my website"`, `"check site"` to Sage's keywords. All 6
+plain do-it labels now route to their expected partner when typed
+into the console.
+
+### All animations honor `prefers-reduced-motion`
+
+Skeleton shimmer, message slide-in, activity highlight, desk
+wake-up — every keyframe is gated. Reduced-motion users see static
+states.
+
+### Live verification
+
+```
+1. All 6 do-it labels ("Tell Me Next Step", "Find Clients", "Check My
+   Website", "Make Promo", "Make Video", "Find Video Ideas") route
+   to their expected partner when typed
+2. Auto-delegation returns multi-message payload (frontend stages it
+   for visible turn-taking; backend unchanged)
+3. summary preserves v12.4 mission + briefing + desk_items
+4. start_work preserves v12.4 result_card shape
+5. activity feed event shape unchanged (partner/icon/title/when)
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+clean. Christian Kovac safe.
+
+### Safety perimeter unchanged
+
+- ❌ No new endpoints. No new data files. No new Python deps.
+- ❌ No publishing. No auto-send. No connections. No live changes.
+- ✅ Staged conversation is a UI illusion over an already-completed
+  server response. The auto-delegation server flow is unchanged.
+- ✅ Animations are pure CSS keyframes; all honor
+  `prefers-reduced-motion`.
+- ✅ Backward-compatible — every existing endpoint payload preserved.
 
 ---
 

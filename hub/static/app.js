@@ -8057,6 +8057,12 @@ let _teamMessages = [];
 let _teamGreeting = '';
 let _teamSuggestionChips = [];
 let _teamTyping = false;  // v12.0 typing indicator
+// v12.5 — track previously seen state so we can play animations only
+// when something genuinely changes.
+let _prevDeskStatuses = {};   // partner id → last status
+let _seenMessageIds = new Set();
+let _seenActivityKeys = new Set();
+let _stagedRender = false;    // true while we're staging messages from auto-delegation
 
 async function loadTeamSummary() {
     let d = null;
@@ -8076,22 +8082,58 @@ async function loadTeamSummary() {
     if (d && d.mission) _renderMissionBoard(d.mission);
 }
 
+// v12.5: skeleton desk row shown only on first paint (before
+// /summary returns). Six matched cards with shimmer instead of
+// "Setting up the desks…" text.
+function _renderDeskSkeleton() {
+    const el = document.getElementById('team-desks');
+    if (!el) return;
+    const skel = `
+      <div class="office-desk is-skeleton">
+        <div class="desk-head">
+          <span class="desk-avatar skeleton-shimmer"></span>
+          <div class="desk-name-block">
+            <div class="skeleton-line skeleton-line-name"></div>
+            <div class="skeleton-line skeleton-line-role"></div>
+          </div>
+        </div>
+        <div class="desk-speech skeleton-shimmer"></div>
+        <div class="desk-actions">
+          <div class="skeleton-line skeleton-line-btn"></div>
+        </div>
+      </div>`;
+    el.innerHTML = skel.repeat(6);
+}
+
 function renderTeamDesks() {
     const el = document.getElementById('team-desks');
     if (!el) return;
     if (_teamDesks.length === 0) {
-        el.innerHTML = '<div class="muted">Setting up the desks…</div>';
+        _renderDeskSkeleton();
         return;
     }
     // v12.4: bigger character avatars, speech bubble showing current
     // chatter, one big primary button per desk. Per-partner working
     // animations triggered via data-busy attribute.
+    // v12.5: detect status transitions so we can play a "wake up"
+    // scale pop on avatars when a desk goes from idle → busy.
+    const wakeUps = new Set();
+    for (const d of _teamDesks) {
+        const prev = _prevDeskStatuses[d.id];
+        if (prev !== undefined && prev !== d.status &&
+            d.status !== 'idle' && prev === 'idle') {
+            wakeUps.add(d.id);
+        }
+        _prevDeskStatuses[d.id] = d.status;
+    }
     el.innerHTML = _teamDesks.map(d => {
         const busy = (d.status === 'active' || d.status === 'thinking' || d.status === 'waiting');
+        const wakingUp = wakeUps.has(d.id);
         const cls = [
             'office-desk',
             d.id === 'olivia' ? 'is-olivia' : '',
             busy ? 'is-busy' : '',
+            wakingUp ? 'is-waking' : '',
         ].filter(Boolean).join(' ');
         const speech = d.chatter
             ? `<div class="desk-speech">${_escape(d.chatter)}</div>`
@@ -8196,7 +8238,21 @@ function _renderBriefing(briefing) {
         `</div>`;
 }
 
+// v12.5: render briefing skeleton before first fetch lands.
+function _renderBriefingSkeleton() {
+    const el = document.getElementById('office-briefing');
+    if (!el || el.classList.contains('is-loaded')) return;
+    el.innerHTML =
+        '<div class="briefing-avatar skeleton-shimmer"></div>' +
+        '<div class="briefing-body">' +
+          '<div class="skeleton-line skeleton-line-name"></div>' +
+          '<div class="skeleton-line skeleton-line-long"></div>' +
+          '<div class="skeleton-line skeleton-line-long"></div>' +
+        '</div>';
+}
+
 async function loadBriefing() {
+    _renderBriefingSkeleton();
     try {
         const r = await fetch('/api/team-office/briefing');
         if (!r.ok) return;
@@ -8222,22 +8278,42 @@ function _fmtActivityWhen(s) {
     return s.slice(5, 16).replace(' ', ' ');
 }
 
+function _activityKey(e) {
+    // Stable key for de-duplication across polls. (partner+title+when)
+    return `${e.partner}|${e.kind}|${e.title}|${e.when}`;
+}
+
 function _renderActivityFeed() {
     const el = document.getElementById('office-activity');
     if (!el) return;
     if (!_activityFeed.length) {
-        el.innerHTML = '<div class="muted">No recent activity. Tell the team to get started.</div>';
+        // v12.5: friendlier empty state with a soft illustration.
+        el.innerHTML =
+            '<div class="activity-empty">' +
+              '<div class="activity-empty-icon">☕</div>' +
+              '<div class="activity-empty-text">Quiet morning. ' +
+                'Click a desk or use the command box to get the team started.' +
+              '</div>' +
+            '</div>';
         return;
     }
-    el.innerHTML = _activityFeed.map(e => (
-        `<div class="activity-event" data-partner="${_escape(e.partner)}">` +
-          `<span class="activity-icon">${e.icon || '•'}</span>` +
-          `<div class="activity-body">` +
-            `<div class="activity-line">${_escape(e.title || '')}</div>` +
-            `<div class="activity-when">${_escape(e.partner)} · ${_escape(_fmtActivityWhen(e.when))}</div>` +
-          `</div>` +
-        `</div>`
-    )).join('');
+    // v12.5: tag new events with .is-new so they get a brief gold
+    // highlight on first appearance.
+    el.innerHTML = _activityFeed.map(e => {
+        const key = _activityKey(e);
+        const isNew = !_seenActivityKeys.has(key);
+        if (isNew) _seenActivityKeys.add(key);
+        const cls = isNew ? 'activity-event is-new' : 'activity-event';
+        return (
+            `<div class="${cls}" data-partner="${_escape(e.partner)}">` +
+              `<span class="activity-icon">${e.icon || '•'}</span>` +
+              `<div class="activity-body">` +
+                `<div class="activity-line">${_escape(e.title || '')}</div>` +
+                `<div class="activity-when">${_escape(e.partner)} · ${_escape(_fmtActivityWhen(e.when))}</div>` +
+              `</div>` +
+            `</div>`
+        );
+    }).join('');
 }
 
 async function loadActivityFeed() {
@@ -8341,6 +8417,17 @@ document.addEventListener('click', async (e) => {
     }
 });
 
+// v12.5: wrap each rendered message in a div that carries an
+// `is-new` class on first appearance so CSS can play the slide-in
+// animation. After ~600ms the class is dropped to avoid re-animating
+// on later re-renders.
+function _renderTeamMessageMaybeNew(msg) {
+    const isNew = msg.id && !_seenMessageIds.has(msg.id);
+    if (msg.id) _seenMessageIds.add(msg.id);
+    const cls = isNew ? 'team-msg-wrap is-new' : 'team-msg-wrap';
+    return `<div class="${cls}">${_renderTeamMessage(msg)}</div>`;
+}
+
 function renderTeamMessages() {
     const el = document.getElementById('team-messages');
     if (!el) return;
@@ -8348,7 +8435,7 @@ function renderTeamMessages() {
         el.innerHTML = _renderEmptyOffice();
         return;
     }
-    const messagesHtml = _teamMessages.map(_renderTeamMessage).join('');
+    const messagesHtml = _teamMessages.map(_renderTeamMessageMaybeNew).join('');
     const typingHtml = _teamTyping ? _renderTypingIndicator(_teamTyping) : '';
     el.innerHTML = messagesHtml + typingHtml;
     el.scrollTop = el.scrollHeight;
@@ -8442,6 +8529,50 @@ function _appendTeamReplyMessages(messages) {
     renderTeamMessages();
 }
 
+// v12.5 helper — sleep that the caller can await.
+const _sleep = ms => new Promise(res => setTimeout(res, ms));
+
+// v12.5: staged delivery of a multi-message reply (auto-delegation).
+// The backend returns all messages at once; the frontend renders
+// them one at a time with the typing indicator cycling between
+// partners so the conversation feels live.
+async function _stageAutoDelegationMessages(messages) {
+    if (!messages || !messages.length) return;
+    _stagedRender = true;
+    try {
+        // Start from a clean message list to avoid duplicates — the
+        // staged loop below appends as it goes. We'll re-sync from
+        // server at the end.
+        const startingIds = new Set(_teamMessages.map(m => m.id).filter(Boolean));
+        let i = 0;
+        for (const msg of messages) {
+            if (msg.id && startingIds.has(msg.id)) {
+                // Already on screen (e.g. the user echo we appended optimistically).
+                continue;
+            }
+            // Show typing indicator naming the NEXT partner about to speak.
+            if (msg.role && msg.role !== 'user') {
+                _teamTyping = msg.partner || msg.role;
+                renderTeamMessages();
+                // Pause that feels like the partner is "typing".
+                // Short for first, slightly longer for follow-ups.
+                await _sleep(i === 0 ? 350 : 750);
+            }
+            _teamTyping = false;
+            _teamMessages.push(msg);
+            renderTeamMessages();
+            // Brief pause before the next partner starts.
+            if (i < messages.length - 1) {
+                await _sleep(200);
+            }
+            i++;
+        }
+    } finally {
+        _teamTyping = false;
+        _stagedRender = false;
+    }
+}
+
 // v12.0: shared command-send helper so suggestion chips and the
 // command form both flow through one path (typing indicator + reply
 // rendering + summary refresh).
@@ -8466,10 +8597,15 @@ async function _sendTeamCommand(text) {
         });
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
-        // 3. The server already appended our user message to its log;
-        // re-pull the canonical message list to avoid duplication.
+        // v12.5: if this was an auto-delegation, stage the messages
+        // one at a time for a live-conversation feel. Otherwise just
+        // reload the canonical message log.
         _teamTyping = false;
-        await loadTeamMessages();
+        if (d.auto_delegation && Array.isArray(d.messages) && d.messages.length > 1) {
+            await _stageAutoDelegationMessages(d.messages);
+        } else {
+            await loadTeamMessages();
+        }
         const summaryLine = d.auto_delegation
             ? `Olivia delegated to ${(d.secondary_partners || []).join(', ')}.`
             : `Routed to ${d.chosen_partner}${(d.secondary_partners || []).length ? ' + ' + d.secondary_partners.join(', ') : ''}.`;
@@ -8517,6 +8653,7 @@ if (_teamResetBtn) {
         try {
             await fetch('/api/team-office/reset', { method: 'POST' });
             _teamMessages = [];
+            _seenMessageIds = new Set();  // v12.5: forget which messages we've shown
             renderTeamMessages();
             if (status) status.textContent = 'Console cleared.';
         } catch (err) {
@@ -8980,6 +9117,11 @@ async function _obResetOnboarding() {
     }
 }
 window._obResetOnboarding = _obResetOnboarding;
+
+// v12.5: paint skeletons immediately so the office never shows
+// "Setting up the desks…" placeholder text on first load.
+_renderDeskSkeleton();
+_renderBriefingSkeleton();
 
 // Initial load on page open.
 refreshAll();

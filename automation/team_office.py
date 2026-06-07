@@ -98,6 +98,10 @@ PARTNERS: dict[str, dict] = {
             "title", "meta", "heading", "alt text", "gbp",
             "business profile", "monthly report", "report", "sage",
             "fix", "fixes", "approval",
+            # v12.5: include the plain do_it_label phrasing so a user
+            # typing "check my website" routes to Sage as expected.
+            "website", "check website", "check my website",
+            "my website", "check site",
         ),
         "do_it_label": "Check My Website",
         "desk_items":  ("📊", "📈", "💻"),
