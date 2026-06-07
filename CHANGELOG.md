@@ -1,6 +1,121 @@
 # PartnerDeskAI Changelog
 
-Newest first. v11.0 is the current shipped version.
+Newest first. v12.0 is the current shipped version.
+
+---
+
+## v12.0 — Living Office Experience
+
+v11.0 built the Team Office command system. v12.0 makes the partners
+feel like coworkers instead of buttons. Pure polish layer — zero new
+backend systems, zero new databases, zero new partner types, zero new
+management features. Per spec: characters, conversation, visible
+delegation, simple atmosphere.
+
+### Voices
+
+Each partner now has a `_VOICES` entry in `team_office.py` with:
+- **openers** — characteristic phrasing tics (Logan: "Right —", "On it.";
+  Sage: "OK,", "Let me think.", "Here's what I'd do —"; Parker:
+  "Oh nice —", "Yeah —", "Love this.")
+- **sign_offs** — how they close a reply (Logan: "Holler when you've
+  got a target."; Sage: "Ready when you are."; Parker: "Want me to
+  keep going?")
+- **ack_olivia** — receiving-a-handoff openers ("On it, Olivia. Topher
+  — …")
+- **banter_about** — short mentions of other partners (Logan banters
+  about Parker: "Once I've ranked a few, Parker can draft the first
+  outreach.")
+- **idle_chatter** / **active_chatter** — one-line ambient activity
+  strings ("scanning OSM", "ranking 4 candidates")
+
+`_wrap_with_voice()` assembles `opener + body + (optional banter) +
+sign-off`. Deterministic picks off a hash of the request keep replies
+consistent for the same prompt while varying across prompts.
+
+### Visible delegation
+
+`route_command()` now produces a **real conversation** when work
+involves multiple partners:
+1. Olivia speaks first with a handoff line: *"OK, Logan, this one's
+   yours. Topher wants find me 25 lawn care leads near Hot."*
+2. The receiving partner opens by acknowledging Olivia AND addressing
+   the user: *"On it, Olivia. Topher — queue is empty right now.
+   Throw me a business type and a city…"*
+3. Banter context: the primary partner mentions the secondary
+   collaborator: *"Once I've ranked a few, Parker can draft the first
+   outreach."*
+4. Secondary partners chime in with their voice, not boilerplate:
+   *"Yeah — I can spin this into a friendly promo…"*
+
+Before v12.0 the same flow was four sterile separate replies. After,
+it reads like watching the team actually work together.
+
+### Office atmosphere
+
+- `office_greeting()` — time-aware Olivia greeting for the empty
+  console ("Morning. Topher — I'm watching the team. Tell me what
+  you want done…"). Branches: morning / afternoon / evening / late
+  night.
+- `office_suggestion_chips()` — 4 one-tap starter prompts that send
+  the chip text to /command when clicked.
+- `desk_chatter()` — every desk shows an italic activity line under
+  the role (Logan: "scanning OSM" when idle, "ranking 4 candidates"
+  when busy). Stable per-day per-task-count so it feels fresh but
+  not frantic.
+- Typing indicator — 3 bouncing dots in a speech bubble while a
+  partner is "thinking" (in-flight to /command or /partner/{id}/ask).
+  Honors `prefers-reduced-motion`.
+- Softer warm color palette on the Agency Office section (linen +
+  amber gradients instead of corporate blues).
+- Subtle active-desk glow when a partner has work in progress.
+
+### Frontend behavior
+
+- Empty console renders a greeting card from Olivia + 4 chip
+  suggestions; clicking a chip sends the chip text to /command.
+- Direct asks and command sends both echo the user message
+  immediately, show a typing indicator while in flight, then reload
+  the full thread when the reply lands.
+- All Work Queue + Shared Documents details stay collapsed by default
+  (already correct in v11.0; verified).
+
+### API surface
+
+`GET /api/team-office/summary` adds two top-level fields:
+`greeting: str` and `suggestion_chips: list[str]`. Each desk also
+gains a `chatter: str`. **Old v11.0 clients ignore them safely.**
+No new endpoints. No request-shape changes.
+
+### Tests (5 live tests, all pass)
+
+```
+1. /summary returns greeting + suggestion_chips + per-desk chatter
+2. Handoff flow ("Find me leads") produces:
+   - Olivia message naming Logan
+   - Logan message addressing Olivia + bantering about Parker
+   - Parker secondary message in Parker's voice (not boilerplate)
+3. Direct ask to Sage retains opener + sign-off
+4. v11.0 work-item + console-reset endpoints unchanged
+5. Greeting is time-aware (includes morning/afternoon/evening/etc)
+   and addresses Topher
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+clean (false positives only — pattern matched `desk-chatter` CSS
+class names). Christian Kovac safe.
+
+### Safety perimeter unchanged
+
+- ❌ No external AI / OpenAI / paid APIs
+- ❌ No auto-send. No publishing. No live changes.
+- ❌ No OAuth. No new Python deps. No new data files.
+- ❌ No new backend systems, no new state machines, no new project types.
+- ✅ Voice templates are pure local strings.
+- ✅ Typing indicator is a UI illusion — no fake delay added on the
+  server; it appears while the legitimate request is in flight.
+- ✅ Suggestion chips send their text through the existing /command
+  endpoint; nothing new there to attack.
 
 ---
 

@@ -1563,6 +1563,62 @@
         @media (max-width: 720px) {
             .team-desks { grid-template-columns: 1fr 1fr; }
         }
+        /* ===== v12.0: Living Office polish ============================= */
+        /* Softer ambient palette so the office feels cozy, not corporate */
+        .team-office-section {
+            background: linear-gradient(180deg, #fffaf3 0%, #fff 100%);
+            border-color: #f0d9a6;
+        }
+        .team-desk-body { display: flex; flex-direction: column; gap: 0.05rem; flex: 1; min-width: 0; }
+        /* Ambient activity line under the role — small, italic, muted. */
+        .team-desk-chatter {
+            font-size: 0.7rem; color: #94a3b8; font-style: italic;
+            margin-top: 0.1rem;
+        }
+        /* Empty-office greeting — Olivia says hi with chip suggestions. */
+        .team-greeting {
+            display: flex; flex-direction: column; gap: 0.5rem;
+            padding: 0.3rem;
+        }
+        .team-suggest-chips {
+            display: flex; flex-wrap: wrap; gap: 0.3rem;
+            margin-left: 1.8rem;  /* aligns with the speech-bubble body */
+        }
+        .team-suggest-chip {
+            padding: 0.2rem 0.6rem;
+            background: #fff; border: 1px dashed #cbd5e1;
+            border-radius: 999px;
+            font-size: 0.78rem; color: #1f2937;
+            cursor: pointer; transition: all 120ms;
+        }
+        .team-suggest-chip:hover {
+            background: #f0f6ff; border-color: #1c4f8f; border-style: solid;
+        }
+        /* Typing indicator: 3 bouncing dots inside a speech bubble */
+        .team-msg-typing { opacity: 0.85; }
+        .team-typing-dots {
+            display: inline-flex; align-items: center; gap: 0.25rem;
+            padding: 0.15rem 0;
+        }
+        .team-typing-dots span {
+            width: 0.4rem; height: 0.4rem; border-radius: 50%;
+            background: #64748b;
+            animation: team-typing-bounce 1.2s infinite ease-in-out;
+        }
+        .team-typing-dots span:nth-child(2) { animation-delay: 0.18s; }
+        .team-typing-dots span:nth-child(3) { animation-delay: 0.36s; }
+        @keyframes team-typing-bounce {
+            0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+            30%           { opacity: 1;   transform: translateY(-0.18rem); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .team-typing-dots span { animation: none; opacity: 0.7; }
+        }
+        /* Slight glow on active desks so the office feels alive */
+        .team-desk:has(.team-desk-status-active),
+        .team-desk:has(.team-desk-status-thinking) {
+            box-shadow: 0 0 0 1px #f3d28a44 inset, 0 1px 3px rgba(180,140,40,0.08);
+        }
         /* ===== v10.0: Sage SEO Partner ================================== */
         .sage-section { padding: 0.4rem 0 0; }
         .sage-dashboard {

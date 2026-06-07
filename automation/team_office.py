@@ -137,6 +137,165 @@ PARTNER_ORDER = ("olivia", "logan", "sage", "parker", "video", "youtube")
 
 
 # ======================================================================
+# v12.0 — Voices: per-partner personality so replies feel like coworkers.
+# Pure local strings; no external AI. Choices rotate deterministically
+# off the request length so the same prompt yields a stable reply but
+# different prompts feel varied.
+# ======================================================================
+
+_VOICES: dict[str, dict] = {
+    "olivia": {
+        "openers":   ("Hey,", "OK,", "Got it,", "Right,"),
+        "sign_offs": (
+            "I'll keep watching the team.",
+            "Holler when you need me.",
+            "I'll stay on dispatch.",
+        ),
+        # How Olivia hands work off to another partner. {partner_first}
+        # = first word of partner name; {user_text} = the user's request
+        # cleaned for echoing.
+        "handoffs":  (
+            "Hey {partner_first}, Topher's asking about this — can you take it?",
+            "{partner_first}, this one's yours. Topher wants {short_intent}.",
+            "Looping {partner_first} in — Topher's request: {short_intent}.",
+        ),
+        # Friendly observational lines for the desk chatter.
+        "idle_chatter":   ("watching the board", "sipping coffee", "on dispatch"),
+        "active_chatter": ("routing {n} item{s}", "triaging the queue"),
+    },
+    "logan": {
+        "openers":   ("Right —", "OK so,", "Looking at it,", "On it."),
+        "sign_offs": (
+            "I'll keep ranking.",
+            "Holler when you've got a target.",
+            "I'll be at my desk.",
+        ),
+        "ack_olivia": (
+            "Got it, Olivia.",
+            "On it, Olivia.",
+            "Thanks, Olivia.",
+        ),
+        # Mentions of other partners — used occasionally for banter.
+        "banter_about": {
+            "parker": "Once I've ranked a few, Parker can draft the first outreach.",
+            "sage":   "If you want SEO context on any of these, Sage can fold it in.",
+        },
+        "idle_chatter":   ("queue is quiet", "scanning OSM"),
+        "active_chatter": ("ranking {n} candidate{s}", "lining up {n} lead{s}"),
+    },
+    "sage": {
+        "openers":   ("OK,", "Let me think.", "Here's what I'd do —", "Got it."),
+        "sign_offs": (
+            "Ready when you are.",
+            "Want me to lay out step one?",
+            "Tell me when to start.",
+        ),
+        "ack_olivia": (
+            "Got it, Olivia.",
+            "On it, Olivia.",
+            "Thanks, Olivia — taking this.",
+        ),
+        "banter_about": {
+            "parker": "Once the audit's done, Parker can turn the wins into a promo.",
+            "video":  "If you want a quick video angle from the SEO wins, Video Partner can scriptify.",
+        },
+        "idle_chatter":   ("reviewing the checklist", "watching for new projects"),
+        "active_chatter": ("{n} fix{es} waiting approval", "auditing the checklist"),
+    },
+    "parker": {
+        "openers":   ("Oh nice —", "Yeah —", "Love this.", "OK got it."),
+        "sign_offs": (
+            "I can riff on it more if you want.",
+            "Want me to keep going?",
+            "Tell me when to push it.",
+        ),
+        "ack_olivia": (
+            "On it, Olivia!",
+            "Got it, O — drafting.",
+            "Yep — thanks, Olivia.",
+        ),
+        "banter_about": {
+            "video":   "If you want this as a short clip too, Video Partner can scriptify.",
+            "logan":   "If Logan has a list ready, I'll draft outreach off it.",
+        },
+        "idle_chatter":   ("noodling on hooks", "watching the deck"),
+        "active_chatter": ("{n} draft{s} ready for you", "polishing the angle"),
+    },
+    "video": {
+        "openers":   ("Hmm,", "OK so picture this —", "Got it.", "Right."),
+        "sign_offs": (
+            "Want a shot list too?",
+            "Let me know the vibe.",
+            "I'll be in the edit bay.",
+        ),
+        "ack_olivia": (
+            "On it, Olivia.",
+            "Got it, O.",
+            "Thanks, Olivia.",
+        ),
+        "banter_about": {
+            "youtube": "YouTube Growth can pull title ideas from the same angle.",
+            "parker":  "If Parker already has the promo, I'll script straight off it.",
+        },
+        "idle_chatter":   ("storyboarding in my head", "watching for a topic"),
+        "active_chatter": ("{n} script{s} on the desk", "drafting the shot list"),
+    },
+    "youtube": {
+        "openers":   ("Right.", "Looking at it,", "Here's the angle —", "Got it."),
+        "sign_offs": (
+            "Want me to draft three titles?",
+            "Let me know the hook.",
+            "I'll keep an eye on the channel.",
+        ),
+        "ack_olivia": (
+            "Got it, Olivia.",
+            "On it, Olivia.",
+            "Thanks, O.",
+        ),
+        "banter_about": {
+            "video":  "If you want one made into a short, Video Partner can take it from here.",
+            "parker": "Parker can repurpose the title for promo copy if you want.",
+        },
+        "idle_chatter":   ("watching for video ideas", "scanning hooks"),
+        "active_chatter": ("{n} package{s} drafted", "noodling on titles"),
+    },
+}
+
+
+def _pick(seq, key: str) -> str:
+    """Deterministic pick from a sequence given a hash-friendly key.
+    Identical keys produce identical picks (so the same prompt feels
+    consistent), different keys feel varied."""
+    if not seq:
+        return ""
+    idx = sum(ord(c) for c in (key or "x")) % len(seq)
+    return seq[idx]
+
+
+def _partner_first(partner_id: str) -> str:
+    name = PARTNERS.get(partner_id, {}).get("name", partner_id)
+    return name.split(" ", 1)[0]
+
+
+def _short_intent(text: str, max_words: int = 8) -> str:
+    """Compress the user's request to a short echo for handoffs.
+    Lowercases the leading verb so the embedded line reads naturally
+    (e.g. "Topher wants leads on lawn care" not "Topher wants Find me")."""
+    words = (text or "").strip().split()
+    if not words:
+        return "something"
+    trimmed_words = list(words[:max_words])
+    if trimmed_words:
+        first = trimmed_words[0]
+        # Lowercase the first word unless it's clearly a proper noun
+        # (starts with a capital AND its rest already has a capital).
+        if first[0].isupper() and not any(c.isupper() for c in first[1:]):
+            trimmed_words[0] = first.lower()
+    trimmed = " ".join(trimmed_words)
+    return trimmed.rstrip(".!?")
+
+
+# ======================================================================
 # Enums + caps
 # ======================================================================
 
@@ -593,43 +752,103 @@ def _olivia_next_actions_text() -> tuple[str, list[dict]]:
     return text, [t[2] for t in top]
 
 
-def partner_reply(partner_id: str, text: str, context: dict | None = None) -> dict:
+def _voice(partner_id: str) -> dict:
+    return _VOICES.get(partner_id, _VOICES["olivia"])
+
+
+def _wrap_with_voice(
+    partner_id: str,
+    body: str,
+    text: str,
+    handoff_from: str | None = None,
+    add_banter_for: str | None = None,
+) -> str:
+    """
+    Wrap the partner's body text with their personality:
+      - opener (or olivia-ack if this is a handoff reply)
+      - body
+      - optional banter mentioning another partner
+      - sign-off
+
+    This is what makes replies feel like coworkers instead of buttons.
+    """
+    v = _voice(partner_id)
+    parts: list[str] = []
+    if handoff_from == "olivia":
+        # Receiving partner addresses Olivia first, then the user.
+        ack = _pick(v.get("ack_olivia") or v.get("openers") or ("",), text or "x")
+        if ack:
+            parts.append(f"{ack} Topher — {body}")
+        else:
+            parts.append(body)
+    else:
+        opener = _pick(v.get("openers") or ("",), text or "x")
+        if opener:
+            parts.append(f"{opener} {body}")
+        else:
+            parts.append(body)
+    # Banter: occasional mention of another partner. Triggered by a
+    # context flag; the secondary-partner thread in route_command()
+    # sets this for the primary partner so the conversation feels
+    # collaborative.
+    if add_banter_for:
+        banter = (v.get("banter_about") or {}).get(add_banter_for)
+        if banter:
+            parts.append(banter)
+    sign = _pick(v.get("sign_offs") or ("",), text or "x")
+    if sign:
+        parts.append(sign)
+    return "\n\n".join(parts)
+
+
+def partner_reply(
+    partner_id: str,
+    text: str,
+    context: dict | None = None,
+) -> dict:
     """
     Generate a personality-tuned reply from the named partner.
     Returns {partner, response_text, actions}.
 
-    No external AI — these are rule-based templates with light
-    context-aware variation.
+    v12.0: replies pass through _wrap_with_voice() so each partner
+    has their own opener, sign-off, and (when context indicates a
+    handoff or collaboration) banter mentioning another partner.
+
+    context (optional):
+      handoff_from: partner_id of who's handing this off (typically
+                    'olivia'); the receiving partner addresses them.
+      banter_about: partner_id to mention in passing — usually the
+                    secondary partner in a multi-partner workflow.
     """
     partner_id = (partner_id or "olivia").strip().lower()
     if partner_id not in PARTNERS:
         partner_id = "olivia"
     meta = PARTNERS[partner_id]
+    ctx = context or {}
     t_low = (text or "").lower()
 
     actions: list[dict] = []
+    body: str
     if partner_id == "olivia":
         if any(k in t_low for k in ("next", "what should", "what's up", "show me")):
-            response, actions = _olivia_next_actions_text()
+            body, actions = _olivia_next_actions_text()
+        elif ctx.get("greeting"):
+            body = ctx["greeting"]
         else:
             primary, secondary = _detect_partner(text)
             if primary == "olivia":
-                response = (
-                    "I'll keep an eye on the team. If you tell me what "
-                    "you want done — find leads, run an SEO audit, "
-                    "draft a promo — I'll route it to the right partner."
+                body = (
+                    "if you tell me what you want done — find leads, "
+                    "run an SEO audit, draft a promo — I'll point it at "
+                    "the right partner."
                 )
             else:
-                names = [PARTNERS[primary]["name"]]
-                if secondary:
-                    names += [PARTNERS[p]["name"] for p in secondary]
-                if len(names) == 1:
-                    response = f"I'll route that to {names[0]}."
-                else:
-                    response = (
-                        f"I'll route that to {names[0]}, then loop in "
-                        f"{' and '.join(names[1:])}."
-                    )
+                # v12.0: Olivia's handoff is a true conversation move.
+                handoff_tmpl = _pick(_voice("olivia").get("handoffs") or ("",), text or "x")
+                body = handoff_tmpl.format(
+                    partner_first=_partner_first(primary),
+                    short_intent=_short_intent(text),
+                )
                 actions.append({
                     "label":  f"Send to {PARTNERS[primary]['name']}",
                     "kind":   "ask_partner",
@@ -645,78 +864,88 @@ def partner_reply(partner_id: str, text: str, context: dict | None = None) -> di
             count = 0
         if count > 0:
             top_name = (picks[0].get("business_name") or "your top lead")
-            response = (
-                f"I have {count} ranked candidate{'s' if count != 1 else ''} "
-                f"ready right now. Strongest is {top_name}. "
-                f"I can keep finding more if you tell me a category + city."
+            body = (
+                f"I've got {count} ranked candidate{'s' if count != 1 else ''} "
+                f"on my desk. Strongest is {top_name}. Want me to keep "
+                f"finding more, or take action on one of these?"
             )
             actions.append({"label": "Open Logan", "kind": "scroll", "target": "logan-details"})
         else:
-            response = (
-                "Queue is empty. Tell me a business type + city and I'll "
-                "discover real businesses via OpenStreetMap, top up with "
-                "research missions if coverage is thin, and rank them."
+            body = (
+                "queue is empty right now. Throw me a business type and a "
+                "city and I'll go pull real businesses from OpenStreetMap "
+                "— if coverage is thin in that area I'll top up with "
+                "research missions so you're never staring at nothing."
             )
             actions.append({"label": "Find Leads For Me", "kind": "do_it_for_me", "partner": "logan"})
     elif partner_id == "sage":
         if "first" in t_low or "start" in t_low or "begin" in t_low:
-            response = (
-                "Start with one project. For MixedMakerShop, I recommend:\n"
+            body = (
+                "for MixedMakerShop, here's the order I'd take it:\n"
                 "  1. Generate the SEO audit.\n"
-                "  2. Review the failed or unknown items.\n"
-                "  3. Turn important issues into fix tasks.\n"
-                "  4. Approve the fixes you want done.\n"
-                "  5. Generate a monthly report after work is completed."
+                "  2. Walk the failed or unknown items.\n"
+                "  3. Turn the important ones into fix tasks.\n"
+                "  4. Approve the fixes you actually want done.\n"
+                "  5. Spin up a monthly report when work is in."
             )
             actions.append({"label": "Start SEO Audit For Me", "kind": "do_it_for_me", "partner": "sage"})
         elif "audit" in t_low:
-            response = (
-                "I can start with a basic SEO audit. First, I'll check "
-                "titles, headings, service clarity, local signals, and "
-                "approval-needed fixes. No live website or GBP changes — "
-                "everything stays approval-based."
+            body = (
+                "I'll spin up a basic SEO audit — titles, headings, "
+                "service clarity, local signals, and what needs your "
+                "approval before it ships. Nothing touches the live site "
+                "or Google Business Profile."
             )
             actions.append({"label": "Start SEO Audit For Me", "kind": "do_it_for_me", "partner": "sage"})
         elif "report" in t_low or "monthly" in t_low:
-            response = (
-                "I can generate a client-friendly monthly report from "
-                "current project state — what we checked, what we fixed, "
-                "current wins, current issues, and next actions."
+            body = (
+                "I can pull a client-friendly monthly report from the "
+                "current project — what we checked, what we fixed, the "
+                "wins, what's still open, and what I'd do next."
             )
             actions.append({"label": "Open Sage", "kind": "scroll", "target": "sage-details"})
         else:
-            response = (
-                "I'm Sage — I manage SEO audits, local SEO, website fix "
-                "tasks, an approval queue, and monthly reports. Ask me "
-                "to start an audit or what to do first."
+            body = (
+                "I run SEO audits, local SEO, website fix tasks, the "
+                "approval queue, and monthly reports. Ask me to start an "
+                "audit or what to do first if you want a clean entry point."
             )
             actions.append({"label": "Open Sage", "kind": "scroll", "target": "sage-details"})
     elif partner_id == "parker":
-        response = (
-            "I can turn that into a friendly promo. The free offer "
-            "should stay as a homepage mockup, not free fixes. "
-            "I'll draft copy you can review and approve before sending."
+        body = (
+            "I can spin this into a friendly promo — the free offer "
+            "stays as a homepage mockup, not free fixes. I'll draft you "
+            "copy and you'll get to review it before it goes anywhere."
         )
         actions.append({"label": "Make Promo For Me", "kind": "do_it_for_me", "partner": "parker"})
         actions.append({"label": "Open Parker", "kind": "scroll", "target": "parker-details"})
     elif partner_id == "video":
-        response = (
-            "I can make a short script from that offer and keep it "
-            "ready for review. Reels, TikTok, YouTube Shorts — pick "
-            "the format and I'll draft. Nothing publishes automatically."
+        body = (
+            "I can put together a short script from that offer and stage "
+            "it for your review. Reels, TikTok, YouTube Shorts — pick the "
+            "format. Nothing publishes automatically."
         )
         actions.append({"label": "Make Video Campaign For Me", "kind": "do_it_for_me", "partner": "video"})
         actions.append({"label": "Open Video Partner", "kind": "scroll", "target": "video-details"})
     elif partner_id == "youtube":
-        response = (
-            "I can turn this into title ideas, hooks, and a video "
-            "concept. Approval-based — I prepare ideas, you decide "
-            "what gets made."
+        body = (
+            "I can spin this into title ideas, hooks, and a clean video "
+            "concept. Approval-based — I prep, you decide what gets made."
         )
         actions.append({"label": "Find Video Ideas For Me", "kind": "do_it_for_me", "partner": "youtube"})
         actions.append({"label": "Open YouTube Growth", "kind": "scroll", "target": "youtube-details"})
     else:
-        response = "(no reply template registered for this partner yet)"
+        body = "(no reply template registered for this partner yet)"
+
+    # v12.0: wrap the body in the partner's voice (opener + sign-off,
+    # and a handoff ack when this is a routed message).
+    response = _wrap_with_voice(
+        partner_id,
+        body,
+        text,
+        handoff_from=ctx.get("handoff_from"),
+        add_banter_for=ctx.get("banter_about"),
+    )
 
     return {
         "partner":       partner_id,
@@ -766,9 +995,12 @@ def route_command(text: str) -> dict:
     intent = _classify_intent(text)
 
     appended: list[dict] = [user_msg]
+    has_handoff = bool(secondary) and primary != "olivia"
 
-    # 3. If multi-partner, Olivia speaks first as dispatcher.
-    if secondary and primary != "olivia":
+    # 3. v12.0 — visible delegation. Olivia speaks first as dispatcher
+    # with a real handoff line ("Hey Logan, Topher's asking about ..."),
+    # AND the primary partner addresses Olivia in their reply.
+    if has_handoff:
         olivia_reply = partner_reply("olivia", text)
         msg = append_message({
             "role":    "olivia",
@@ -778,8 +1010,14 @@ def route_command(text: str) -> dict:
         })
         appended.append(msg)
 
-    # 4. Primary partner reply
-    primary_reply = partner_reply(primary, text)
+    # 4. Primary partner reply — receives the handoff if Olivia spoke
+    # first, and gets banter context so they mention the secondary.
+    primary_ctx = {}
+    if has_handoff:
+        primary_ctx["handoff_from"] = "olivia"
+    if secondary:
+        primary_ctx["banter_about"] = secondary[0]
+    primary_reply = partner_reply(primary, text, context=primary_ctx)
     msg = append_message({
         "role":    primary,
         "partner": primary,
@@ -788,17 +1026,22 @@ def route_command(text: str) -> dict:
     })
     appended.append(msg)
 
-    # 5. Secondary partners chime in (one-line acknowledgements)
+    # 5. v12.0 — secondary partners chime in as natural collaborators,
+    # not "I can help too." Use a single-line preview of their reply,
+    # without the heavy opener/sign-off so it reads like a quick aside.
     for sec_id in secondary:
         if sec_id == primary:
             continue
         sec_reply = partner_reply(sec_id, text)
-        # Use a shorter ack from the secondary partner.
-        ack = sec_reply["response_text"].split("\n", 1)[0]
+        # First non-empty line of the wrapped reply — keeps the voice.
+        first_line = next(
+            (ln.strip() for ln in sec_reply["response_text"].split("\n") if ln.strip()),
+            sec_reply["response_text"],
+        )
         msg = append_message({
             "role":    sec_id,
             "partner": sec_id,
-            "text":    f"(I can help too.) {ack}",
+            "text":    first_line,
             "actions": sec_reply["actions"][:1],  # one action only
         })
         appended.append(msg)
@@ -838,11 +1081,76 @@ def _classify_intent(text: str) -> str:
 # Summary endpoint — desk states for the UI
 # ======================================================================
 
+def _desk_chatter(pid: str, task_count: int, status: str) -> str:
+    """
+    v12.0: a one-line ambient activity string under each desk.
+    Empty string falls back to the partner's idle chatter list.
+    """
+    v = _voice(pid)
+    if status == "idle" or task_count == 0:
+        seq = v.get("idle_chatter") or ()
+    else:
+        seq = v.get("active_chatter") or ()
+    if not seq:
+        return ""
+    # Stable per-day variation so the chatter feels fresh but not
+    # frantic.
+    key = f"{pid}-{datetime.now().strftime('%Y-%m-%d')}-{task_count}"
+    tmpl = _pick(seq, key)
+    s = "s" if task_count != 1 else ""
+    # Some active-chatter templates use {es} for the {fix} plural.
+    es = "es" if task_count != 1 else ""
+    return tmpl.format(n=task_count, s=s, es=es)
+
+
+def office_greeting() -> str:
+    """v12.0: time-aware Olivia greeting for the empty console state.
+    Pure text — no API calls."""
+    hour = datetime.now().hour
+    if hour < 5:
+        time_word = "late night"
+        opener = "still up?"
+    elif hour < 12:
+        time_word = "morning"
+        opener = "morning."
+    elif hour < 17:
+        time_word = "afternoon"
+        opener = "afternoon."
+    elif hour < 22:
+        time_word = "evening"
+        opener = "evening."
+    else:
+        time_word = "late evening"
+        opener = "evening."
+    return (
+        f"{opener.capitalize()} Topher — I'm watching the team. "
+        f"Tell me what you want done and I'll point it at the right "
+        f"partner. If you're not sure where to start, just say "
+        f"\"what should I do next?\""
+    )
+
+
+def office_suggestion_chips() -> list[str]:
+    """v12.0: a tiny set of one-tap suggestions for the empty console.
+    Picks live next to the greeting."""
+    return [
+        "What should I do next?",
+        "Find me leads",
+        "Have Sage audit MixedMakerShop",
+        "Show me what everyone is working on",
+    ]
+
+
 def summary() -> dict:
     """
     One-shot UI payload: every partner's desk status + task count.
     Lazy-imports each partner module so a broken partner doesn't crash
     the whole Team Office.
+
+    v12.0: each desk also carries an ambient `chatter` line so the
+    office feels alive. The response includes a top-level `greeting`
+    and `suggestion_chips` so the UI can render the empty-state
+    welcome without a second call.
     """
     desks: list[dict] = []
     for pid in PARTNER_ORDER:
@@ -864,8 +1172,6 @@ def summary() -> dict:
                 task_count = len(_sp.list_approval_queue())
                 status = "waiting" if task_count else "idle"
             elif pid == "parker":
-                # Use the existing content publishing queue if available;
-                # otherwise count team work items routed to parker.
                 task_count = len(list_work_items(partner="parker"))
                 status = "active" if task_count else "idle"
             elif pid == "youtube":
@@ -892,6 +1198,8 @@ def summary() -> dict:
             "status":      status,
             "task_count":  task_count,
             "do_it_label": meta["do_it_label"],
+            # v12.0 ambient activity line:
+            "chatter":     _desk_chatter(pid, task_count, status),
         })
     return {
         "desks":           desks,
@@ -899,4 +1207,7 @@ def summary() -> dict:
         "documents":       len(load_documents()),
         "messages":        len(load_messages()),
         "waiting_approval": len(list_work_items(status="waiting_approval")),
+        # v12.0 office atmosphere:
+        "greeting":         office_greeting(),
+        "suggestion_chips": office_suggestion_chips(),
     }

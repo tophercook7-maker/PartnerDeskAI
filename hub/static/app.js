@@ -8054,6 +8054,9 @@ if (_sageDetailsEl) {
 
 let _teamDesks = [];
 let _teamMessages = [];
+let _teamGreeting = '';
+let _teamSuggestionChips = [];
+let _teamTyping = false;  // v12.0 typing indicator
 
 async function loadTeamSummary() {
     try {
@@ -8061,8 +8064,13 @@ async function loadTeamSummary() {
         if (!r.ok) throw new Error('http ' + r.status);
         const d = await r.json();
         _teamDesks = d.desks || [];
+        _teamGreeting = d.greeting || '';
+        _teamSuggestionChips = d.suggestion_chips || [];
     } catch (err) { _teamDesks = []; }
     renderTeamDesks();
+    // Re-render messages so the empty-state greeting picks up the new
+    // greeting + chip text.
+    renderTeamMessages();
 }
 
 function renderTeamDesks() {
@@ -8074,13 +8082,18 @@ function renderTeamDesks() {
     }
     el.innerHTML = _teamDesks.map(d => {
         const cls = ['team-desk', d.id === 'olivia' ? 'is-olivia' : ''].filter(Boolean).join(' ');
+        // v12.0 ambient chatter line — a little detail under the role.
+        const chatter = d.chatter
+            ? `<div class="team-desk-chatter">· ${_escape(d.chatter)}</div>`
+            : '';
         return (
             `<div class="${cls}" data-team-desk="${_escape(d.id)}" title="${_escape(d.description || '')}">` +
               `<div class="team-desk-row">` +
                 `<span class="team-desk-emoji">${d.emoji}</span>` +
-                `<div>` +
+                `<div class="team-desk-body">` +
                   `<div class="team-desk-name">${_escape(d.name)}</div>` +
                   `<div class="team-desk-role">${_escape(d.role)}</div>` +
+                  chatter +
                 `</div>` +
               `</div>` +
               `<div class="team-desk-meta">` +
@@ -8122,14 +8135,54 @@ function _renderTeamMessage(msg) {
     );
 }
 
+function _renderTypingIndicator(partnerId) {
+    const meta = _teamDesks.find(d => d.id === (partnerId || 'olivia')) || { emoji: '💭', name: 'Team' };
+    return (
+        `<div class="team-msg team-msg-partner team-msg-typing">` +
+          `<span class="team-msg-emoji">${meta.emoji}</span>` +
+          `<div class="team-msg-body">` +
+            `<div class="team-msg-name">${_escape(meta.name)}</div>` +
+            `<div class="team-typing-dots"><span></span><span></span><span></span></div>` +
+          `</div>` +
+        `</div>`
+    );
+}
+
+function _renderEmptyOffice() {
+    // v12.0 empty-state office greeting + suggestion chips. Reads as
+    // Olivia saying hi.
+    const olivia = _teamDesks.find(d => d.id === 'olivia') || { emoji: '🗂️', name: 'Olivia' };
+    const greeting = _teamGreeting || "I'm watching the team. Tell me what you want done.";
+    const chips = (_teamSuggestionChips && _teamSuggestionChips.length
+        ? _teamSuggestionChips
+        : ['What should I do next?', 'Find me leads']);
+    const chipsHtml = chips.map(s =>
+        `<button type="button" class="team-suggest-chip" data-team-suggest="${_escape(s)}">${_escape(s)}</button>`
+    ).join('');
+    return (
+        `<div class="team-greeting">` +
+          `<div class="team-msg team-msg-partner team-msg-olivia">` +
+            `<span class="team-msg-emoji">${olivia.emoji}</span>` +
+            `<div class="team-msg-body">` +
+              `<div class="team-msg-name">${_escape(olivia.name)}</div>` +
+              `<div class="team-msg-text">${_escape(greeting)}</div>` +
+            `</div>` +
+          `</div>` +
+          `<div class="team-suggest-chips">${chipsHtml}</div>` +
+        `</div>`
+    );
+}
+
 function renderTeamMessages() {
     const el = document.getElementById('team-messages');
     if (!el) return;
-    if (!_teamMessages.length) {
-        el.innerHTML = '<div class="muted team-msg-empty">Tell the team what you need…</div>';
+    if (!_teamMessages.length && !_teamTyping) {
+        el.innerHTML = _renderEmptyOffice();
         return;
     }
-    el.innerHTML = _teamMessages.map(_renderTeamMessage).join('');
+    const messagesHtml = _teamMessages.map(_renderTeamMessage).join('');
+    const typingHtml = _teamTyping ? _renderTypingIndicator(_teamTyping) : '';
+    el.innerHTML = messagesHtml + typingHtml;
     el.scrollTop = el.scrollHeight;
 }
 
@@ -8219,34 +8272,62 @@ function _appendTeamReplyMessages(messages) {
     renderTeamMessages();
 }
 
+// v12.0: shared command-send helper so suggestion chips and the
+// command form both flow through one path (typing indicator + reply
+// rendering + summary refresh).
+async function _sendTeamCommand(text) {
+    if (!text || !text.trim()) return;
+    const status = document.getElementById('cmd-status');
+    const input  = document.getElementById('team-command-input');
+    // 1. Echo the user message immediately for snappy feel.
+    _teamMessages.push({
+        role: 'user', partner: 'user', text: text.trim(),
+    });
+    // 2. Show typing indicator (Olivia first; will swap to primary
+    // partner if the server tells us a different one).
+    _teamTyping = 'olivia';
+    renderTeamMessages();
+    if (input) input.value = '';
+    try {
+        const r = await fetch('/api/team-office/command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text.trim() }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+        // 3. The server already appended our user message to its log;
+        // re-pull the canonical message list to avoid duplication.
+        _teamTyping = false;
+        await loadTeamMessages();
+        if (status) status.textContent =
+            `Routed to ${d.chosen_partner}${(d.secondary_partners || []).length ? ' + ' + d.secondary_partners.join(', ') : ''}.`;
+        // Refresh desks (task counts + chatter may have changed).
+        await Promise.all([loadTeamSummary(), loadTeamWorkItems(), loadTeamDocs()]);
+    } catch (err) {
+        _teamTyping = false;
+        renderTeamMessages();
+        if (status) status.textContent = 'Command failed: ' + (err.message || err);
+    }
+}
+
 // Main command submit.
 const _teamCommandForm = document.getElementById('team-command-form');
 if (_teamCommandForm) {
-    _teamCommandForm.addEventListener('submit', async (e) => {
+    _teamCommandForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const input = document.getElementById('team-command-input');
         const text = (input && input.value || '').trim();
-        if (!text) return;
-        const status = document.getElementById('cmd-status');
-        try {
-            const r = await fetch('/api/team-office/command', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text }),
-            });
-            const d = await r.json();
-            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
-            _appendTeamReplyMessages(d.messages || []);
-            if (input) input.value = '';
-            if (status) status.textContent =
-                `Routed to ${d.chosen_partner}${(d.secondary_partners || []).length ? ' + ' + d.secondary_partners.join(', ') : ''}.`;
-            // Refresh desks (task counts may have changed).
-            await Promise.all([loadTeamSummary(), loadTeamWorkItems(), loadTeamDocs()]);
-        } catch (err) {
-            if (status) status.textContent = 'Command failed: ' + (err.message || err);
-        }
+        _sendTeamCommand(text);
     });
 }
+
+// v12.0: suggestion-chip clicks send the chip text as a command.
+document.addEventListener('click', (e) => {
+    const chip = e.target.closest('button[data-team-suggest]');
+    if (!chip) return;
+    _sendTeamCommand(chip.dataset.teamSuggest || chip.textContent || '');
+});
 
 // Reset console.
 const _teamResetBtn = document.getElementById('team-reset-btn');
@@ -8278,6 +8359,10 @@ document.addEventListener('click', async (e) => {
         const pid = deskAskBtn.dataset.teamDeskAsk;
         const prompt = window.prompt(`Ask ${pid} — what do you want?`);
         if (!prompt) return;
+        // v12.0 — typing indicator while the partner is "thinking".
+        _teamMessages.push({ role: 'user', partner: 'user', text: prompt });
+        _teamTyping = pid;
+        renderTeamMessages();
         try {
             const r = await fetch(`/api/team-office/partner/${encodeURIComponent(pid)}/ask`, {
                 method: 'POST',
@@ -8286,9 +8371,12 @@ document.addEventListener('click', async (e) => {
             });
             const d = await r.json();
             if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            _teamTyping = false;
             await loadTeamMessages();
             if (status) status.textContent = `${pid} replied.`;
         } catch (err) {
+            _teamTyping = false;
+            renderTeamMessages();
             if (status) status.textContent = 'Ask failed: ' + (err.message || err);
         }
         return;
