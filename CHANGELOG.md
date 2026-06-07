@@ -1,6 +1,161 @@
 # PartnerDeskAI Changelog
 
-Newest first. v12.2 is the current shipped version.
+Newest first. v12.3 is the current shipped version.
+
+---
+
+## v12.3 — Living Agency Office
+
+v12.0 gave the partners voices. v12.1 made onboarding feel like a
+front-desk welcome. v12.2 made the buttons actually do work. v12.3
+finishes the experience: the Agency Office becomes the **primary
+surface** of the Hub, looks like an actual room with desks, shows
+the team collaborating visibly, and surfaces a morning briefing
+from Olivia that knows what each partner has prepared.
+
+### Visual transformation
+
+The office is now a room, not a row of cards:
+
+- **Linen + amber color palette** with a radial gradient that mimics
+  warm office light
+- **6 desks in a grid**, each with 3 role-specific decor items
+  rendered as an emoji row:
+  - Olivia: 📋 ✅ ☕
+  - Logan: 🗺️ 📞 📒
+  - Sage: 📊 📈 💻
+  - Parker: 🎨 💡 📌
+  - Video: 📷 🎞️ 💡
+  - YouTube: 🖼️ 📈 🎯
+- **Animated status pulse** under each desk (green when active, blue
+  when thinking, amber when waiting; honors `prefers-reduced-motion`)
+- **Busy desks get a subtle ring** so you can see at a glance who's
+  working
+
+### Morning briefing (new endpoint)
+
+`GET /api/team-office/briefing` — Olivia's conversational greeting
+composed from live data:
+
+```
+Good afternoon, Topher. The team is ready.
+
+  • Logan has 1 ranked candidate — 501 Plumbing is ready to send.
+  • Sage's audit on MMS - MixedMakerShop - SEO has 30 checklist items still to walk.
+  • Parker has a promo draft on file — "Promo draft — Free homepage mockup".
+  • Video has 2 drafts on the desk — newest is "Short script — Free homepage mockup".
+  • YouTube has 4 packages drafted — latest is "Full package — Free homepage mockup".
+
+What would you like us to work on today?
+```
+
+Each line is built from real storage — picks count, audit checklist
+state, draft document titles, package counts. No hardcoded copy
+beyond the wrapper. The briefing card replaces the v12.1 empty-state
+greeting.
+
+### Activity feed (new endpoint)
+
+`GET /api/team-office/activity?limit=20` — chronological-newest-first
+stream of partner actions composed from existing storage. **No new
+persistence.** Pure projection over:
+- Console messages (partner replies)
+- Work items (created)
+- Shared documents (created)
+- Sage audits + monthly reports
+- YouTube + Video packages
+
+Renders in a column alongside the console so you literally watch the
+team work. Polled every 12 seconds while the tab is visible; paused
+when hidden. Each event shows partner icon + truncated title + a
+"partner · HH:MM" footer.
+
+### Auto-delegation (multi-partner workflows)
+
+The router now detects outcome phrases and runs real multi-partner
+workflows visibly in the console:
+
+| Phrase | Chain |
+|---|---|
+| "get me more clients" / "grow the business" | Logan → Parker → Video |
+| "improve our SEO" / "rank higher" | Sage → Parker |
+| "make a campaign" / "launch a campaign" | Parker → Video → YouTube |
+| "content plan" / "make content" | Video → YouTube → Parker |
+
+When detected, `route_command()` calls `run_auto_delegation()`:
+1. User message logged
+2. Olivia narrates the dispatch: *"OK Topher, big ask — I'll line
+   up the team. Logan finds prospects, Parker drafts outreach,
+   Video Partner stages content. Hang tight."*
+3. Each partner in the chain runs real `start_work()` and posts
+   their reply (Logan's real OSM discovery, Parker's promo draft,
+   Video's script — all using v12.2 generators)
+4. Olivia wraps up: *"Topher, the team is ready for review."*
+
+Five+ messages land in the console; you see the conversation, not
+"completed."
+
+### Richer partner replies
+
+Templates now reference real data:
+
+- **Logan** mentions WHY top picks stand out, pulling from the v9.0
+  `weak_presence_flags`: *"They rely heavily on Facebook and don't
+  have strong websites."* / *"They have no website on file — ideal
+  for the free mockup pitch."*
+- **Sage** mentions WHICH audit section has the biggest opportunity:
+  *"I just finished checking MMS - MixedMakerShop - SEO. The biggest
+  opportunity I see right now is technical seo. I count 12 items
+  that could move the needle."*
+
+### Advanced workspaces collapsed
+
+Today panel + all six partner sections (Parker, Logan, Sage, Video,
+YouTube, Olivia) now wrap inside one `<details id="advanced-workspaces">`
+disclosure, closed by default. **Nothing removed** — everything still
+works exactly as before, it just doesn't compete with the Office for
+attention. System section stays outside (so Reset Onboarding + Logs
+stay accessible).
+
+### New API surface (2 endpoints)
+
+- `GET /api/team-office/briefing` → morning briefing
+- `GET /api/team-office/activity?limit=N` → activity stream (1≤N≤100)
+
+`GET /api/team-office/summary` extended with per-desk `desk_items`
+(decor) + `short_name`. Backward-compatible — old fields preserved.
+
+### Live verification (9 tests, all pass)
+
+```
+1. Briefing returns Olivia text with team status lines + 4 chips
+2. Activity feed returns chronological events with partner icons
+3. Summary includes desk_items + short_name per desk
+4. Auto-delegation "Get me more clients" → 6-message conversation
+   (user + olivia open + logan + parker + video + olivia close);
+   Logan does real OSM, Parker drafts promo, Video generates script
+5. Auto-delegation "Improve our SEO" → sage + parker chain
+6. Logan reply mentions specific standout reason from real flags
+7. Sage reply mentions specific audit section with item counts
+8. Activity feed reflects new conversation events
+9. v12.2 start-work endpoint unchanged (back-compat)
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+0/4. Christian Kovac safe.
+
+### Safety perimeter unchanged
+
+- ❌ No publishing. No auto-send. No connections. No live website changes.
+- ❌ No OAuth. No paid APIs. No new Python deps.
+- ❌ **No new data files** — briefing + activity feed are pure
+  projections over existing storage.
+- ✅ Auto-delegation runs the existing v12.2 `start_work()`
+  generators; no new outbound surface. Logan still hits OSM with
+  the same v8.9.1+ approved call. Everything else is local generation.
+- ✅ Activity feed polls every 12s **only while the tab is visible**
+  (pauses on `document.hidden`).
+- ✅ All advanced workspaces still accessible — collapsed, not removed.
 
 ---
 

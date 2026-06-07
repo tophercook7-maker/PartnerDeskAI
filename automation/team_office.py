@@ -68,6 +68,11 @@ PARTNERS: dict[str, dict] = {
             "what's", "what is",
         ),
         "do_it_label": "Tell Me What To Do Next",
+        # v12.3: 3 desk decor items rendered as a row under the desk's
+        # role line so each partner's desk looks distinct.
+        "desk_items":  ("📋", "✅", "☕"),
+        # v12.3: short-form name (used in tighter UI surfaces)
+        "short_name":  "Olivia",
     },
     "logan": {
         "name":        "Logan Leads",
@@ -80,6 +85,8 @@ PARTNERS: dict[str, dict] = {
             "import", "candidates",
         ),
         "do_it_label": "Find Leads For Me",
+        "desk_items":  ("🗺️", "📞", "📒"),
+        "short_name":  "Logan",
     },
     "sage": {
         "name":        "Sage SEO Partner",
@@ -92,7 +99,9 @@ PARTNERS: dict[str, dict] = {
             "business profile", "monthly report", "report", "sage",
             "fix", "fixes", "approval",
         ),
-        "do_it_label": "Start SEO Audit For Me",
+        "do_it_label": "Improve SEO For Me",
+        "desk_items":  ("📊", "📈", "💻"),
+        "short_name":  "Sage",
     },
     "parker": {
         "name":        "Parker Promo",
@@ -104,7 +113,9 @@ PARTNERS: dict[str, dict] = {
             "posts", "marketing", "campaign copy", "announcement",
             "parker", "promote",
         ),
-        "do_it_label": "Make Promo For Me",
+        "do_it_label": "Create Promotion For Me",
+        "desk_items":  ("🎨", "💡", "📌"),
+        "short_name":  "Parker",
     },
     "video": {
         "name":        "Video Partner",
@@ -116,7 +127,9 @@ PARTNERS: dict[str, dict] = {
             "campaign", "reels", "tiktok", "short", "video partner",
             "ad script",
         ),
-        "do_it_label": "Make Video Campaign For Me",
+        "do_it_label": "Create Video Campaign For Me",
+        "desk_items":  ("📷", "🎞️", "💡"),
+        "short_name":  "Video",
     },
     "youtube": {
         "name":        "YouTube Growth Partner",
@@ -128,7 +141,9 @@ PARTNERS: dict[str, dict] = {
             "hook", "video ideas", "growth", "youtube growth",
             "shorts",
         ),
-        "do_it_label": "Find Video Ideas For Me",
+        "do_it_label": "Find Video Opportunities For Me",
+        "desk_items":  ("🖼️", "📈", "🎯"),
+        "short_name":  "YouTube",
     },
 }
 
@@ -858,17 +873,48 @@ def partner_reply(
     elif partner_id == "logan":
         try:
             import lead_candidates as _lc
-            picks = _lc.compute_picks(k=3)
+            picks = _lc.compute_picks(k=5)
             count = len(picks)
         except Exception:
+            picks = []
             count = 0
         if count > 0:
             top_name = (picks[0].get("business_name") or "your top lead")
-            body = (
-                f"I've got {count} ranked candidate{'s' if count != 1 else ''} "
-                f"on my desk. Strongest is {top_name}. Want me to keep "
-                f"finding more, or take action on one of these?"
-            )
+            # v12.3: richer reply mentions WHY top picks stand out —
+            # pulls real opportunity_reasons / weak_presence_flags from
+            # v9.0 enrichment data.
+            standout = ""
+            for p in picks[:3]:
+                flags = p.get("weak_presence_flags") or []
+                if "Facebook only" in flags:
+                    standout = ("They rely heavily on Facebook and "
+                                "don't have strong websites.")
+                    break
+                if "No website found" in flags:
+                    standout = ("They have no website on file — "
+                                "ideal for the free mockup pitch.")
+                    break
+                if "Old or weak website" in flags:
+                    standout = "Their sites are dated or thin — fast wins."
+                    break
+                if "Gmail/Yahoo/Outlook email" in flags:
+                    standout = ("They're using free consumer email — "
+                                "no business domain yet.")
+                    break
+            if standout:
+                body = (
+                    f"I have {count} businesses worth looking at on the "
+                    f"board. Top picks stand out because {standout} "
+                    f"Strongest right now is {top_name}. Want me to show "
+                    f"you those first?"
+                )
+            else:
+                body = (
+                    f"I have {count} ranked candidate"
+                    f"{'s' if count != 1 else ''} on my desk. Strongest "
+                    f"is {top_name}. Want me to keep finding more, or "
+                    f"take action on one of these?"
+                )
             actions.append({"label": "Open Logan", "kind": "scroll", "target": "logan-details"})
         else:
             body = (
@@ -890,12 +936,51 @@ def partner_reply(
             )
             actions.append({"label": "Start SEO Audit For Me", "kind": "do_it_for_me", "partner": "sage"})
         elif "audit" in t_low:
-            body = (
-                "I'll spin up a basic SEO audit — titles, headings, "
-                "service clarity, local signals, and what needs your "
-                "approval before it ships. Nothing touches the live site "
-                "or Google Business Profile."
-            )
+            # v12.3: if there's an existing audit, surface the top open
+            # checklist item by section so Sage's reply lands with
+            # specific intel ("biggest opportunity I see right now is
+            # local search visibility...") instead of a generic line.
+            specific = ""
+            try:
+                import seo_partner as _sp
+                projects = _sp.load_projects()
+                if projects:
+                    audits = _sp.list_audits(projects[0]["id"])
+                    if audits:
+                        latest = audits[-1]
+                        # Count failing/pending items per section
+                        sec_pending: dict[str, int] = {}
+                        for sec_key, items in (latest.get("checklist") or {}).items():
+                            if isinstance(items, list):
+                                sec_pending[sec_key] = sum(
+                                    1 for it in items
+                                    if (it.get("status") or "") in ("pending", "failing")
+                                )
+                        if sec_pending:
+                            top_sec = max(sec_pending, key=lambda k: sec_pending[k])
+                            label = top_sec.replace("_", " ").title()
+                            specific = (
+                                f"The biggest opportunity I see right now "
+                                f"is {label.lower()}. I count "
+                                f"{sec_pending[top_sec]} item"
+                                f"{'s' if sec_pending[top_sec] != 1 else ''} "
+                                f"that could move the needle."
+                            )
+            except Exception:
+                pass
+            if specific:
+                body = (
+                    f"I just finished checking "
+                    f"{projects[0].get('project_name', 'the project')}. "
+                    f"{specific} Want me to walk through them with you?"
+                )
+            else:
+                body = (
+                    "I'll spin up a basic SEO audit — titles, headings, "
+                    "service clarity, local signals, and what needs your "
+                    "approval before it ships. Nothing touches the live "
+                    "site or Google Business Profile."
+                )
             actions.append({"label": "Start SEO Audit For Me", "kind": "do_it_for_me", "partner": "sage"})
         elif "report" in t_low or "monthly" in t_low:
             body = (
@@ -982,6 +1067,14 @@ def route_command(text: str) -> dict:
     text = (text or "").strip()
     if not text:
         raise ValueError("command text is required")
+
+    # v12.3: auto-delegation. Outcome phrases like "get me more clients"
+    # kick off a real multi-partner workflow visibly in the console
+    # instead of routing to a single partner.
+    delegation = _detect_auto_delegation(text)
+    if delegation:
+        chain, intro = delegation
+        return run_auto_delegation(text, chain, intro)
 
     # 1. User message
     user_msg = append_message({
@@ -1560,6 +1653,429 @@ def start_work(partner_id: str) -> dict:
     return handlers[partner_id]()
 
 
+# ======================================================================
+# v12.3 — Morning briefing
+# ----------------------------------------------------------------------
+# Replaces the v12.1/v12.2 empty-state greeting. When you open the
+# Hub, Olivia tells you what each partner has prepared — not in
+# button-y "Logan: 0 tasks" form, but in conversational "Logan
+# has 3 ranked candidates ready" form. Composed from live data
+# across all partner modules.
+# ======================================================================
+
+def _partner_status_line(pid: str) -> tuple[str, dict | None]:
+    """
+    Return a (one-line status sentence in the partner's voice,
+    optional action card) describing what that partner has ready.
+    Empty sentence = nothing to surface for this partner today.
+    """
+    try:
+        if pid == "logan":
+            import lead_candidates as _lc
+            picks = _lc.compute_picks(k=5)
+            count = len(picks)
+            if count == 0:
+                return ("", None)
+            top = picks[0].get("business_name") or "your top lead"
+            ready = sum(1 for p in picks if p.get("ready_for_outreach"))
+            if ready:
+                s = (f"Logan has {count} ranked candidate"
+                     f"{'s' if count != 1 else ''} — {top} is ready to send.")
+            else:
+                s = (f"Logan has {count} ranked candidate"
+                     f"{'s' if count != 1 else ''} on the board — "
+                     f"strongest is {top}.")
+            return (s, {"label": "Open Logan", "kind": "scroll",
+                        "target": "logan-details"})
+        if pid == "sage":
+            import seo_partner as _sp
+            queue = _sp.list_approval_queue()
+            projects = _sp.load_projects()
+            if queue:
+                top = queue[0]
+                s = (f"Sage has {len(queue)} SEO fix"
+                     f"{'es' if len(queue) != 1 else ''} waiting for your "
+                     f"approval — top one is the "
+                     f"{(top.get('severity') or 'high')}-priority "
+                     f"\"{top.get('issue', 'website fix')}\".")
+                return (s, {"label": "Open Sage", "kind": "scroll",
+                            "target": "sage-details"})
+            # No queue — is the latest audit walked yet?
+            if projects:
+                audits = _sp.list_audits(projects[0]["id"])
+                if audits:
+                    latest = audits[-1]
+                    items = []
+                    for section in (latest.get("checklist") or {}).values():
+                        if isinstance(section, list):
+                            items.extend(section)
+                    pending = sum(1 for it in items
+                                  if (it.get("status") or "") == "pending")
+                    if pending:
+                        s = (f"Sage's audit on {projects[0].get('project_name', 'MMS')} "
+                             f"has {pending} checklist item"
+                             f"{'s' if pending != 1 else ''} still to walk.")
+                        return (s, {"label": "Open Sage", "kind": "scroll",
+                                    "target": "sage-details"})
+            return ("", None)
+        if pid == "youtube":
+            import youtube_partner as _yt
+            packages = _yt.load_packages()
+            drafts = [p for p in packages
+                      if (p.get("status") or "draft") == "draft"]
+            if drafts:
+                top = drafts[-1]
+                s = (f"YouTube has {len(drafts)} package"
+                     f"{'s' if len(drafts) != 1 else ''} drafted — "
+                     f"latest is \"{top.get('title', 'untitled')}\".")
+                return (s, {"label": "Open YouTube Growth", "kind": "scroll",
+                            "target": "youtube-details"})
+            return ("", None)
+        if pid == "video":
+            import video_partner as _vp
+            packages = _vp.load_packages()
+            drafts = [p for p in packages
+                      if (p.get("status") or "draft") == "draft"]
+            if drafts:
+                top = drafts[-1]
+                s = (f"Video has {len(drafts)} draft"
+                     f"{'s' if len(drafts) != 1 else ''} on the desk — "
+                     f"newest is \"{top.get('title', 'untitled')}\".")
+                return (s, {"label": "Open Video Partner", "kind": "scroll",
+                            "target": "video-details"})
+            return ("", None)
+        if pid == "parker":
+            docs = list_documents(partner="parker", type_="promo_copy")
+            if docs:
+                top = docs[-1]
+                s = (f"Parker has a promo draft on file — "
+                     f"\"{top.get('title', 'untitled')}\".")
+                return (s, {"label": "Open Parker", "kind": "scroll",
+                            "target": "parker-details"})
+            wis = list_work_items(partner="parker", status="new")
+            if wis:
+                s = (f"Parker has a promo task waiting — \"{wis[0].get('title', 'a draft')}\".")
+                return (s, {"label": "Make Promo For Me", "kind": "do_it_for_me",
+                            "partner": "parker"})
+            return ("", None)
+    except Exception:
+        pass
+    return ("", None)
+
+
+def morning_briefing() -> dict:
+    """
+    Compose the morning briefing card. Time-aware greeting + Olivia's
+    summary of what each partner has prepared. Reads live data; no
+    persistence.
+    """
+    hour = datetime.now().hour
+    if hour < 5:
+        opener = "Still up, Topher?"
+    elif hour < 12:
+        opener = "Good morning, Topher."
+    elif hour < 17:
+        opener = "Good afternoon, Topher."
+    elif hour < 22:
+        opener = "Good evening, Topher."
+    else:
+        opener = "Late night, Topher."
+
+    partner_lines: list[str] = []
+    actions: list[dict] = []
+    for pid in ("logan", "sage", "parker", "video", "youtube"):
+        line, action = _partner_status_line(pid)
+        if line:
+            partner_lines.append(line)
+            if action:
+                actions.append(action)
+
+    if partner_lines:
+        team_summary = " The team is ready.\n\n  " + "\n  ".join(
+            f"• {l}" for l in partner_lines
+        )
+        closer = "\n\nWhat would you like us to work on today?"
+    else:
+        team_summary = (
+            " The team is here and ready. No backlog yet — "
+            "tell us what you want done and I'll route it."
+        )
+        closer = ""
+
+    text = opener + team_summary + closer
+    return {
+        "text":             text,
+        "actions":          actions,
+        "suggestion_chips": [
+            "Get me more clients",
+            "Improve our SEO",
+            "Make a campaign",
+            "Tell me what to do next",
+        ],
+        "opener":  opener,
+        "lines":   partner_lines,
+    }
+
+
+# ======================================================================
+# v12.3 — Activity feed
+# ----------------------------------------------------------------------
+# Composes a chronological stream from existing storage:
+#   - Console messages (user + partner replies)
+#   - Work items created or status-changed
+#   - Shared documents created or shared
+#   - Sage audits + monthly reports
+#   - YouTube / Video packages generated
+# No new persistence — pure projection over current data.
+# ======================================================================
+
+def _activity_event(partner: str, kind: str, title: str,
+                    when: str, target: str | None = None) -> dict:
+    return {
+        "partner":  partner,
+        "icon":     PARTNERS.get(partner, {}).get("emoji", "•"),
+        "kind":     kind,
+        "title":    title,
+        "when":     when,
+        "target":   target,
+    }
+
+
+def activity_feed(limit: int = 20) -> list[dict]:
+    """
+    Build a chronological-newest-first activity stream from existing
+    storage. Pure read — no persistence.
+
+    Event kinds:
+        message       — a console reply
+        work_item     — work item created or status changed
+        document      — shared document created
+        audit         — Sage audit generated
+        package       — YouTube/Video package generated
+        report        — Sage monthly report generated
+    """
+    events: list[dict] = []
+
+    # Console messages
+    for m in load_messages():
+        if m.get("role") in (None, "user"):
+            continue
+        events.append(_activity_event(
+            m.get("partner") or "olivia",
+            "message",
+            # Truncate so the feed stays scannable.
+            (m.get("text") or "").split("\n", 1)[0][:160],
+            m.get("created_at") or "",
+            target=None,
+        ))
+
+    # Work items (created)
+    for w in load_work_items():
+        events.append(_activity_event(
+            w.get("source_partner") or "olivia",
+            "work_item",
+            f"assigned {w.get('assigned_partner', 'partner')}: "
+            f"{w.get('title', 'untitled')}",
+            w.get("created_at") or "",
+            target=None,
+        ))
+
+    # Shared documents
+    for d in load_documents():
+        events.append(_activity_event(
+            d.get("created_by") or "olivia",
+            "document",
+            f"created {d.get('type', 'note')}: "
+            f"\"{d.get('title', 'untitled')}\"",
+            d.get("created_at") or "",
+            target=None,
+        ))
+
+    # Sage audits + reports
+    try:
+        import seo_partner as _sp
+        projects = _sp.load_projects()
+        for p in projects:
+            pid = p.get("id")
+            if not pid:
+                continue
+            for a in _sp.list_audits(pid):
+                events.append(_activity_event(
+                    "sage", "audit",
+                    f"ran audit on {p.get('project_name', 'project')}",
+                    a.get("generated_at") or "",
+                    target="sage-details",
+                ))
+            for r in _sp.list_reports(pid):
+                events.append(_activity_event(
+                    "sage", "report",
+                    f"generated {r.get('month', '?')} report for "
+                    f"{p.get('project_name', 'project')}",
+                    r.get("generated_at") or "",
+                    target="sage-details",
+                ))
+    except Exception:
+        pass
+
+    # YouTube + Video packages
+    try:
+        import youtube_partner as _yt
+        for p in _yt.load_packages():
+            events.append(_activity_event(
+                "youtube", "package",
+                f"generated {p.get('content_type', 'package')}: "
+                f"\"{p.get('title', 'untitled')}\"",
+                p.get("created_at") or "",
+                target="youtube-details",
+            ))
+    except Exception:
+        pass
+    try:
+        import video_partner as _vp
+        for p in _vp.load_packages():
+            events.append(_activity_event(
+                "video", "package",
+                f"generated {p.get('content_type', 'package')}: "
+                f"\"{p.get('title', 'untitled')}\"",
+                p.get("created_at") or "",
+                target="video-details",
+            ))
+    except Exception:
+        pass
+
+    # Sort newest-first, cap.
+    events.sort(key=lambda e: e.get("when") or "", reverse=True)
+    return events[:max(1, min(limit, 100))]
+
+
+# ======================================================================
+# v12.3 — Auto-delegation (outcome phrases → multi-partner workflows)
+# ----------------------------------------------------------------------
+# When the user types an outcome phrase like "get me more clients",
+# Olivia delegates to multiple partners in sequence, each does real
+# work, and the conversation is visible in the console.
+# ======================================================================
+
+# Each entry: keywords → ordered partner chain. The chain runs real
+# start_work() for each partner in order; Olivia narrates the
+# delegation between steps.
+_AUTO_DELEGATIONS: tuple[tuple[tuple[str, ...], tuple[str, ...], str], ...] = (
+    # Keywords, partner chain, Olivia's intro line.
+    (
+        ("more clients", "get me clients", "grow the business",
+         "more customers", "more business", "more work"),
+        ("logan", "parker", "video"),
+        "OK Topher, big ask — I'll line up the team. Logan finds prospects, "
+        "Parker drafts outreach, Video Partner stages content. Hang tight.",
+    ),
+    (
+        ("improve seo", "improve our seo", "improve the seo",
+         "rank higher", "fix seo", "fix the seo"),
+        ("sage", "parker"),
+        "Got it. Sage will audit and Parker can spin a promo off the wins.",
+    ),
+    (
+        ("make a campaign", "build a campaign", "launch a campaign",
+         "marketing campaign"),
+        ("parker", "video", "youtube"),
+        "Yep — Parker takes the angle, Video stages a script, "
+        "YouTube hands me title ideas. All review-only.",
+    ),
+    (
+        ("content plan", "content for the month",
+         "make content"),
+        ("video", "youtube", "parker"),
+        "On it. Video drafts a script, YouTube hands ideas, "
+        "Parker turns the wins into promo copy.",
+    ),
+)
+
+
+def _detect_auto_delegation(text: str) -> tuple[tuple[str, ...], str] | None:
+    t = (text or "").lower()
+    for keywords, chain, intro in _AUTO_DELEGATIONS:
+        if any(kw in t for kw in keywords):
+            return chain, intro
+    return None
+
+
+def run_auto_delegation(text: str, chain: tuple[str, ...],
+                        intro: str) -> dict:
+    """
+    Run a multi-partner outcome workflow. Olivia narrates the start
+    and the wrap-up; each partner in the chain does real work via
+    start_work() and posts their reply.
+
+    Returns the same shape as route_command for the UI.
+    """
+    appended: list[dict] = []
+
+    # User message
+    user_msg = append_message({
+        "role": "user", "partner": "user", "text": text,
+    })
+    appended.append(user_msg)
+
+    # Olivia opens with the chain announcement.
+    chain_names = " → ".join(PARTNERS[p]["name"] for p in chain)
+    olivia_open = append_message({
+        "role": "olivia", "partner": "olivia",
+        "text": (
+            f"{intro}\n\n"
+            f"Order: {chain_names}."
+        ),
+        "actions": [],
+    })
+    appended.append(olivia_open)
+
+    # Run each partner in sequence.
+    for partner_id in chain:
+        try:
+            result = start_work(partner_id)
+            # start_work() already appended the partner's message to
+            # the console log; pull it back so the response carries it.
+            if result.get("messages"):
+                appended.extend(result["messages"])
+        except Exception as e:
+            # If a partner errors out, post an Olivia note and continue.
+            err_msg = append_message({
+                "role": "olivia", "partner": "olivia",
+                "text": f"({PARTNERS[partner_id]['name']} stalled: {e}. "
+                        "Skipping for now.)",
+                "actions": [],
+            })
+            appended.append(err_msg)
+
+    # Olivia wraps up.
+    olivia_close = append_message({
+        "role": "olivia", "partner": "olivia",
+        "text": (
+            "Topher, the team is ready for review. "
+            "Check the activity feed and the shared documents — "
+            "nothing went out, everything's draft."
+        ),
+        "actions": [
+            {"label": "Show me what to do next",
+             "kind":  "ask_partner",
+             "partner": "olivia",
+             "prompt": "What should I do next?"},
+        ],
+    })
+    appended.append(olivia_close)
+
+    return {
+        "chosen_partner":     "olivia",
+        "secondary_partners": list(chain),
+        "intent":             "auto_delegation",
+        "response_text":      olivia_open["text"],
+        "suggested_actions":  olivia_close["actions"],
+        "created_work_items": [],
+        "created_documents":  [],
+        "messages":           appended,
+        "auto_delegation":    True,
+    }
+
+
 def summary() -> dict:
     """
     One-shot UI payload: every partner's desk status + task count.
@@ -1611,6 +2127,7 @@ def summary() -> dict:
         desks.append({
             "id":          pid,
             "name":        meta["name"],
+            "short_name":  meta.get("short_name", meta["name"]),
             "emoji":       meta["emoji"],
             "role":        meta["role"],
             "description": meta["description"],
@@ -1619,6 +2136,8 @@ def summary() -> dict:
             "do_it_label": meta["do_it_label"],
             # v12.0 ambient activity line:
             "chatter":     _desk_chatter(pid, task_count, status),
+            # v12.3: desk decor — each desk gets 3 role-specific items
+            "desk_items":  list(meta.get("desk_items", ())),
         })
     return {
         "desks":           desks,
@@ -1629,4 +2148,6 @@ def summary() -> dict:
         # v12.0 office atmosphere:
         "greeting":         office_greeting(),
         "suggestion_chips": office_suggestion_chips(),
+        # v12.3 office atmosphere:
+        "briefing":         morning_briefing(),
     }

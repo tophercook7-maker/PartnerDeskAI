@@ -1563,6 +1563,231 @@
         @media (max-width: 720px) {
             .team-desks { grid-template-columns: 1fr 1fr; }
         }
+        /* ===== v12.3: Living Agency Office =============================
+           Visual transformation — the Agency Office becomes the primary
+           surface and looks like an actual room with 6 desks. Soft
+           warm palette, role-specific desk decor, activity feed running
+           alongside the console. Advanced workspaces (Today panel +
+           individual partner sections) collapse under one disclosure. */
+        .office-room {
+            margin: 0.5rem 1rem 1rem;
+            padding: 1rem 1.1rem 1.1rem;
+            background:
+                radial-gradient(ellipse at top, #fff8ed 0%, #fff5e0 60%, #fff 100%),
+                #fff5e0;
+            border: 1px solid #f0d9a6;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(180,140,40,0.06);
+        }
+        .office-head { margin-bottom: 0.7rem; }
+        .office-title {
+            margin: 0; font-size: 1.25rem; color: #6b4a18;
+            letter-spacing: -0.01em;
+        }
+        .office-tagline {
+            font-size: 0.85rem; color: #8a6320; margin-top: 0.1rem;
+            font-style: italic;
+        }
+
+        /* Briefing card — Olivia speaks. */
+        .office-briefing {
+            background: #fff; border: 1px solid #f0d9a6; border-radius: 10px;
+            padding: 0.7rem 0.85rem; margin-bottom: 0.7rem;
+            display: flex; gap: 0.6rem;
+        }
+        .office-briefing.is-loaded {
+            background: linear-gradient(180deg, #fff 0%, #fffbf0 100%);
+        }
+        .briefing-avatar { font-size: 2.2rem; line-height: 1; flex-shrink: 0; }
+        .briefing-body { flex: 1; min-width: 0; }
+        .briefing-name {
+            font-weight: 600; font-size: 0.78rem; color: #1c4f8f;
+            margin-bottom: 0.15rem;
+        }
+        .briefing-text {
+            font-size: 0.92rem; color: #1f2937; line-height: 1.5;
+            white-space: pre-wrap;
+        }
+        .briefing-chips {
+            display: flex; flex-wrap: wrap; gap: 0.3rem;
+            margin-top: 0.5rem;
+        }
+        .briefing-chip {
+            padding: 0.2rem 0.6rem;
+            background: #fff; border: 1px dashed #cbd5e1;
+            border-radius: 999px;
+            font-size: 0.78rem; color: #1f2937;
+            cursor: pointer; transition: all 120ms;
+        }
+        .briefing-chip:hover {
+            background: #f0f6ff; border-color: #1c4f8f; border-style: solid;
+        }
+
+        /* 6 desks as a room — 2 rows of 3 on wide screens. */
+        .office-desks {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+            gap: 0.55rem;
+            margin-bottom: 0.8rem;
+        }
+        .office-desk {
+            background: #fff;
+            border: 1px solid #f0d9a6;
+            border-radius: 10px;
+            padding: 0.55rem 0.65rem;
+            display: flex; flex-direction: column; gap: 0.25rem;
+            cursor: pointer; transition: transform 120ms, box-shadow 120ms;
+            position: relative;
+        }
+        .office-desk:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(180,140,40,0.10);
+        }
+        .office-desk.is-olivia {
+            background: linear-gradient(180deg, #f0f6ff 0%, #fff 100%);
+            border-color: #cfe1ff;
+        }
+        .office-desk.is-busy {
+            box-shadow: 0 0 0 2px #f3d28a inset, 0 1px 3px rgba(180,140,40,0.12);
+        }
+        .desk-head {
+            display: flex; gap: 0.4rem; align-items: center;
+        }
+        .desk-avatar { font-size: 1.8rem; line-height: 1; flex-shrink: 0; }
+        .desk-name-block { flex: 1; min-width: 0; }
+        .desk-name { font-weight: 700; font-size: 0.9rem; color: #1f2937; }
+        .desk-role { font-size: 0.72rem; color: #64748b; }
+        /* Role-specific decor items rendered as an emoji row */
+        .desk-items {
+            display: flex; gap: 0.3rem; font-size: 1.1rem;
+            margin-top: 0.1rem;
+            opacity: 0.85;
+        }
+        .desk-chatter {
+            font-size: 0.7rem; color: #94a3b8;
+            font-style: italic;
+            min-height: 1rem;
+        }
+        .desk-status-line {
+            display: flex; align-items: center; gap: 0.3rem;
+            margin-top: 0.15rem;
+        }
+        /* Status pulse — small dot that pulses on busy desks. */
+        .status-pulse {
+            display: inline-block;
+            width: 0.5rem; height: 0.5rem; border-radius: 50%;
+            background: #94a3b8;
+        }
+        .status-pulse.is-active    { background: #4aa05c; animation: desk-pulse 1.6s infinite; }
+        .status-pulse.is-thinking  { background: #1c4f8f; animation: desk-pulse 1.6s infinite; }
+        .status-pulse.is-waiting   { background: #b88820; animation: desk-pulse 1.6s infinite; }
+        @keyframes desk-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(74,160,92,0.5); }
+            50%      { box-shadow: 0 0 0 0.4rem rgba(74,160,92,0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .status-pulse { animation: none !important; box-shadow: none !important; }
+        }
+        .desk-status-text {
+            font-size: 0.72rem;
+            text-transform: uppercase; letter-spacing: 0.03em;
+            font-weight: 600; color: #475569;
+        }
+        .desk-tasks {
+            font-size: 0.7rem; color: #64748b;
+            background: #f8fafc; padding: 0.05rem 0.35rem;
+            border-radius: 4px; margin-left: auto;
+        }
+        .desk-actions {
+            display: flex; gap: 0.25rem; flex-wrap: wrap;
+            margin-top: 0.25rem;
+        }
+        .desk-doit {
+            font-size: 0.72rem; padding: 0.22rem 0.55rem;
+            background: #1f2937; color: #fff;
+            border: 1px solid #1f2937; border-radius: 5px;
+            cursor: pointer; font-weight: 600;
+        }
+        .desk-doit:hover { background: #111827; }
+        .desk-ask {
+            font-size: 0.72rem; padding: 0.22rem 0.55rem;
+            background: #fff; color: #1f2937;
+            border: 1px solid #cbd5e1; border-radius: 5px; cursor: pointer;
+        }
+        .desk-ask:hover { background: #f8fafc; }
+
+        /* Workspace: console on left, activity feed on right */
+        .office-workspace {
+            display: grid; gap: 0.7rem;
+            grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+            margin-bottom: 0.5rem;
+        }
+        @media (max-width: 880px) {
+            .office-workspace { grid-template-columns: 1fr; }
+        }
+        .office-console-col, .office-activity-col {
+            background: #fff; border: 1px solid #f0d9a6; border-radius: 10px;
+            padding: 0.55rem 0.65rem;
+            display: flex; flex-direction: column;
+        }
+        .office-console-head, .office-activity-head {
+            font-weight: 600; font-size: 0.8rem; color: #6b4a18;
+            margin-bottom: 0.4rem; padding-bottom: 0.3rem;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        /* Activity feed list */
+        .office-activity {
+            display: flex; flex-direction: column; gap: 0.35rem;
+            max-height: 22rem; overflow-y: auto;
+            padding-right: 0.2rem;
+        }
+        .activity-event {
+            display: flex; gap: 0.4rem; align-items: flex-start;
+            padding: 0.3rem 0.4rem;
+            background: #fafbfd; border-radius: 5px;
+            font-size: 0.78rem; color: #334155;
+            border-left: 2px solid #cbd5e1;
+        }
+        .activity-event[data-partner="olivia"]  { border-left-color: #1c4f8f; }
+        .activity-event[data-partner="logan"]   { border-left-color: #b34a4a; }
+        .activity-event[data-partner="sage"]    { border-left-color: #1c4f8f; }
+        .activity-event[data-partner="parker"]  { border-left-color: #b88820; }
+        .activity-event[data-partner="video"]   { border-left-color: #475569; }
+        .activity-event[data-partner="youtube"] { border-left-color: #b34a4a; }
+        .activity-icon { font-size: 1rem; line-height: 1.2; flex-shrink: 0; }
+        .activity-body { flex: 1; min-width: 0; }
+        .activity-line {
+            font-size: 0.78rem; color: #1f2937;
+            overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .activity-when {
+            font-size: 0.68rem; color: #94a3b8;
+        }
+
+        /* Advanced workspaces — single disclosure that wraps Today +
+           all partner sections so the office stays the primary surface. */
+        .advanced-workspaces {
+            margin: 1rem 1rem 0.6rem;
+            background: #fff; border: 1px solid #e2e8f0;
+            border-radius: 8px; overflow: hidden;
+        }
+        .advanced-workspaces > summary {
+            list-style: none; cursor: pointer;
+            padding: 0.6rem 0.9rem;
+            background: #f8fafc;
+            font-size: 0.95rem;
+            display: flex; align-items: center; gap: 0.4rem;
+        }
+        .advanced-workspaces > summary::-webkit-details-marker { display: none; }
+        .advanced-workspaces > summary::before {
+            content: '▶'; font-size: 0.7rem; color: #64748b;
+            transition: transform 0.15s;
+        }
+        .advanced-workspaces[open] > summary::before { transform: rotate(90deg); }
+        .adv-w-icon { font-size: 1.1rem; }
+        .adv-w-sub  { font-size: 0.78rem; }
+
         /* ===== v12.1: Onboarding overlay =============================== */
         .onboarding-overlay {
             position: fixed; inset: 0; z-index: 200;
@@ -3042,41 +3267,61 @@
          console + 6 cartoon partner desks. Olivia is the dispatcher.
          No external AI; rule-based routing. No auto-send, no publishing,
          no live changes — every action surfaces a card the user clicks. -->
-    <section id="team-office-section" class="team-office-section">
-        <div class="team-office-head">
-            <h2>Agency Office</h2>
-            <div class="muted team-office-tagline">
-                Talk to your team. Olivia can route work to the right partner.
-            </div>
+    <!-- v12.3: AGENCY OFFICE — living office experience. Six desks
+         laid out as a room, each with role-specific decor. Morning
+         briefing card replaces the v12.1 greeting. Activity feed runs
+         alongside the console so collaboration is visible. The Today
+         panel + every partner dashboard now live under "Advanced
+         workspaces" below — the office is the primary surface. -->
+    <section id="team-office-section" class="team-office-section office-room">
+        <div class="office-head">
+            <h2 class="office-title">🏢 MixedMakerShop Agency Office</h2>
+            <div class="office-tagline">Your team is here. Tell us what to work on.</div>
         </div>
 
-        <!-- 6 cartoon partner desks -->
-        <div id="team-desks" class="team-desks">
-            <div class="muted">Loading the office…</div>
+        <!-- Morning briefing — Olivia speaks. -->
+        <div id="office-briefing" class="office-briefing">
+            <div class="muted">Olivia is reviewing the desks…</div>
         </div>
 
-        <!-- Central command console -->
-        <div class="team-console">
-            <div id="team-messages" class="team-messages">
-                <div class="muted team-msg-empty">
-                    Tell the team what you need…
+        <!-- 6 desks arranged as a 2×3 grid (Olivia first as office manager) -->
+        <div id="team-desks" class="office-desks">
+            <div class="muted">Setting up the desks…</div>
+        </div>
+
+        <!-- Main work area: console (talk to team) on the left,
+             activity feed (watch the team) on the right. -->
+        <div class="office-workspace">
+            <div class="office-console-col">
+                <div class="office-console-head">💬 Team Console</div>
+                <div id="team-messages" class="team-messages">
+                    <div class="muted team-msg-empty">
+                        Tell the team what you need…
+                    </div>
                 </div>
+                <form id="team-command-form" class="team-command-form" aria-label="Talk to the team">
+                    <input id="team-command-input" class="leads-input team-command-input"
+                           placeholder="Tell the team what you need… (e.g. ‘Get me more clients’ or ‘Improve our SEO’)"
+                           autocomplete="off">
+                    <div class="team-command-actions">
+                        <button type="submit" class="primary one-click-btn">📨 Send</button>
+                        <button type="button" id="team-reset-btn" class="row-action"
+                                title="Clears only the console messages — everything else preserved">
+                            🔄 Start Fresh Conversation
+                        </button>
+                    </div>
+                </form>
             </div>
-            <form id="team-command-form" class="team-command-form" aria-label="Talk to the team">
-                <input id="team-command-input" class="leads-input team-command-input"
-                       placeholder="Tell the team what you need… (e.g. ‘Find me 25 lawn care leads near Hot Springs’)"
-                       autocomplete="off">
-                <div class="team-command-actions">
-                    <button type="submit" class="primary one-click-btn">📨 Send</button>
-                    <button type="button" id="team-reset-btn" class="row-action"
-                            title="Clears only the console messages — leads, projects, documents, work items all preserved">
-                        🔄 Start Fresh Conversation
-                    </button>
+
+            <aside class="office-activity-col">
+                <div class="office-activity-head">📡 Office Activity</div>
+                <div id="office-activity" class="office-activity">
+                    <div class="muted">Loading recent activity…</div>
                 </div>
-            </form>
+            </aside>
         </div>
 
-        <!-- Work queue + shared documents — compact, expandable. -->
+        <!-- Work queue + shared documents — collapsed by default. -->
         <details class="team-side-details" id="team-work-details">
             <summary><strong>🗂️ Work Queue</strong>
                 <span id="team-work-count" class="muted"></span>
@@ -3095,18 +3340,17 @@
         </details>
     </section>
 
-    <!-- v8.0: TODAY — replaces the old Mission Control + Partner
-         Rooms panels. Four cards summarize the work that matters
-         now; clicking a card expands the relevant partner/System
-         section and scrolls to it.
+    <!-- v12.3: Every existing dashboard moves under a single
+         "Advanced workspaces" disclosure so the Agency Office is
+         the primary surface. Everything in here still works
+         exactly as before; it's just collapsed by default. -->
+    <details class="advanced-workspaces" id="advanced-workspaces">
+        <summary>
+            <span class="adv-w-icon">🛠️</span>
+            <strong>Advanced workspaces</strong>
+            <span class="muted adv-w-sub">— individual partner desks + Today panel</span>
+        </summary>
 
-         v11.0: Today panel moves under the Agency Office. Existing
-         renderers + click handlers preserved unchanged.
-
-         Legacy #mission-control + #partner-rooms divs are kept
-         hidden so existing renderers don't choke on a missing
-         element. renderMissionControl now writes the Today cards
-         instead of the old mission-stats grid. -->
     <section id="today-section">
         <h2>Today</h2>
         <div id="today-panel" class="today-panel">
@@ -4005,8 +4249,13 @@
         </section>
     </details>
 
+    </details><!-- /advanced-workspaces -->
+
     <!-- v8.0: SYSTEM — collapsible group with 5 sub-collapsibles.
-         Everything operational / infrastructural lives here. -->
+         Everything operational / infrastructural lives here.
+         v12.3: kept OUTSIDE the Advanced workspaces disclosure so
+         diagnostics + the Reset Onboarding button stay accessible
+         without expanding the advanced group. -->
     <details class="system-wrapper" id="system-details">
         <summary class="system-summary">
             <span class="system-summary-name">System</span>

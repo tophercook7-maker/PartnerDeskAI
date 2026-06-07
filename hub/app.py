@@ -1831,6 +1831,25 @@ def api_team_reset() -> dict:
     return team_mod.clear_console()
 
 
+@app.get("/api/team-office/briefing")
+def api_team_briefing() -> dict:
+    """v12.3: morning briefing — time-aware Olivia greeting plus a
+    per-partner status summary built from live data across the
+    office. Pure read."""
+    return team_mod.morning_briefing()
+
+
+@app.get("/api/team-office/activity")
+def api_team_activity(limit: int = 20) -> dict:
+    """v12.3: chronological-newest-first activity feed composed from
+    existing storage (messages + work items + documents + Sage audits
+    + reports + content packages). No new persistence."""
+    if limit < 1: limit = 1
+    if limit > 100: limit = 100
+    items = team_mod.activity_feed(limit=limit)
+    return {"items": items, "count": len(items)}
+
+
 @app.post("/api/team-office/start-work/{partner_id}")
 def api_team_start_work(partner_id: str) -> dict:
     """v12.2: actually do the partner's first piece of work and surface

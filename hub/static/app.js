@@ -8077,32 +8077,50 @@ function renderTeamDesks() {
     const el = document.getElementById('team-desks');
     if (!el) return;
     if (_teamDesks.length === 0) {
-        el.innerHTML = '<div class="muted">Office is loading…</div>';
+        el.innerHTML = '<div class="muted">Setting up the desks…</div>';
         return;
     }
+    // v12.3: living office layout — desks render with role-specific
+    // decor items + animated status pulse on busy desks. Olivia
+    // styled distinctly as the office manager.
     el.innerHTML = _teamDesks.map(d => {
-        const cls = ['team-desk', d.id === 'olivia' ? 'is-olivia' : ''].filter(Boolean).join(' ');
-        // v12.0 ambient chatter line — a little detail under the role.
-        const chatter = d.chatter
-            ? `<div class="team-desk-chatter">· ${_escape(d.chatter)}</div>`
+        const busy = (d.status === 'active' || d.status === 'thinking' || d.status === 'waiting');
+        const cls = [
+            'office-desk',
+            d.id === 'olivia' ? 'is-olivia' : '',
+            busy ? 'is-busy' : '',
+        ].filter(Boolean).join(' ');
+        // v12.3 desk decor — role-specific items rendered as a row
+        const decor = (d.desk_items || []).length
+            ? `<div class="desk-items">` + (d.desk_items || [])
+                .map(it => `<span>${_escape(it)}</span>`).join('') + `</div>`
             : '';
+        const chatter = d.chatter
+            ? `<div class="desk-chatter">· ${_escape(d.chatter)}</div>`
+            : '';
+        const tasksTag = d.task_count > 0
+            ? `<span class="desk-tasks">${d.task_count} task${d.task_count === 1 ? '' : 's'}</span>`
+            : '';
+        const shortName = d.short_name || d.name.split(' ')[0];
         return (
             `<div class="${cls}" data-team-desk="${_escape(d.id)}" title="${_escape(d.description || '')}">` +
-              `<div class="team-desk-row">` +
-                `<span class="team-desk-emoji">${d.emoji}</span>` +
-                `<div class="team-desk-body">` +
-                  `<div class="team-desk-name">${_escape(d.name)}</div>` +
-                  `<div class="team-desk-role">${_escape(d.role)}</div>` +
-                  chatter +
+              `<div class="desk-head">` +
+                `<span class="desk-avatar">${d.emoji}</span>` +
+                `<div class="desk-name-block">` +
+                  `<div class="desk-name">${_escape(d.name)}</div>` +
+                  `<div class="desk-role">${_escape(d.role)}</div>` +
                 `</div>` +
               `</div>` +
-              `<div class="team-desk-meta">` +
-                `<span class="team-desk-status team-desk-status-${_escape(d.status)}">${_escape(d.status)}</span>` +
-                (d.task_count > 0 ? `<span class="team-desk-tasks">${d.task_count} task${d.task_count === 1 ? '' : 's'}</span>` : '') +
+              decor +
+              chatter +
+              `<div class="desk-status-line">` +
+                `<span class="status-pulse is-${_escape(d.status)}"></span>` +
+                `<span class="desk-status-text">${_escape(d.status)}</span>` +
+                tasksTag +
               `</div>` +
-              `<div class="team-desk-actions">` +
-                `<button type="button" class="team-desk-doit" data-team-desk-doit="${_escape(d.id)}">${_escape(d.do_it_label)}</button>` +
-                `<button type="button" class="team-desk-ask" data-team-desk-ask="${_escape(d.id)}">Ask ${_escape(d.name.split(' ')[0])}</button>` +
+              `<div class="desk-actions">` +
+                `<button type="button" class="desk-doit" data-team-desk-doit="${_escape(d.id)}">${_escape(d.do_it_label)}</button>` +
+                `<button type="button" class="desk-ask" data-team-desk-ask="${_escape(d.id)}">Ask ${_escape(shortName)}</button>` +
               `</div>` +
             `</div>`
         );
@@ -8149,28 +8167,98 @@ function _renderTypingIndicator(partnerId) {
 }
 
 function _renderEmptyOffice() {
-    // v12.0 empty-state office greeting + suggestion chips. Reads as
-    // Olivia saying hi.
+    // v12.3: empty console just shows a soft prompt — the morning
+    // briefing now lives in its own dedicated card above the desks,
+    // so the console doesn't need to repeat Olivia.
+    return `<div class="muted team-msg-empty">Tell the team what you need…</div>`;
+}
+
+// v12.3: morning briefing card — Olivia greets you with the team
+// status pulled from live data across the office.
+function _renderBriefing(briefing) {
+    const el = document.getElementById('office-briefing');
+    if (!el) return;
+    if (!briefing || !briefing.text) {
+        el.innerHTML = '<div class="muted">Olivia is reviewing the desks…</div>';
+        return;
+    }
     const olivia = _teamDesks.find(d => d.id === 'olivia') || { emoji: '🗂️', name: 'Olivia' };
-    const greeting = _teamGreeting || "I'm watching the team. Tell me what you want done.";
-    const chips = (_teamSuggestionChips && _teamSuggestionChips.length
-        ? _teamSuggestionChips
-        : ['What should I do next?', 'Find me leads']);
+    const chips = (briefing.suggestion_chips || []);
     const chipsHtml = chips.map(s =>
-        `<button type="button" class="team-suggest-chip" data-team-suggest="${_escape(s)}">${_escape(s)}</button>`
+        `<button type="button" class="briefing-chip" data-team-suggest="${_escape(s)}">${_escape(s)}</button>`
     ).join('');
-    return (
-        `<div class="team-greeting">` +
-          `<div class="team-msg team-msg-partner team-msg-olivia">` +
-            `<span class="team-msg-emoji">${olivia.emoji}</span>` +
-            `<div class="team-msg-body">` +
-              `<div class="team-msg-name">${_escape(olivia.name)}</div>` +
-              `<div class="team-msg-text">${_escape(greeting)}</div>` +
-            `</div>` +
+    el.classList.add('is-loaded');
+    el.innerHTML =
+        `<div class="briefing-avatar">${olivia.emoji}</div>` +
+        `<div class="briefing-body">` +
+          `<div class="briefing-name">Olivia</div>` +
+          `<div class="briefing-text">${_escape(briefing.text)}</div>` +
+          (chipsHtml ? `<div class="briefing-chips">${chipsHtml}</div>` : '') +
+        `</div>`;
+}
+
+async function loadBriefing() {
+    try {
+        const r = await fetch('/api/team-office/briefing');
+        if (!r.ok) return;
+        const b = await r.json();
+        _renderBriefing(b);
+    } catch (err) {
+        _renderBriefing(null);
+    }
+}
+
+// v12.3: Activity feed — chronological-newest-first stream of
+// recent partner actions composed from existing storage. Polled
+// every 12s while the tab is visible (pause when hidden to save
+// resources + avoid background work).
+let _activityFeed = [];
+let _activityPollHandle = null;
+
+function _fmtActivityWhen(s) {
+    if (!s) return '';
+    // "YYYY-MM-DD HH:MM:SS" → "HH:MM" if today, otherwise "MM-DD HH:MM"
+    const today = new Date().toISOString().slice(0, 10);
+    if (s.startsWith(today)) return s.slice(11, 16);
+    return s.slice(5, 16).replace(' ', ' ');
+}
+
+function _renderActivityFeed() {
+    const el = document.getElementById('office-activity');
+    if (!el) return;
+    if (!_activityFeed.length) {
+        el.innerHTML = '<div class="muted">No recent activity. Tell the team to get started.</div>';
+        return;
+    }
+    el.innerHTML = _activityFeed.map(e => (
+        `<div class="activity-event" data-partner="${_escape(e.partner)}">` +
+          `<span class="activity-icon">${e.icon || '•'}</span>` +
+          `<div class="activity-body">` +
+            `<div class="activity-line">${_escape(e.title || '')}</div>` +
+            `<div class="activity-when">${_escape(e.partner)} · ${_escape(_fmtActivityWhen(e.when))}</div>` +
           `</div>` +
-          `<div class="team-suggest-chips">${chipsHtml}</div>` +
         `</div>`
-    );
+    )).join('');
+}
+
+async function loadActivityFeed() {
+    try {
+        const r = await fetch('/api/team-office/activity?limit=20');
+        if (!r.ok) return;
+        const d = await r.json();
+        _activityFeed = d.items || [];
+        _renderActivityFeed();
+    } catch (err) {
+        // silent — keep prior state
+    }
+}
+
+function _startActivityPolling() {
+    if (_activityPollHandle) return;
+    _activityPollHandle = setInterval(() => {
+        if (document.hidden) return;  // pause when tab not visible
+        loadActivityFeed();
+    }, 12000);
 }
 
 function renderTeamMessages() {
@@ -8262,6 +8350,8 @@ async function refreshTeamOffice() {
         loadTeamMessages(),
         loadTeamWorkItems(),
         loadTeamDocs(),
+        loadBriefing(),       // v12.3
+        loadActivityFeed(),   // v12.3
     ]);
 }
 
@@ -8300,10 +8390,19 @@ async function _sendTeamCommand(text) {
         // re-pull the canonical message list to avoid duplication.
         _teamTyping = false;
         await loadTeamMessages();
-        if (status) status.textContent =
-            `Routed to ${d.chosen_partner}${(d.secondary_partners || []).length ? ' + ' + d.secondary_partners.join(', ') : ''}.`;
-        // Refresh desks (task counts + chatter may have changed).
-        await Promise.all([loadTeamSummary(), loadTeamWorkItems(), loadTeamDocs()]);
+        const summaryLine = d.auto_delegation
+            ? `Olivia delegated to ${(d.secondary_partners || []).join(', ')}.`
+            : `Routed to ${d.chosen_partner}${(d.secondary_partners || []).length ? ' + ' + d.secondary_partners.join(', ') : ''}.`;
+        if (status) status.textContent = summaryLine;
+        // v12.3: refresh desks + briefing + activity feed so the
+        // whole office reflects what just happened.
+        await Promise.all([
+            loadTeamSummary(),
+            loadTeamWorkItems(),
+            loadTeamDocs(),
+            loadBriefing(),
+            loadActivityFeed(),
+        ]);
     } catch (err) {
         _teamTyping = false;
         renderTeamMessages();
@@ -8438,8 +8537,15 @@ async function _runTeamDoItForMe(partnerId) {
         // Reload from server so we render the canonical message log
         // (start_work appended the partner's reply).
         await loadTeamMessages();
-        // Refresh desks + work queue + documents — counts likely changed.
-        await Promise.all([loadTeamSummary(), loadTeamWorkItems(), loadTeamDocs()]);
+        // Refresh desks + work queue + documents + briefing + activity
+        // feed — counts likely changed.
+        await Promise.all([
+            loadTeamSummary(),
+            loadTeamWorkItems(),
+            loadTeamDocs(),
+            loadBriefing(),
+            loadActivityFeed(),
+        ]);
         // Sage's "Open Sage" / Logan's discovery results also need
         // the existing partner sections refreshed so their UIs reflect
         // the new state.
@@ -8802,3 +8908,5 @@ refreshSage();
 refreshTeamOffice();
 // v12.1: gate-check onboarding (shows overlay if first run).
 _initOnboarding();
+// v12.3: poll the activity feed periodically so the office feels alive.
+_startActivityPolling();
