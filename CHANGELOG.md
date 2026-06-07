@@ -1,6 +1,123 @@
 # PartnerDeskAI Changelog
 
-Newest first. v12.0 is the current shipped version.
+Newest first. v12.1 is the current shipped version.
+
+---
+
+## v12.1 — Easiest Automated Onboarding
+
+First-time setup turns an empty Hub into a ready-to-use office in
+~7 conversational steps with Olivia hosting. New users no longer see
+dashboards first; they see Olivia at the front desk asking what they
+want to build, with every input pre-filled with sensible defaults.
+
+### Backend (`automation/onboarding.py`, +~400 LOC)
+
+- `DEFAULT_ANSWERS` — spec-verbatim defaults for every wizard step:
+  agency_name=MixedMakerShop, first_website=https://mixedmakershop.com,
+  8 services, 5 target customer types, Free homepage mockup, Starter
+  website fix from $150, Hot Springs AR.
+- `load_state() / save_state()` — `data/onboarding_state.json`,
+  atomic writes.
+- `load_agency_profile() / save_agency_profile()` —
+  `data/agency_profile.json`, atomic writes.
+- `apply(answers)` orchestrator that:
+  - Saves agency profile + Sage agency name
+  - Ensures Sage MMS project exists (uses the v10.0 auto-bootstrap),
+    then patches its website_url + business_type (joined services)
+    + location + main_goal (target customers)
+  - Seeds Video Partner profile (business_name, business_type,
+    target_customer, main_service, tone, platforms, video_length,
+    call_to_action=free offer)
+  - Seeds YouTube Growth channel (channel_niche, target_audience,
+    tone, main_offer_cta=free offer)
+  - Creates 3 starter work items (all `status="new"`,
+    `needs_approval=True`):
+    - Run first SEO audit on <agency> — assigned to Sage
+    - Find first local leads in <area> — assigned to Logan
+    - Draft promo for <free offer> — assigned to Parker
+  - Creates a welcome document in shared library with the setup
+    summary, shared with sage / logan / parker
+  - Marks state complete + persists answers for prefill
+- `reset()` — clears completion flag only. Saved leads, SEO projects,
+  reports, documents, work items, partner profiles, and last answers
+  all preserved.
+
+### Endpoints (3 new)
+
+- `GET /api/onboarding/state` → `{complete, completed_at, answers,
+  defaults, profile}`
+- `POST /api/onboarding/complete` body = answers → applies setup,
+  returns full result (profile + per-partner seeding + recommendations
+  + actions + olivia_summary)
+- `POST /api/onboarding/reset` → clears completion flag
+
+### UI
+
+- Fullscreen overlay (`#onboarding-overlay`) — gates the Hub on first
+  load. JS calls `GET /api/onboarding/state` on page open; if
+  `complete=false`, renders the wizard.
+- **7 steps** with progress dots, Olivia speech bubble at the top of
+  each card, Back / Skip for now / Next buttons. Step 1, 2, 5, 6, 7
+  are text inputs; steps 3 (services) and 4 (target customers) are
+  checkbox groups with the spec defaults pre-checked.
+- **Success screen** — animated success checkmark, "Your office is
+  ready." heading, 6 desk emojis lighting up in sequence (CSS
+  keyframe animation, respects `prefers-reduced-motion`), Olivia's
+  recommendation paragraph (spec-verbatim), 4 action buttons:
+  **Start SEO Audit**, **Find Leads**, **Make Promo**, **Go to Office**.
+  Action buttons wire to the existing v11.0 `_runTeamDoItForMe()`
+  handlers.
+- **Reset button** in System → Onboarding subsection. Confirms with
+  a message clarifying that data is preserved.
+- Softer cozy palette (linen + amber) matches the v12.0 Living
+  Office aesthetic.
+
+### Live verification (7 tests, all pass)
+
+```
+1. Fresh state → complete=false, defaults match spec
+2. POST /complete with empty body uses all defaults; seeds Sage,
+   Video, YouTube, 3 work items, welcome doc; olivia_summary is
+   spec-verbatim
+3. Second GET → complete=true, completed_at stamped, answers persisted
+4. Seeded artifacts verified:
+   - Sage agency name = MixedMakerShop
+   - MMS project website_url + business_type updated from answers
+   - Video Partner business_name + call_to_action set to free offer
+   - YouTube niche set
+   - 3 work items created with status='new' + needs_approval=True
+   - Welcome doc created in shared library
+5. POST /reset → complete=false; SEO project, work items, leads
+   all preserved; answers preserved for re-fill
+6. Custom answers (agency_name, free_offer, default_search_area)
+   override defaults; unspecified fields inherit defaults
+7. Spec compliance: zero "3 free fixes" language in any onboarding
+   output; free-mockup CTA present
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+clean (real patterns only — no false positives). Christian Kovac safe.
+
+### Safety perimeter unchanged
+
+- ❌ No publishing. No auto-send. No connections. No live website
+  changes. No OAuth. No paid APIs.
+- ❌ No new Python dependencies.
+- ✅ Every starter work item carries `needs_approval=True` and
+  `status="new"` — the user must explicitly act on them.
+- ✅ Reset preserves ALL saved data — only the completion flag
+  flips. Re-runnable safely.
+- ✅ Spec wording preserved — zero "3 free fixes" language anywhere.
+  Free-mockup CTA is the default but user-editable.
+
+### Known limitations (deferred to v12.2 candidates)
+
+- Re-running onboarding with a different `agency_name` updates the
+  Sage project's content but doesn't rename the existing
+  `MMS - MixedMakerShop - SEO` project. Users can rename projects
+  manually via Sage. Auto-rename on agency change would risk
+  breaking references to the project_id.
 
 ---
 

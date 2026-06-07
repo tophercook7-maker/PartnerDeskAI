@@ -8514,10 +8514,319 @@ async function _runTeamAction(action) {
     }
 }
 
+// ======================================================================
+// v12.1: Automated onboarding wizard. Shows on first page load when the
+// server reports complete=false. 7 conversational steps with Olivia,
+// then a success screen + 3 recommended starter actions.
+// ======================================================================
+
+const _OB_STEPS = [
+    {
+        key: 'agency_name',
+        title: "What's your agency or business name?",
+        olivia: "Hey Topher, I'll set up your agency office. Answer a few questions and I'll get the team ready.",
+        kind: 'input',
+        placeholder: 'e.g. MixedMakerShop',
+    },
+    {
+        key: 'first_website',
+        title: 'What website should we work on first?',
+        olivia: "Got it. What's the first website you want me to point Sage at?",
+        kind: 'input',
+        placeholder: 'e.g. https://mixedmakershop.com',
+    },
+    {
+        key: 'services',
+        title: 'What services do you want to sell?',
+        olivia: "Tick all the services you offer. The team will tune their drafts around these.",
+        kind: 'checks',
+        options: null,
+    },
+    {
+        key: 'target_customers',
+        title: 'Who are your best customers?',
+        olivia: "Who are you trying to reach? Pick the ones that fit; you can add more later.",
+        kind: 'checks',
+        options: null,
+    },
+    {
+        key: 'free_offer',
+        title: 'What free offer should the team use?',
+        olivia: "Parker drafts every promo around your free offer. We don't say \"3 free fixes\" — pick something you can deliver.",
+        kind: 'input',
+        placeholder: 'e.g. Free homepage mockup',
+    },
+    {
+        key: 'paid_offer',
+        title: 'What paid starter offer should the team use?',
+        olivia: "And the paid follow-up offer when a lead says yes?",
+        kind: 'input',
+        placeholder: 'e.g. Starter website fix from $150',
+    },
+    {
+        key: 'default_search_area',
+        title: 'What area should Logan search first?',
+        olivia: "Last one — where should Logan start hunting for prospects?",
+        kind: 'input',
+        placeholder: 'e.g. Hot Springs, AR',
+    },
+];
+
+let _obState = null;
+let _obAnswers = {};
+let _obStepIdx = 0;
+
+function _obDot(i, active) {
+    const classes = ['ob-dot'];
+    if (i < active) classes.push('is-done');
+    if (i === active) classes.push('is-active');
+    return `<div class="${classes.join(' ')}"></div>`;
+}
+
+function _obProgressHtml() {
+    const total = _OB_STEPS.length + 1;
+    return '<div class="ob-progress">' +
+        Array.from({ length: total }, (_, i) => _obDot(i, _obStepIdx)).join('') +
+        '</div>';
+}
+
+function _obSpeechHtml(text) {
+    return (
+        `<div class="ob-speech">` +
+          `<span class="ob-avatar">🗂️</span>` +
+          `<div class="ob-speech-body">` +
+            `<div class="ob-speech-name">Olivia</div>` +
+            `<div>${_escape(text)}</div>` +
+          `</div>` +
+        `</div>`
+    );
+}
+
+function _obStepHtml(step) {
+    const value = _obAnswers[step.key] || '';
+    if (step.kind === 'input') {
+        return (
+            `<div class="ob-step-body">` +
+              `<h2 class="ob-step-h">${_escape(step.title)}</h2>` +
+              `<input type="text" class="ob-step-input" data-ob-input="${step.key}" ` +
+                `placeholder="${_escape(step.placeholder || '')}" ` +
+                `value="${_escape(value)}">` +
+            `</div>`
+        );
+    }
+    if (step.kind === 'checks') {
+        const options = step.options || [];
+        const selected = new Set(Array.isArray(_obAnswers[step.key]) ? _obAnswers[step.key] : []);
+        const html = options.map(opt => {
+            const checked = selected.has(opt);
+            return (
+                `<label class="ob-check${checked ? ' is-checked' : ''}">` +
+                  `<input type="checkbox" data-ob-check="${step.key}" value="${_escape(opt)}"${checked ? ' checked' : ''}>` +
+                  _escape(opt) +
+                `</label>`
+            );
+        }).join('');
+        return (
+            `<div class="ob-step-body">` +
+              `<h2 class="ob-step-h">${_escape(step.title)}</h2>` +
+              `<div class="ob-checks">${html}</div>` +
+            `</div>`
+        );
+    }
+    return '';
+}
+
+function _obSuccessHtml(result) {
+    const recos = (result.recommendations || []).map(line =>
+        `<li>${_escape(line)}</li>`
+    ).join('');
+    const actionsHtml = (result.actions || []).map(a => {
+        const isPrimary = a.kind === 'do_it_for_me';
+        return `<button type="button" class="ob-btn${isPrimary ? ' is-primary' : ''}" ` +
+               `data-ob-action='${_escape(JSON.stringify(a))}'>${_escape(a.label)}</button>`;
+    }).join('');
+    return (
+        `<div class="ob-success-checkmark">✓</div>` +
+        `<h2 class="ob-success-h">Your office is ready.</h2>` +
+        `<div class="ob-desks-anim">` +
+          `<span class="ob-desk-anim">🗂️</span>` +
+          `<span class="ob-desk-anim">📍</span>` +
+          `<span class="ob-desk-anim">🔎</span>` +
+          `<span class="ob-desk-anim">📣</span>` +
+          `<span class="ob-desk-anim">🎬</span>` +
+          `<span class="ob-desk-anim">▶️</span>` +
+        `</div>` +
+        _obSpeechHtml(result.olivia_summary || "Your office is ready, Topher.") +
+        (recos ? `<ol class="ob-recos" style="margin: 0.4rem 0 0.6rem 1rem; padding: 0 0 0 0.6rem; font-size: 0.88rem;">${recos}</ol>` : '') +
+        `<div class="ob-actions-grid">${actionsHtml}</div>`
+    );
+}
+
+function _renderOnboarding(result) {
+    const el = document.getElementById('onboarding-overlay');
+    if (!el) return;
+    const isSuccess = !!result;
+    const stepCount = _OB_STEPS.length;
+    let cardBody;
+    if (isSuccess) {
+        cardBody = _obProgressHtml() + _obSuccessHtml(result);
+    } else {
+        const step = _OB_STEPS[_obStepIdx];
+        cardBody =
+            _obProgressHtml() +
+            _obSpeechHtml(step.olivia) +
+            _obStepHtml(step) +
+            `<div class="ob-nav">` +
+              `<div class="ob-nav-left">` +
+                (_obStepIdx > 0
+                    ? `<button type="button" class="ob-btn" data-ob-nav="back">← Back</button>`
+                    : '') +
+              `</div>` +
+              `<div class="ob-nav-right">` +
+                `<button type="button" class="ob-btn" data-ob-nav="skip">Skip for now</button>` +
+                (_obStepIdx < stepCount - 1
+                    ? `<button type="button" class="ob-btn is-primary" data-ob-nav="next">Next →</button>`
+                    : `<button type="button" class="ob-btn is-primary" data-ob-nav="finish">Finish setup</button>`) +
+              `</div>` +
+            `</div>`;
+    }
+    el.innerHTML = `<div class="onboarding-card">${cardBody}</div>`;
+    el.hidden = false;
+    setTimeout(() => {
+        const first = el.querySelector('input[type=text], input[type=checkbox]');
+        if (first && !isSuccess) first.focus();
+    }, 50);
+}
+
+function _readCurrentStep() {
+    const step = _OB_STEPS[_obStepIdx];
+    if (step.kind === 'input') {
+        const inp = document.querySelector(`input[data-ob-input="${step.key}"]`);
+        if (inp) _obAnswers[step.key] = inp.value.trim();
+    } else if (step.kind === 'checks') {
+        const boxes = document.querySelectorAll(`input[data-ob-check="${step.key}"]`);
+        _obAnswers[step.key] = [...boxes].filter(b => b.checked).map(b => b.value);
+    }
+}
+
+async function _obFinish() {
+    _readCurrentStep();
+    try {
+        const r = await fetch('/api/onboarding/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(_obAnswers),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+        _obStepIdx = _OB_STEPS.length;
+        _renderOnboarding(d);
+        // Refresh Hub data so closing the overlay reveals the seeded
+        // state on every partner section.
+        if (typeof refreshAll === 'function') refreshAll();
+        if (typeof refreshSage === 'function') refreshSage();
+        if (typeof refreshTeamOffice === 'function') refreshTeamOffice();
+    } catch (err) {
+        alert('Onboarding failed: ' + (err.message || err));
+    }
+}
+
+function _obHideAndScroll(targetId) {
+    const el = document.getElementById('onboarding-overlay');
+    if (el) { el.hidden = true; el.innerHTML = ''; }
+    if (targetId) {
+        const t = document.getElementById(targetId);
+        if (t) {
+            if (t.tagName === 'DETAILS') t.open = true;
+            t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+}
+
+// Onboarding click delegator.
+document.addEventListener('click', async (e) => {
+    const navBtn = e.target.closest('button[data-ob-nav]');
+    const actBtn = e.target.closest('button[data-ob-action]');
+    if (navBtn) {
+        const nav = navBtn.dataset.obNav;
+        if (nav === 'back' && _obStepIdx > 0) {
+            _readCurrentStep();
+            _obStepIdx -= 1;
+            _renderOnboarding(null);
+        } else if (nav === 'next' && _obStepIdx < _OB_STEPS.length - 1) {
+            _readCurrentStep();
+            _obStepIdx += 1;
+            _renderOnboarding(null);
+        } else if (nav === 'skip' || nav === 'finish') {
+            await _obFinish();
+        }
+        return;
+    }
+    if (actBtn) {
+        let action;
+        try { action = JSON.parse(actBtn.dataset.obAction); } catch { return; }
+        if (action.kind === 'scroll') {
+            _obHideAndScroll(action.target);
+        } else if (action.kind === 'do_it_for_me') {
+            _obHideAndScroll('team-office-section');
+            setTimeout(() => {
+                if (typeof _runTeamDoItForMe === 'function') {
+                    _runTeamDoItForMe(action.partner);
+                }
+            }, 150);
+        }
+    }
+});
+
+// Checkbox visual toggle.
+document.addEventListener('change', (e) => {
+    const cb = e.target.closest('input[data-ob-check]');
+    if (!cb) return;
+    const label = cb.closest('.ob-check');
+    if (label) label.classList.toggle('is-checked', cb.checked);
+});
+
+async function _initOnboarding() {
+    try {
+        const r = await fetch('/api/onboarding/state');
+        if (!r.ok) return;
+        _obState = await r.json();
+        if (_obState.complete) return;
+        const pre = _obState.answers || _obState.defaults || {};
+        _obAnswers = { ...pre };
+        _OB_STEPS[2].options = (_obState.defaults && _obState.defaults.services) || [];
+        _OB_STEPS[3].options = (_obState.defaults && _obState.defaults.target_customers) || [];
+        _obStepIdx = 0;
+        _renderOnboarding(null);
+    } catch (err) { /* silent */ }
+}
+
+// v12.1: Reset Onboarding action exposed globally so a button anywhere
+// in the Hub (or the browser console) can trigger it.
+async function _obResetOnboarding() {
+    if (!confirm(
+        "Show the setup wizard again next time you load the Hub?\n\n" +
+        "This ONLY resets the wizard flag. Your leads, projects, " +
+        "reports, documents, and work items will all be preserved."
+    )) return;
+    try {
+        const r = await fetch('/api/onboarding/reset', { method: 'POST' });
+        if (!r.ok) throw new Error('http ' + r.status);
+        alert('Onboarding reset. Reload the page to see the wizard again.');
+    } catch (err) {
+        alert('Reset failed: ' + (err.message || err));
+    }
+}
+window._obResetOnboarding = _obResetOnboarding;
+
 // Initial load on page open.
 refreshAll();
 // Kick off a first Sage refresh so the partner-summary metrics are
 // populated even when the user hasn't expanded the section.
 refreshSage();
-// v11.0: refresh Team Office surfaces on first paint.
+// v12.0: refresh Team Office surfaces on first paint.
 refreshTeamOffice();
+// v12.1: gate-check onboarding (shows overlay if first run).
+_initOnboarding();

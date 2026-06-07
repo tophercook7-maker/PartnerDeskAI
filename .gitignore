@@ -58,6 +58,11 @@ data/team_documents.json
 data/.team_documents.*.tmp
 data/team_console.json
 data/.team_console.*.tmp
+# v12.1: Automated onboarding — first-run state + agency profile
+data/onboarding_state.json
+data/.onboarding_state.*.tmp
+data/agency_profile.json
+data/.agency_profile.*.tmp
 # v9.4: user-imported CSV business lists — never check these in
 data/imports/*.csv
 data/imports/*.CSV

@@ -54,6 +54,7 @@ import youtube_partner as yt_mod  # noqa: E402
 import video_partner as vp_mod  # noqa: E402
 import seo_partner as sage_mod  # noqa: E402  (v10.0: Sage SEO Partner)
 import team_office as team_mod  # noqa: E402  (v11.0: Team Office command system)
+import onboarding as onboarding_mod  # noqa: E402  (v12.1: automated onboarding)
 import lead_candidates as cand_mod  # noqa: E402
 import overpass_discovery as overpass_mod  # noqa: E402  (v8.9: OSM Overpass client)
 import discovery as discovery_mod  # noqa: E402  (v9.3: pluggable provider registry)
@@ -1338,6 +1339,18 @@ class ShareDocumentIn(BaseModel):
     partner_id: str
 
 
+class OnboardingCompleteIn(BaseModel):
+    """v12.1: 7-step onboarding answers. All optional so the user can
+    skip any field and inherit the default."""
+    agency_name:         str | None = None
+    first_website:       str | None = None
+    services:            list[str] | None = None
+    target_customers:    list[str] | None = None
+    free_offer:          str | None = None
+    paid_offer:          str | None = None
+    default_search_area: str | None = None
+
+
 class ScoutLeadIn(BaseModel):
     """v7.28: scout-queue input. All optional so PUT can omit fields.
     Server's scout_mod._clean enforces business_name required +
@@ -1722,6 +1735,45 @@ def api_video_packages_delete(pkg_id: str) -> dict:
     if not vp_mod.delete_package(pkg_id):
         raise HTTPException(status_code=404, detail=f"Package {pkg_id!r} not found")
     return {"ok": True, "id": pkg_id}
+
+
+# ---- v12.1: Automated onboarding -------------------------------------
+# Tracks completion state and orchestrates partner-profile seeding when
+# the wizard finishes. No publishing, no auto-send, no connections, no
+# live changes. Everything created is review-only.
+
+@app.get("/api/onboarding/state")
+def api_onboarding_state() -> dict:
+    """v12.1: returns {complete, completed_at, answers, defaults}.
+    The UI uses `complete` to decide whether to show the wizard and
+    `answers || defaults` to pre-fill it."""
+    state = onboarding_mod.load_state()
+    return {
+        "complete":     bool(state.get("complete")),
+        "completed_at": state.get("completed_at"),
+        "answers":      state.get("answers"),
+        "defaults":     onboarding_mod.default_answers(),
+        "profile":      onboarding_mod.load_agency_profile(),
+    }
+
+
+@app.post("/api/onboarding/complete")
+def api_onboarding_complete(body: OnboardingCompleteIn) -> dict:
+    """v12.1: applies the user's wizard answers. Seeds agency profile,
+    Sage SEO project, Video Partner profile, YouTube channel, three
+    starter work items, and a welcome document. Marks state complete."""
+    try:
+        return onboarding_mod.apply(body.model_dump(exclude_none=True))
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/onboarding/reset")
+def api_onboarding_reset() -> dict:
+    """v12.1: clears ONLY the completion flag. Saved leads, projects,
+    reports, documents, work items, partner profiles all preserved.
+    Re-running the wizard pre-fills with the user's last saved answers."""
+    return onboarding_mod.reset()
 
 
 # ---- v11.0: Team Office command system -------------------------------

@@ -1563,6 +1563,142 @@
         @media (max-width: 720px) {
             .team-desks { grid-template-columns: 1fr 1fr; }
         }
+        /* ===== v12.1: Onboarding overlay =============================== */
+        .onboarding-overlay {
+            position: fixed; inset: 0; z-index: 200;
+            background: linear-gradient(180deg, #fff8ed 0%, #fff5e0 100%);
+            overflow-y: auto;
+            display: flex; align-items: flex-start; justify-content: center;
+            padding: 2rem 1rem;
+        }
+        .onboarding-overlay[hidden] { display: none; }
+        .onboarding-card {
+            max-width: 38rem; width: 100%;
+            background: #fff; border: 1px solid #f0d9a6;
+            border-radius: 12px; padding: 1.3rem 1.4rem 1.2rem;
+            box-shadow: 0 4px 18px rgba(180, 140, 40, 0.12);
+            animation: ob-fade-in 220ms ease-out;
+        }
+        @keyframes ob-fade-in {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .onboarding-card { animation: none; }
+        }
+        .ob-progress {
+            display: flex; gap: 0.3rem; justify-content: center;
+            margin-bottom: 0.8rem;
+        }
+        .ob-dot {
+            width: 0.5rem; height: 0.5rem; border-radius: 50%;
+            background: #e2e8f0; transition: all 180ms;
+        }
+        .ob-dot.is-done   { background: #8a6320; }
+        .ob-dot.is-active { background: #b88820; transform: scale(1.4); }
+        .ob-speech {
+            display: flex; gap: 0.6rem; margin-bottom: 0.8rem;
+            background: #f0f6ff; border: 1px solid #cfe1ff;
+            border-radius: 10px; padding: 0.6rem 0.7rem;
+        }
+        .ob-avatar { font-size: 2rem; line-height: 1; flex-shrink: 0; }
+        .ob-speech-body {
+            font-size: 0.92rem; color: #1f2937; line-height: 1.4;
+        }
+        .ob-speech-name {
+            font-weight: 600; font-size: 0.78rem; color: #1c4f8f;
+            margin-bottom: 0.15rem;
+        }
+        .ob-step-h {
+            margin: 0 0 0.4rem; font-size: 1.05rem; color: #1f2937;
+        }
+        .ob-step-body { margin-bottom: 0.8rem; }
+        .ob-step-input {
+            width: 100%; box-sizing: border-box; padding: 0.5rem 0.7rem;
+            font-size: 0.95rem; border: 1px solid #cbd5e1;
+            border-radius: 6px; font-family: inherit;
+        }
+        .ob-step-input:focus { outline: 2px solid #b88820; outline-offset: -1px; }
+        .ob-checks {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+            gap: 0.3rem 0.5rem;
+        }
+        .ob-check {
+            display: flex; gap: 0.35rem; align-items: center;
+            padding: 0.3rem 0.5rem; background: #fafbfd;
+            border: 1px solid #e2e8f0; border-radius: 6px;
+            font-size: 0.85rem; cursor: pointer;
+        }
+        .ob-check input { margin: 0; }
+        .ob-check.is-checked { background: #f0f6ff; border-color: #1c4f8f; }
+        .ob-nav {
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 0.4rem; padding-top: 0.7rem;
+            border-top: 1px solid #f1f5f9;
+        }
+        .ob-nav-left, .ob-nav-right {
+            display: flex; gap: 0.3rem;
+        }
+        .ob-btn {
+            padding: 0.4rem 0.9rem; font-size: 0.88rem;
+            border: 1px solid #cbd5e1; background: #fff;
+            border-radius: 6px; cursor: pointer; font-family: inherit;
+        }
+        .ob-btn:hover { background: #f8fafc; }
+        .ob-btn.is-primary {
+            background: #1f2937; color: #fff; border-color: #1f2937;
+            font-weight: 600;
+        }
+        .ob-btn.is-primary:hover { background: #111827; }
+        .ob-btn:disabled {
+            opacity: 0.5; cursor: not-allowed;
+        }
+        /* Success screen */
+        .ob-success-checkmark {
+            width: 4rem; height: 4rem; margin: 0.4rem auto 0.8rem;
+            border-radius: 50%; background: #d8efd8;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 2.3rem; color: #2d6a3a;
+            animation: ob-checkmark-pop 380ms ease-out;
+        }
+        @keyframes ob-checkmark-pop {
+            0%   { transform: scale(0); opacity: 0; }
+            70%  { transform: scale(1.15); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .ob-success-checkmark { animation: none; }
+        }
+        .ob-success-h {
+            text-align: center; margin: 0 0 0.4rem;
+            font-size: 1.2rem; color: #1f2937;
+        }
+        /* Desk setup animation — 6 desks lighting up in sequence */
+        .ob-desks-anim {
+            display: flex; justify-content: center; gap: 0.45rem;
+            margin: 0.8rem 0;
+        }
+        .ob-desk-anim {
+            font-size: 1.5rem; opacity: 0;
+            animation: ob-desk-light 450ms ease-out forwards;
+        }
+        .ob-desk-anim:nth-child(1) { animation-delay: 80ms; }
+        .ob-desk-anim:nth-child(2) { animation-delay: 200ms; }
+        .ob-desk-anim:nth-child(3) { animation-delay: 320ms; }
+        .ob-desk-anim:nth-child(4) { animation-delay: 440ms; }
+        .ob-desk-anim:nth-child(5) { animation-delay: 560ms; }
+        .ob-desk-anim:nth-child(6) { animation-delay: 680ms; }
+        @keyframes ob-desk-light {
+            0%   { opacity: 0; transform: translateY(8px) scale(0.7); }
+            100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .ob-desk-anim { animation: none; opacity: 1; }
+        }
+        .ob-actions-grid {
+            display: grid; grid-template-columns: repeat(2, 1fr);
+            gap: 0.4rem; margin-top: 0.7rem;
+        }
         /* ===== v12.0: Living Office polish ============================= */
         /* Softer ambient palette so the office feels cozy, not corporate */
         .team-office-section {
@@ -2862,6 +2998,12 @@
     </style>
 </head>
 <body>
+    <!-- v12.1: Onboarding overlay. Hidden by default; JS shows it on
+         first page load when GET /api/onboarding/state returns
+         complete=false. Olivia hosts a 7-step wizard, then a success
+         screen with 3 recommended starter actions. -->
+    <div id="onboarding-overlay" class="onboarding-overlay" hidden></div>
+
     <h1>PartnerDesk Hub</h1>
     <div class="subtitle">Local AI Business Partner Station
         <span class="shortcuts-hint">— press <kbd>?</kbd> for keyboard shortcuts</span>
@@ -3973,6 +4115,19 @@
                     </div>
                 </div>
             </section>
+        </details>
+        <details class="system-sub" id="system-onboarding-details">
+            <summary>Onboarding</summary>
+            <div class="partner-details-actions">
+                <button type="button" class="cp-btn" onclick="_obResetOnboarding()">
+                    🔄 Reset Onboarding (show wizard again)
+                </button>
+            </div>
+            <div class="muted" style="font-size: 0.78rem; margin-top: 0.3rem;">
+                Re-runs the first-time setup wizard. Your leads, SEO
+                projects, reports, documents, and work items will all be
+                preserved.
+            </div>
         </details>
         <details class="system-sub" id="system-diagnostics-details">
             <summary>Diagnostics &amp; Logs</summary>
