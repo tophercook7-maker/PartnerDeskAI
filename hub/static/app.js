@@ -9136,6 +9136,233 @@ _initOnboarding();
 _startActivityPolling();
 
 // ======================================================================
+// v12.8: Chat-first office. The default surface is a conversation
+// with the team. Olivia greets, partners ask before they do real
+// work, results land inline as message bubbles. No buttons.
+// ======================================================================
+
+const _CHAT_PARTNER_EMOJI = {
+    olivia: '🗂️', logan: '📍', sage: '🔎',
+    parker: '📣', video: '🎬', youtube: '▶️', system: '🤖',
+};
+const _CHAT_PARTNER_NAMES = {
+    olivia: 'Olivia', logan: 'Logan', sage: 'Sage',
+    parker: 'Parker', video: 'Video Partner', youtube: 'YouTube Growth',
+};
+
+let _chatMessages = [];
+let _chatTyping = null;  // partner id whose typing indicator is showing
+let _chatLastResult = null;  // most recent result_card so we can attach to the latest partner msg
+
+function _chatRender() {
+    const el = document.getElementById('chat-messages');
+    if (!el) return;
+    if (!_chatMessages.length && !_chatTyping) {
+        // Default empty state — Olivia greets.
+        el.innerHTML =
+            _chatMsgHtml({
+                role: 'olivia', partner: 'olivia',
+                text: 'Hi Topher. What do you want to work on today?',
+            }, false);
+        return;
+    }
+    let html = '';
+    _chatMessages.forEach((m, i) => {
+        const isLast = i === _chatMessages.length - 1;
+        const attachResult = isLast && _chatLastResult &&
+                             m.role !== 'user' && !_chatTyping;
+        html += _chatMsgHtml(m, !!m.pending, attachResult ? _chatLastResult : null);
+    });
+    if (_chatTyping) {
+        html += _chatTypingHtml(_chatTyping);
+    }
+    el.innerHTML = html;
+    el.scrollTop = el.scrollHeight;
+}
+
+function _chatMsgHtml(msg, isPending, resultCard) {
+    const role = msg.role || 'system';
+    const partner = msg.partner || role;
+    const isUser = role === 'user';
+    const emoji = isUser ? '🧑' : (_CHAT_PARTNER_EMOJI[partner] || '🤖');
+    const name = isUser ? 'You' : (_CHAT_PARTNER_NAMES[partner] || partner);
+    const bubbleCls = 'chat-msg-bubble' + (isPending ? ' is-pending' : '');
+    let resultHtml = '';
+    if (resultCard) {
+        resultHtml = _chatResultCardHtml(resultCard);
+    }
+    const cls = 'chat-msg ' + (isUser ? 'chat-msg-user' : 'chat-msg-partner chat-msg-' + role);
+    return (
+        '<div class="' + cls + '">' +
+          '<div class="chat-msg-avatar">' + emoji + '</div>' +
+          '<div class="chat-msg-body">' +
+            (isUser ? '' : '<div class="chat-msg-name">' + _escape(name) + '</div>') +
+            '<div class="' + bubbleCls + '">' + _escape(msg.text || '') + '</div>' +
+            resultHtml +
+          '</div>' +
+        '</div>'
+    );
+}
+
+function _chatResultCardHtml(rc) {
+    const bullets = Array.isArray(rc.bullets) ? rc.bullets : [];
+    const next = rc.next_action;
+    const bulletsHtml = bullets.length
+        ? '<ol class="chat-result-bullets">' +
+            bullets.map(b => '<li>' + _escape(b) + '</li>').join('') +
+          '</ol>'
+        : '';
+    const nextHtml = next && next.label
+        ? '<button type="button" class="chat-result-next-btn" data-chat-next=\'' +
+          _escape(JSON.stringify(next)) + '\'>' +
+          _escape(next.label) + ' →</button>'
+        : '';
+    return (
+        '<div class="chat-result-card">' +
+          '<span class="chat-result-done">✓ Done</span>' +
+          '<div class="chat-result-headline">' + _escape(rc.headline || '') + '</div>' +
+          bulletsHtml +
+          nextHtml +
+        '</div>'
+    );
+}
+
+function _chatTypingHtml(partnerId) {
+    const emoji = _CHAT_PARTNER_EMOJI[partnerId] || '🤖';
+    const name  = _CHAT_PARTNER_NAMES[partnerId] || partnerId;
+    return (
+        '<div class="chat-msg chat-msg-partner chat-msg-' + partnerId + '">' +
+          '<div class="chat-msg-avatar">' + emoji + '</div>' +
+          '<div class="chat-msg-body">' +
+            '<div class="chat-msg-name">' + _escape(name) + '</div>' +
+            '<div class="chat-msg-bubble">' +
+              '<span class="chat-typing-dots"><span></span><span></span><span></span></span>' +
+            '</div>' +
+          '</div>' +
+        '</div>'
+    );
+}
+
+async function _chatLoadHistory() {
+    try {
+        const r = await fetch('/api/team-office/messages');
+        if (!r.ok) return;
+        const d = await r.json();
+        _chatMessages = d.items || [];
+        _chatRender();
+    } catch (err) { /* silent */ }
+}
+
+async function _chatSend(text) {
+    text = (text || '').trim();
+    if (!text) return;
+    const input = document.getElementById('chat-input');
+    if (input) { input.value = ''; input.disabled = true; }
+    const sendBtn = document.querySelector('.chat-send-btn');
+    if (sendBtn) sendBtn.disabled = true;
+
+    // Optimistically show the user message + typing indicator
+    _chatMessages.push({ role: 'user', partner: 'user', text: text });
+    _chatTyping = 'olivia';
+    _chatLastResult = null;
+    _chatRender();
+
+    try {
+        const r = await fetch('/api/team-office/command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || ('http ' + r.status));
+        _chatTyping = null;
+        // The server appended every message to its log; reload canonical.
+        await _chatLoadHistory();
+        // If a result_card came back (a real piece of work landed),
+        // attach it to the most recent partner message.
+        _chatLastResult = d.result_card || null;
+        _chatRender();
+    } catch (err) {
+        _chatTyping = null;
+        _chatMessages.push({
+            role: 'system', partner: 'system',
+            text: 'Something went wrong: ' + (err.message || err),
+        });
+        _chatRender();
+    } finally {
+        if (input) { input.disabled = false; input.focus(); }
+        if (sendBtn) sendBtn.disabled = false;
+    }
+}
+
+// Wire up the chat form.
+const _chatForm = document.getElementById('chat-form');
+if (_chatForm) {
+    _chatForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('chat-input');
+        _chatSend(input ? input.value : '');
+    });
+}
+
+// Reset button — clears console + local state.
+const _chatResetBtn = document.getElementById('chat-reset-btn');
+if (_chatResetBtn) {
+    _chatResetBtn.addEventListener('click', async () => {
+        if (!confirm('Clear the conversation? Leads, projects, files, and tasks will all be preserved.')) return;
+        try {
+            await fetch('/api/team-office/reset', { method: 'POST' });
+            _chatMessages = [];
+            _chatLastResult = null;
+            _chatRender();
+            const input = document.getElementById('chat-input');
+            if (input) input.focus();
+        } catch (err) {
+            alert('Reset failed: ' + (err.message || err));
+        }
+    });
+}
+
+// Next-step button delegator (the inline button on result cards).
+document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-chat-next]');
+    if (!btn) return;
+    e.preventDefault();
+    let action;
+    try { action = JSON.parse(btn.dataset.chatNext); } catch { return; }
+    // For do_it_for_me, send a follow-up message in the chat asking
+    // that partner to do their thing. The backend will route through
+    // the ask-first flow.
+    if (action.kind === 'do_it_for_me' && action.partner) {
+        const prompts = {
+            logan:   'Find me clients',
+            sage:    'Check my website',
+            parker:  'Make a promo',
+            video:   'Make a video',
+            youtube: 'Find video ideas',
+            olivia:  'Tell me what to do next',
+        };
+        const prompt = prompts[action.partner] || action.label;
+        _chatSend(prompt);
+        return;
+    }
+    if (action.kind === 'scroll' && action.target) {
+        const adv = document.getElementById('advanced-workspaces');
+        if (adv) adv.open = true;
+        if (typeof _runTeamAction === 'function') {
+            await _runTeamAction(action);
+        }
+        return;
+    }
+    if (action.kind === 'ask_partner' && action.partner && action.prompt) {
+        _chatSend(action.prompt);
+    }
+});
+
+// Initial chat render — load any existing console messages.
+_chatLoadHistory();
+
+// ======================================================================
 // v12.6: Simple landing — one task at a time. Five big buttons.
 // Click one → task-takeover panel replaces the buttons until Back is hit.
 // No new endpoints; uses existing POST /api/team-office/start-work/{partner}.

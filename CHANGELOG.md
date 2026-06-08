@@ -1,6 +1,146 @@
 # PartnerDeskAI Changelog
 
-Newest first. v12.7 is the current shipped version.
+Newest first. v12.8 is the current shipped version.
+
+---
+
+## v12.8 — Chat-first office (partners ask before they act)
+
+v12.6 stripped to 5 buttons. v12.7 made the thread continuing.
+v12.8 takes the user-requested cut: **Option A — chat-first**.
+No buttons. Just a conversation with Olivia and the team. Partners
+ask for what they need before they do real work.
+
+### The flow
+
+**Empty state:**
+
+> 🗂️ **Olivia**
+> Hi Topher. What do you want to work on today?
+
+**You type, partners ASK first:**
+
+> 👤 *find me some clients*
+>
+> 🗂️ **Olivia** — On it. Logan, take this one.
+>
+> 📍 **Logan** — Sure thing. What kind of business should I look for,
+>                 and what city or area?
+>
+> 👤 *plumbers in austin tx*
+>
+> 📍 **Logan** — *(typing dots — real OSM discovery runs ~5s)*
+>
+> 📍 **Logan** — ✓ Done. **I found 2 possible clients in austin tx.**
+>                 • 501 Plumbing — no website yet
+>                 • Acme Plumbing — Facebook only
+>                 [Draft outreach for them →]
+
+The result lands as an inline message bubble with a green border and
+a single Next-step button. Click it → that partner gets the same
+ask-first treatment with the prior work as context.
+
+### Five clarifying questions, one per partner
+
+| Partner | What they ask |
+|---|---|
+| Logan | "What kind of business should I look for, and what city or area?" |
+| Sage | "Should I do a full website check on {your-site}, or focus on something specific you've noticed?" |
+| Parker | "Who's this promo for, and what's the main offer — the free homepage mockup, or something else?" |
+| Video | "What's the topic, and is this for Reels, TikTok, or YouTube Shorts?" |
+| YouTube | "What angle do you want me to explore for the video ideas?" |
+| Olivia | (doesn't ask — she's the dispatcher and always responds) |
+
+### How it works under the hood
+
+**Pending state** is tracked on console messages with a `pending: true`
+flag — no new data files. `_clean_message()` preserves the flag so it
+survives the JSON round-trip.
+
+**Routing logic** in `route_command()`:
+1. Most recent partner message has `pending: true` AND user isn't
+   clearly switching partners → route the user's message as the
+   ANSWER to that partner. Run `start_work(partner, context=text)`.
+2. Otherwise, detect partner. If it's not Olivia and has a question
+   registered → Olivia hands off, partner asks, partner marks itself
+   pending.
+3. If it's Olivia → she responds normally (no asking).
+
+**Context parsing** — the user's free-text answer gets parsed into
+structured args for the partner:
+- Logan: `_parse_logan_request("plumbers in austin tx")` → `("plumbers", "austin tx")`. Handles "in/near/around/at", `City, State`, single-word fallback.
+- Video: `_parse_video_request("free mockup for tiktok")` → `("free mockup", "TikTok")`. Detects Reels/TikTok/Shorts/YouTube.
+- Others use defaults from the agency profile.
+
+**User changes mind mid-question** — if the user's reply contains
+keywords for a DIFFERENT partner ("actually check my website
+instead"), the pending flag is cleared and routing switches.
+
+### UI: chat-only mode
+
+- `body.chat-mode` (default) hides simple-landing, team-office-section,
+  today-section, and the page h1/subtitle.
+- New `#chat-office` container: header with "🗂️ Office" + Reset link,
+  message scroll area, input + Send button, footer hint pointing to
+  Advanced workspaces.
+- Messages render as color-coded bubbles (Olivia blue, Logan red,
+  Parker amber, etc). User messages are dark-grey right-aligned.
+- Pending bubbles get a subtle amber glow ring.
+- Result cards render inline (green border, ✓ Done badge, headline,
+  1.2.3. bullets, big next-step button) — not full-screen.
+- Subtle fade-in animation per message; typing dots while a partner
+  is "working". All animations honor `prefers-reduced-motion`.
+
+### What's hidden (still in DOM)
+
+- All v12.6 simple-landing buttons
+- All v12.7 today thread card
+- All v12.0-v12.5 office room (mission board, briefing, desks,
+  activity feed, console box)
+- All partner dashboards
+- Today panel
+
+Toggle back by removing `chat-mode` from `<body>` in DevTools.
+Advanced workspaces disclosure stays accessible below for power use.
+
+### Live verification (8 tests, all pass)
+
+```
+1. HTML serves with body.chat-mode + #chat-office + #chat-input
+2. "find me some clients" → intent=clarify, 3 messages (user +
+   Olivia handoff + Logan question marked pending)
+3. "plumbers in austin tx" → intent=follow_up, Logan ran with
+   parsed context, headline says "I found 2 possible clients in
+   austin tx"
+4. Switch mid-question: "actually check my website instead" →
+   pending cleared, Sage gets the question instead
+5. Sage's question fills in the website from agency profile
+6. Video parses "free mockup for tiktok" → script titled
+   'short video script for "free mockup (TikTok)"'
+7. Olivia doesn't ask — she responds with next-actions
+8. /summary, /briefing, /activity preserved (back-compat)
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+clean. Christian Kovac safe.
+
+### Safety perimeter unchanged
+
+- ❌ No new data files. No new endpoints.
+- ❌ No publishing. No auto-send. No live changes.
+- ❌ No new Python deps.
+- ✅ Pending state lives in the existing console log via one new
+  field (`pending: bool`) added to `_clean_message`. Survives JSON
+  round-trip, gets cleared on Reset.
+- ✅ All previous UI surfaces preserved in DOM behind `body.chat-mode`.
+- ✅ Existing endpoints all backward-compatible.
+
+### What's still on the table
+
+If the chat-first feel isn't right either, the next sensible cut is
+to question the whole metaphor — partners as routes inside one tool
+instead of as characters. But this version is at the limit of how
+much I can usefully change without your direct redirect.
 
 ---
 

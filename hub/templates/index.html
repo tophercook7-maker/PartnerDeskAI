@@ -2350,6 +2350,205 @@
             color: #b34a4a; font-size: 0.95rem;
         }
 
+        /* ===== v12.8: Chat-first office =================================
+           Single chat container. Olivia greets, partners ask, then
+           they do the work. Everything else (v12.0-v12.7 surfaces)
+           preserved in DOM but hidden via body.chat-mode. */
+        body.chat-mode #simple-landing,
+        body.chat-mode #team-office-section,
+        body.chat-mode #today-section,
+        body.chat-mode #task-takeover,
+        body.chat-mode > h1,
+        body.chat-mode > .subtitle {
+            display: none !important;
+        }
+        /* Re-show simple-landing's task-takeover panel if used by JS
+           inside a chat result card — but DON'T let the simple-landing
+           buttons themselves leak through. */
+        .chat-office {
+            max-width: 38rem;
+            margin: 1.5rem auto 1rem;
+            padding: 0 1.2rem;
+            display: flex; flex-direction: column;
+            gap: 0.5rem;
+        }
+        .chat-office-head {
+            display: flex; align-items: center; gap: 0.5rem;
+            padding-bottom: 0.4rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .chat-office-title {
+            font-size: 1rem; font-weight: 700; color: #1f2937;
+        }
+        .chat-reset-btn {
+            margin-left: auto;
+            font-size: 0.78rem; color: #94a3b8;
+            background: transparent; border: none;
+            cursor: pointer; font-family: inherit;
+            padding: 0.2rem 0.4rem;
+        }
+        .chat-reset-btn:hover { color: #1f2937; text-decoration: underline; }
+        .chat-messages {
+            display: flex; flex-direction: column; gap: 0.6rem;
+            padding: 0.8rem 0.2rem;
+            min-height: 55vh;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        .chat-loading { padding: 0.6rem 0.4rem; font-style: italic; }
+
+        .chat-msg {
+            display: flex; gap: 0.55rem;
+            max-width: 90%;
+            animation: chat-msg-in 240ms ease-out;
+        }
+        @keyframes chat-msg-in {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .chat-msg { animation: none; }
+        }
+        .chat-msg-user {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+        .chat-msg-avatar {
+            font-size: 1.6rem; line-height: 1;
+            width: 2.2rem; height: 2.2rem;
+            display: flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #fff8ed 0%, #fff 100%);
+            border: 1px solid #f0d9a6; border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .chat-msg-user .chat-msg-avatar {
+            background: #1f2937; color: #fff;
+            border-color: #1f2937;
+            font-size: 1.1rem;
+        }
+        .chat-msg-body {
+            flex: 1; min-width: 0;
+        }
+        .chat-msg-name {
+            font-size: 0.72rem; color: #64748b;
+            font-weight: 600; margin-bottom: 0.15rem;
+        }
+        .chat-msg-user .chat-msg-name {
+            text-align: right; color: #94a3b8;
+        }
+        .chat-msg-bubble {
+            background: #fff; border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 0.55rem 0.75rem;
+            font-size: 0.92rem; color: #1f2937;
+            line-height: 1.45;
+            white-space: pre-wrap; word-break: break-word;
+        }
+        .chat-msg-user .chat-msg-bubble {
+            background: #1f2937; color: #fff;
+            border-color: #1f2937;
+        }
+        .chat-msg-olivia .chat-msg-bubble  { background: #f0f6ff; border-color: #cfe1ff; }
+        .chat-msg-logan .chat-msg-bubble   { background: #fff5f5; border-color: #fde2e2; }
+        .chat-msg-sage .chat-msg-bubble    { background: #f0f6ff; border-color: #cfe1ff; }
+        .chat-msg-parker .chat-msg-bubble  { background: #fff6e0; border-color: #f3d28a; }
+        .chat-msg-video .chat-msg-bubble   { background: #f8fafc; border-color: #cbd5e1; }
+        .chat-msg-youtube .chat-msg-bubble { background: #fff5f5; border-color: #fde2e2; }
+
+        /* Pending question marker — soft glow on the asking partner's bubble */
+        .chat-msg-bubble.is-pending {
+            box-shadow: 0 0 0 2px rgba(243, 210, 138, 0.4);
+        }
+
+        /* Result card embedded inline as a message — bullets + next button */
+        .chat-result-card {
+            margin-top: 0.5rem;
+            background: #fff;
+            border: 1px solid #4aa05c;
+            border-radius: 8px;
+            padding: 0.6rem 0.8rem;
+        }
+        .chat-result-done {
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            background: #d8efd8; color: #2d6a3a;
+            padding: 0.15rem 0.5rem; border-radius: 999px;
+            font-size: 0.7rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.05em;
+            margin-bottom: 0.3rem;
+        }
+        .chat-result-headline {
+            font-size: 0.95rem; font-weight: 700; color: #1f2937;
+            margin-bottom: 0.25rem;
+        }
+        .chat-result-bullets {
+            margin: 0.2rem 0 0.4rem; padding-left: 1.2rem;
+            font-size: 0.86rem; color: #334155;
+        }
+        .chat-result-bullets li { margin: 0.12rem 0; }
+        .chat-result-next-btn {
+            margin-top: 0.3rem;
+            padding: 0.45rem 0.9rem;
+            font-size: 0.86rem; font-weight: 700;
+            background: #2d6a3a; color: #fff;
+            border: 1px solid #2d6a3a; border-radius: 6px;
+            cursor: pointer;
+        }
+        .chat-result-next-btn:hover { background: #1e4d28; }
+
+        /* Typing indicator while a partner "works" */
+        .chat-typing-dots {
+            display: inline-flex; gap: 0.3rem; padding: 0.1rem 0;
+        }
+        .chat-typing-dots span {
+            width: 0.45rem; height: 0.45rem; border-radius: 50%;
+            background: #94a3b8;
+            animation: chat-bounce 1.2s infinite ease-in-out;
+        }
+        .chat-typing-dots span:nth-child(2) { animation-delay: 0.18s; }
+        .chat-typing-dots span:nth-child(3) { animation-delay: 0.36s; }
+        @keyframes chat-bounce {
+            0%, 60%, 100% { opacity: 0.4; transform: translateY(0); }
+            30%           { opacity: 1;   transform: translateY(-0.2rem); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .chat-typing-dots span { animation: none; opacity: 0.7; }
+        }
+
+        /* Chat form */
+        .chat-form {
+            display: flex; gap: 0.4rem;
+            margin-top: 0.4rem;
+            padding-top: 0.6rem;
+            border-top: 1px solid #e2e8f0;
+        }
+        .chat-input {
+            flex: 1; min-width: 0;
+            padding: 0.65rem 0.85rem;
+            font-size: 0.95rem;
+            border: 1px solid #cbd5e1; border-radius: 7px;
+            font-family: inherit;
+        }
+        .chat-input:focus {
+            outline: 2px solid #1f2937; outline-offset: -1px;
+        }
+        .chat-send-btn {
+            padding: 0.65rem 1.1rem;
+            font-size: 0.92rem; font-weight: 700;
+            background: #1f2937; color: #fff;
+            border: 1px solid #1f2937; border-radius: 7px;
+            cursor: pointer; font-family: inherit;
+        }
+        .chat-send-btn:hover { background: #111827; }
+        .chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .chat-footer-hint {
+            text-align: center;
+            margin-top: 0.8rem;
+            font-size: 0.78rem; color: #94a3b8;
+        }
+        .chat-advanced-link { color: #64748b; text-decoration: underline; }
+        .chat-advanced-link:hover { color: #1f2937; }
+
         /* ===== v12.7: Today's thread + smart next-step ================
            Makes the landing screen evolve as the user works. When
            there's progress today, render the thread + a single smart
@@ -3882,7 +4081,7 @@
         .system-sub > *:not(summary):last-child { padding-bottom: 0.75rem; }
     </style>
 </head>
-<body class="simple-mode">
+<body class="chat-mode">
     <!-- v12.1: Onboarding overlay. Hidden by default; JS shows it on
          first page load when GET /api/onboarding/state returns
          complete=false. Olivia hosts a 7-step wizard, then a success
@@ -3927,12 +4126,38 @@
          console + 6 cartoon partner desks. Olivia is the dispatcher.
          No external AI; rule-based routing. No auto-send, no publishing,
          no live changes — every action surfaces a card the user clicks. -->
-    <!-- v12.6: SIMPLE LANDING — one task at a time. Greeting + 5
-         big buttons + a hidden task-takeover panel. The v12.0-v12.5
-         office room is preserved below (hidden by default; user can
-         opt back in via the body-level class on the body, removed
-         when in simple mode). Click a button → that single workflow
-         takes over until Back is hit. -->
+    <!-- v12.8: CHAT-FIRST OFFICE — Olivia and the partners talk to
+         you. You type, they ask for what they need, then they do the
+         work. No buttons by default. Everything else (v12.0-v12.7
+         surfaces) lives in DOM but hidden via body.chat-mode. -->
+    <section id="chat-office" class="chat-office">
+        <div class="chat-office-head">
+            <span class="chat-office-title">🗂️ Office</span>
+            <button type="button" id="chat-reset-btn" class="chat-reset-btn"
+                    title="Clear the conversation. Leads, projects, files all preserved.">
+                Reset conversation
+            </button>
+        </div>
+        <div id="chat-messages" class="chat-messages">
+            <div class="muted chat-loading">Olivia is at her desk…</div>
+        </div>
+        <form id="chat-form" class="chat-form" aria-label="Talk to the team">
+            <input id="chat-input" class="chat-input"
+                   placeholder="Tell the team what you need…"
+                   autocomplete="off">
+            <button type="submit" class="chat-send-btn" title="Send">Send</button>
+        </form>
+        <div class="chat-footer-hint">
+            Want the buttons, dashboards, or activity feed?
+            <a href="#advanced-workspaces" class="chat-advanced-link">
+                Open Advanced workspaces below.
+            </a>
+        </div>
+    </section>
+
+    <!-- v12.6: SIMPLE LANDING — preserved in DOM but HIDDEN by
+         body.chat-mode. Available if you remove the chat-mode class
+         from body. -->
     <section id="simple-landing" class="simple-landing">
         <div class="simple-landing-inner">
             <div class="simple-greeting" id="simple-greeting">Good afternoon, Topher.</div>

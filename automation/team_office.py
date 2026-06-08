@@ -410,6 +410,8 @@ def _clean_message(raw: dict) -> dict:
         "work_item_ids": list(raw.get("work_item_ids") or []),
         "document_ids":  list(raw.get("document_ids") or []),
         "created_at": raw.get("created_at") or _now(),
+        # v12.8: partner-is-waiting-for-an-answer flag.
+        "pending":   bool(raw.get("pending")),
     }
 
 
@@ -1045,6 +1047,239 @@ def partner_reply(
     }
 
 
+# ======================================================================
+# v12.8 — Chat-first: partners ASK before they act
+# ----------------------------------------------------------------------
+# Each partner has one clarifying question they ask before doing real
+# work. The user's next message is treated as the answer and routed
+# back to that partner with the answer as context.
+#
+# No new data files. Pending state lives in the existing console log
+# as a `pending: true` flag on partner messages.
+# ======================================================================
+
+PARTNER_QUESTIONS: dict[str, str] = {
+    "logan": (
+        "Sure thing. What kind of business should I look for, and "
+        "what city or area?"
+    ),
+    "sage": (
+        "Got it. Should I do a full website check on {website}, "
+        "or focus on something specific you've noticed?"
+    ),
+    "parker": (
+        "Yes. Who's this promo for, and what's the main offer — "
+        "the free homepage mockup, or something else?"
+    ),
+    "video": (
+        "Sounds good. What's the topic, and is this for Reels, "
+        "TikTok, or YouTube Shorts?"
+    ),
+    "youtube": (
+        "Yeah. What angle do you want me to explore for the video ideas?"
+    ),
+}
+
+# Olivia's brief handoff line — what she says before the partner asks.
+_OLIVIA_HANDOFFS: dict[str, str] = {
+    "logan":   "On it. Logan, take this one.",
+    "sage":    "Got it. Sage, you're up.",
+    "parker":  "On it. Parker, this one's yours.",
+    "video":   "Sounds good. Video Partner, you got this.",
+    "youtube": "Yep. YouTube Growth, take it.",
+}
+
+
+def _format_partner_question(partner_id: str) -> str:
+    """Resolve template placeholders in the question text."""
+    tmpl = PARTNER_QUESTIONS.get(partner_id, "")
+    if not tmpl:
+        return ""
+    try:
+        import onboarding as _ob
+        profile = _ob.load_agency_profile() or {}
+        return tmpl.format(
+            website=profile.get("first_website") or "your site",
+        )
+    except Exception:
+        return tmpl
+
+
+def _find_pending_partner() -> str | None:
+    """
+    Walk recent console messages newest-first. The most recent partner
+    message marked pending=True (that hasn't been answered by a later
+    user message) is the partner waiting for an answer.
+    """
+    msgs = load_messages()
+    for m in reversed(msgs):
+        if m.get("role") == "user":
+            # User has already spoken after the question — answered.
+            return None
+        if m.get("pending"):
+            return m.get("partner")
+    return None
+
+
+def _clear_pending_flags() -> None:
+    """Mark every prior pending message as no longer pending."""
+    items = load_messages()
+    changed = False
+    for m in items:
+        if m.get("pending"):
+            m["pending"] = False
+            changed = True
+    if changed:
+        _save_messages(items)
+
+
+def _user_intent_is_partner_switch(text: str, current_partner: str) -> bool:
+    """
+    Detect 'I changed my mind' — user replied with keywords for a
+    DIFFERENT partner instead of answering the pending question.
+    """
+    primary, _ = _detect_partner(text)
+    if primary == "olivia":
+        return False
+    return primary != current_partner
+
+
+def _parse_logan_request(text: str) -> tuple[str | None, str | None]:
+    """
+    Heuristic parse of 'plumbers in hot springs ar' → ('plumbers',
+    'hot springs ar'). Tries several common shapes. Returns
+    (category, city) — either can be None if unparseable.
+    """
+    import re as _re
+    s = (text or "").strip()
+    if not s:
+        return None, None
+    # "X in Y" / "X near Y" / "X around Y" / "X at Y" / "X around the Y area"
+    m = _re.search(
+        r'^(.+?)\s+(?:in|near|around|at|throughout)\s+(.+)$',
+        s, _re.IGNORECASE,
+    )
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+    # "X, City State"
+    if "," in s:
+        before, after = s.split(",", 1)
+        if before.strip() and after.strip():
+            return before.strip(), after.strip()
+    # Single token — treat as category, use default city
+    return s, None
+
+
+def _parse_video_request(text: str) -> tuple[str | None, str | None]:
+    """
+    Heuristic parse of video request like 'free mockup for tiktok' →
+    ('free mockup', 'tiktok'). Returns (topic, platform).
+    """
+    import re as _re
+    s = (text or "").strip()
+    if not s:
+        return None, None
+    # Detect platform keywords
+    platform = None
+    for kw, label in (
+        ("reels", "Reels"), ("instagram reels", "Reels"),
+        ("tiktok", "TikTok"), ("tik tok", "TikTok"),
+        ("shorts", "YouTube Shorts"), ("youtube shorts", "YouTube Shorts"),
+        ("youtube", "YouTube"), ("yt", "YouTube"),
+    ):
+        if kw in s.lower():
+            platform = label
+            break
+    # Topic = whatever isn't the platform mention
+    topic = s
+    if platform:
+        # Strip the platform phrase from the text
+        topic = _re.sub(
+            r'\b(for|on|to|as)?\s*(reels|instagram reels|tiktok|tik tok|youtube shorts|shorts|youtube|yt)\b',
+            '', s, flags=_re.IGNORECASE,
+        ).strip(' ,.')
+    return (topic or None), platform
+
+
+def _ask_first_flow(user_msg: dict, primary: str, text: str) -> dict:
+    """
+    v12.8: Olivia briefly hands off, then the partner asks one
+    clarifying question and marks itself pending. No work runs yet.
+    """
+    olivia_line = _OLIVIA_HANDOFFS.get(
+        primary, f"On it. {PARTNERS[primary]['short_name']}, take this."
+    )
+    olivia_msg = append_message({
+        "role":    "olivia",
+        "partner": "olivia",
+        "text":    olivia_line,
+    })
+
+    question = _format_partner_question(primary)
+    # Wrap in the partner's voice so the opener + handoff ack land
+    # naturally ("On it, Olivia. Topher — ...").
+    voiced = _wrap_with_voice(
+        primary, question, text, handoff_from="olivia",
+    )
+    partner_msg = append_message({
+        "role":    primary,
+        "partner": primary,
+        "text":    voiced,
+        "pending": True,  # this is the marker that drives v12.8 routing
+    })
+
+    return {
+        "chosen_partner":     primary,
+        "secondary_partners": [],
+        "intent":             "clarify",
+        "response_text":      voiced,
+        "suggested_actions":  [],
+        "created_work_items": [],
+        "created_documents":  [],
+        "messages":           [user_msg, olivia_msg, partner_msg],
+        "asked":              True,
+    }
+
+
+def _handle_partner_clarification(partner_id: str, answer: str) -> dict:
+    """
+    v12.8: user answered a pending question. Clear the flag, run the
+    real work with the user's answer as context, and return the
+    partner's reply (with result_card so the UI can render bullets +
+    next-step button inline).
+    """
+    user_msg = append_message({
+        "role": "user", "partner": "user", "text": answer,
+    })
+    _clear_pending_flags()
+    try:
+        result = start_work(partner_id, context=answer)
+    except Exception as e:
+        err_text = (
+            f"Hm, I tried to start but hit a snag: {e}. Want to "
+            "try again, or hand this to someone else?"
+        )
+        err_msg = append_message({
+            "role": partner_id, "partner": partner_id, "text": err_text,
+        })
+        return {
+            "chosen_partner":     partner_id,
+            "secondary_partners": [],
+            "intent":             "error",
+            "messages":           [user_msg, err_msg],
+            "asked":              False,
+        }
+    return {
+        "chosen_partner":     partner_id,
+        "secondary_partners": [],
+        "intent":             "follow_up",
+        "messages":           [user_msg] + list(result.get("messages", [])),
+        "result_card":        result.get("result_card"),
+        "documents":          result.get("documents", []),
+        "asked":              False,
+    }
+
+
 def route_command(text: str) -> dict:
     """
     Main entry from POST /api/team-office/command.
@@ -1072,6 +1307,16 @@ def route_command(text: str) -> dict:
     if not text:
         raise ValueError("command text is required")
 
+    # v12.8: if a partner is waiting for an answer and the user isn't
+    # clearly switching topics, route to them with the answer.
+    pending = _find_pending_partner()
+    if pending and not _user_intent_is_partner_switch(text, pending):
+        return _handle_partner_clarification(pending, text)
+    # User explicitly switched — clear the pending flag and proceed
+    # with normal routing.
+    if pending:
+        _clear_pending_flags()
+
     # v12.3: auto-delegation. Outcome phrases like "get me more clients"
     # kick off a real multi-partner workflow visibly in the console
     # instead of routing to a single partner.
@@ -1090,6 +1335,12 @@ def route_command(text: str) -> dict:
     # 2. Detect partner
     primary, secondary = _detect_partner(text)
     intent = _classify_intent(text)
+
+    # v12.8: if the primary partner has an ask-first question
+    # registered and isn't already responding to a clarification,
+    # short-circuit: Olivia hands off and the partner ASKS.
+    if primary != "olivia" and primary in PARTNER_QUESTIONS:
+        return _ask_first_flow(user_msg, primary, text)
 
     appended: list[dict] = [user_msg]
     has_handoff = bool(secondary) and primary != "olivia"
@@ -1281,7 +1532,7 @@ def _bump_work_item(partner: str, new_status: str = "waiting_approval") -> dict 
         return None
 
 
-def _start_olivia() -> dict:
+def _start_olivia(context: str | None = None) -> dict:
     """Olivia's 'Tell me what to do next' — already worked in v11.0,
     just structures the response in the new start_work shape."""
     text, actions = _olivia_next_actions_text()
@@ -1320,12 +1571,20 @@ def _start_olivia() -> dict:
     }
 
 
-def _start_logan() -> dict:
+def _start_logan(context: str | None = None) -> dict:
     """Run the v9.1 do_it_all pipeline with the agency-profile defaults.
-    Real OSM discovery + bulk-enrich + ranking in one round trip."""
+    Real OSM discovery + bulk-enrich + ranking in one round trip.
+
+    v12.8: if `context` is provided (the user's answer to Logan's
+    clarifying question), parse category + city from it.
+    """
     profile = _agency_profile()
     category = "plumber"  # OSM-friendly default; user can refine in Logan
     city = profile.get("default_search_area") or "Hot Springs, AR"
+    if context:
+        parsed_cat, parsed_city = _parse_logan_request(context)
+        if parsed_cat: category = parsed_cat
+        if parsed_city: city = parsed_city
     try:
         import lead_candidates as _lc
         result = _lc.do_it_all(category=category, city_state=city, count=10)
@@ -1433,7 +1692,7 @@ def _start_logan() -> dict:
     }
 
 
-def _start_sage() -> dict:
+def _start_sage(context: str | None = None) -> dict:
     """Generate the SEO audit on MMS — Sage's audit was already real in
     v12.1; v12.2 adds the visible console message + shared document so
     the user sees what Sage produced."""
@@ -1582,7 +1841,7 @@ def _make_parker_promo(profile: dict) -> str:
     )
 
 
-def _start_parker() -> dict:
+def _start_parker(context: str | None = None) -> dict:
     profile = _agency_profile()
     body = _make_parker_promo(profile)
     doc = create_document({
@@ -1635,11 +1894,23 @@ def _start_parker() -> dict:
     }
 
 
-def _start_video() -> dict:
+def _start_video(context: str | None = None) -> dict:
     """Generate a short_script via video_partner.generate_package using
-    the agency's free offer as the topic."""
+    the agency's free offer as the topic.
+
+    v12.8: if `context` is provided (user's answer to Video's question),
+    parse topic + platform from it. Platform is included in the script
+    title so the user can see what was generated.
+    """
     profile = _agency_profile()
     topic = profile.get("free_offer") or "Free homepage mockup"
+    platform = None
+    if context:
+        parsed_topic, parsed_platform = _parse_video_request(context)
+        if parsed_topic: topic = parsed_topic
+        platform = parsed_platform
+    if platform:
+        topic = f"{topic} ({platform})"
     try:
         import video_partner as _vp
         package = _vp.generate_package(content_type="short_script", topic=topic)
@@ -1704,7 +1975,7 @@ def _start_video() -> dict:
     }
 
 
-def _start_youtube() -> dict:
+def _start_youtube(context: str | None = None) -> dict:
     """Generate a full YouTube package from the agency's free offer."""
     profile = _agency_profile()
     topic = profile.get("free_offer") or "Free homepage mockup"
@@ -1766,10 +2037,15 @@ def _start_youtube() -> dict:
     }
 
 
-def start_work(partner_id: str) -> dict:
+def start_work(partner_id: str, context: str | None = None) -> dict:
     """
     v12.2 — actually do the partner's first piece of work and surface
     it visibly. Olivia delegates → partner produces → user sees.
+
+    v12.8 — optional `context` is the user's free-text answer to the
+    partner's clarifying question. Logan parses it for category+city,
+    Video parses it for topic+platform, etc. Handlers without context
+    handling ignore it cleanly.
 
     Returns a structured response:
         {
@@ -1790,7 +2066,13 @@ def start_work(partner_id: str) -> dict:
     }
     if partner_id not in handlers:
         raise KeyError(partner_id)
-    return handlers[partner_id]()
+    handler = handlers[partner_id]
+    # Pass context only to handlers that accept it (Python-style
+    # introspection: try kwargs, fall back to no-arg).
+    try:
+        return handler(context=context)
+    except TypeError:
+        return handler()
 
 
 # ======================================================================
