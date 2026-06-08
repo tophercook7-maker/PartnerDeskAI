@@ -2350,6 +2350,104 @@
             color: #b34a4a; font-size: 0.95rem;
         }
 
+        /* ===== v12.7: Today's thread + smart next-step ================
+           Makes the landing screen evolve as the user works. When
+           there's progress today, render the thread + a single smart
+           next-step button. The 5 buttons collapse under "or pick
+           something else". */
+        .today-thread {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 1rem 1.1rem;
+            display: flex; flex-direction: column;
+            gap: 0.7rem;
+            animation: tt-fade-in 220ms ease-out;
+        }
+        .today-thread[hidden] { display: none; }
+        .tt-section-label {
+            font-size: 0.75rem; color: #94a3b8;
+            text-transform: uppercase; letter-spacing: 0.06em;
+            font-weight: 700;
+        }
+        .tt-log {
+            display: flex; flex-direction: column; gap: 0.35rem;
+        }
+        .tt-log-row {
+            display: flex; gap: 0.5rem; align-items: baseline;
+            font-size: 0.92rem; color: #334155;
+        }
+        .tt-log-icon { font-size: 1rem; line-height: 1; flex-shrink: 0; }
+        .tt-log-check {
+            color: #2d6a3a; font-weight: 700; flex-shrink: 0;
+        }
+        .tt-log-text { flex: 1; min-width: 0; }
+        .tt-log-when {
+            font-size: 0.75rem; color: #94a3b8; flex-shrink: 0;
+        }
+        .tt-next-section {
+            border-top: 1px dashed #e2e8f0;
+            padding-top: 0.6rem;
+        }
+        .tt-next-btn-big {
+            display: flex; align-items: center; gap: 0.6rem;
+            width: 100%;
+            padding: 0.95rem 1.1rem;
+            background: #1f2937; color: #fff;
+            border: 1px solid #1f2937; border-radius: 9px;
+            font-family: inherit; text-align: left;
+            cursor: pointer;
+            transition: background 90ms, transform 90ms;
+            margin-top: 0.4rem;
+        }
+        .tt-next-btn-big:hover {
+            background: #111827; transform: translateY(-1px);
+        }
+        .tt-next-btn-big:active { transform: translateY(0); }
+        .tt-next-btn-big .tt-next-emoji {
+            font-size: 1.5rem; flex-shrink: 0;
+        }
+        .tt-next-btn-big .tt-next-text {
+            display: flex; flex-direction: column; gap: 0.1rem;
+            flex: 1; min-width: 0;
+        }
+        .tt-next-btn-big .tt-next-label {
+            font-size: 1.02rem; font-weight: 700;
+        }
+        .tt-next-btn-big .tt-next-context {
+            font-size: 0.78rem; opacity: 0.75;
+        }
+        .tt-next-btn-big .tt-next-arrow { font-size: 1.2rem; flex-shrink: 0; }
+        @media (prefers-reduced-motion: reduce) {
+            .today-thread { animation: none; }
+            .tt-next-btn-big { transition: none !important; }
+            .tt-next-btn-big:hover { transform: none; }
+        }
+
+        /* Collapsible "or pick something else" wrapping the 5 buttons. */
+        .simple-buttons-details {
+            margin-top: 0.4rem;
+        }
+        .simple-buttons-details > summary {
+            list-style: none; cursor: pointer;
+            padding: 0.55rem 0;
+            font-size: 0.85rem; color: #64748b;
+            text-align: center;
+            border-top: 1px dashed #e2e8f0;
+            margin-top: 0.5rem;
+        }
+        .simple-buttons-details > summary::-webkit-details-marker { display: none; }
+        .simple-buttons-details > summary:hover { color: #1f2937; }
+        /* When the details is open (default first-run), no top border
+           needed since the buttons are the primary view. */
+        .simple-buttons-details[open] > summary {
+            color: #94a3b8; font-size: 0.78rem;
+            padding-top: 0.3rem; padding-bottom: 0.2rem;
+            border-top: none; margin-top: 0;
+        }
+        /* When there's a thread (we close the details), summary becomes
+           the visible "or pick something else" hint. */
+
         /* ===== v12.1: Onboarding overlay =============================== */
         .onboarding-overlay {
             position: fixed; inset: 0; z-index: 200;
@@ -3838,54 +3936,64 @@
     <section id="simple-landing" class="simple-landing">
         <div class="simple-landing-inner">
             <div class="simple-greeting" id="simple-greeting">Good afternoon, Topher.</div>
-            <div class="simple-subtitle">Pick what we should work on.</div>
+            <div class="simple-subtitle" id="simple-subtitle">Pick what we should work on.</div>
 
-            <div class="simple-buttons">
-                <button type="button" class="simple-button" data-simple-task="logan">
-                    <span class="sb-emoji">📍</span>
-                    <span class="sb-text">
-                        <span class="sb-label">Find Clients</span>
-                        <span class="sb-sub">Logan finds local businesses worth reaching out to.</span>
-                    </span>
-                    <span class="sb-arrow" aria-hidden="true">→</span>
-                </button>
+            <!-- v12.7: Today's thread card — only rendered when there's
+                 progress today. Hidden until JS populates it. -->
+            <div id="today-thread" class="today-thread" hidden></div>
 
-                <button type="button" class="simple-button" data-simple-task="sage">
-                    <span class="sb-emoji">🔎</span>
-                    <span class="sb-text">
-                        <span class="sb-label">Check My Website</span>
-                        <span class="sb-sub">Sage walks your site and tells you what to improve first.</span>
-                    </span>
-                    <span class="sb-arrow" aria-hidden="true">→</span>
-                </button>
+            <!-- v12.7: When there IS a thread, the 5 buttons collapse
+                 under "or pick something else". JS toggles the open
+                 state based on whether smart-next is present. -->
+            <details id="simple-buttons-details" class="simple-buttons-details" open>
+                <summary class="simple-buttons-summary">or pick something else ▾</summary>
+                <div class="simple-buttons">
+                    <button type="button" class="simple-button" data-simple-task="logan">
+                        <span class="sb-emoji">📍</span>
+                        <span class="sb-text">
+                            <span class="sb-label">Find Clients</span>
+                            <span class="sb-sub">Logan finds local businesses worth reaching out to.</span>
+                        </span>
+                        <span class="sb-arrow" aria-hidden="true">→</span>
+                    </button>
 
-                <button type="button" class="simple-button" data-simple-task="parker">
-                    <span class="sb-emoji">📣</span>
-                    <span class="sb-text">
-                        <span class="sb-label">Make a Promo</span>
-                        <span class="sb-sub">Parker drafts a friendly promo around your free offer.</span>
-                    </span>
-                    <span class="sb-arrow" aria-hidden="true">→</span>
-                </button>
+                    <button type="button" class="simple-button" data-simple-task="sage">
+                        <span class="sb-emoji">🔎</span>
+                        <span class="sb-text">
+                            <span class="sb-label">Check My Website</span>
+                            <span class="sb-sub">Sage walks your site and tells you what to improve first.</span>
+                        </span>
+                        <span class="sb-arrow" aria-hidden="true">→</span>
+                    </button>
 
-                <button type="button" class="simple-button" data-simple-task="video">
-                    <span class="sb-emoji">🎬</span>
-                    <span class="sb-text">
-                        <span class="sb-label">Make a Video</span>
-                        <span class="sb-sub">Video Partner writes a short script for review.</span>
-                    </span>
-                    <span class="sb-arrow" aria-hidden="true">→</span>
-                </button>
+                    <button type="button" class="simple-button" data-simple-task="parker">
+                        <span class="sb-emoji">📣</span>
+                        <span class="sb-text">
+                            <span class="sb-label">Make a Promo</span>
+                            <span class="sb-sub">Parker drafts a friendly promo around your free offer.</span>
+                        </span>
+                        <span class="sb-arrow" aria-hidden="true">→</span>
+                    </button>
 
-                <button type="button" class="simple-button" data-simple-task="olivia">
-                    <span class="sb-emoji">🗂️</span>
-                    <span class="sb-text">
-                        <span class="sb-label">Tell Me What's Next</span>
-                        <span class="sb-sub">Olivia looks at the whole team and ranks your top 3.</span>
-                    </span>
-                    <span class="sb-arrow" aria-hidden="true">→</span>
-                </button>
-            </div>
+                    <button type="button" class="simple-button" data-simple-task="video">
+                        <span class="sb-emoji">🎬</span>
+                        <span class="sb-text">
+                            <span class="sb-label">Make a Video</span>
+                            <span class="sb-sub">Video Partner writes a short script for review.</span>
+                        </span>
+                        <span class="sb-arrow" aria-hidden="true">→</span>
+                    </button>
+
+                    <button type="button" class="simple-button" data-simple-task="olivia">
+                        <span class="sb-emoji">🗂️</span>
+                        <span class="sb-text">
+                            <span class="sb-label">Tell Me What's Next</span>
+                            <span class="sb-sub">Olivia looks at the whole team and ranks your top 3.</span>
+                        </span>
+                        <span class="sb-arrow" aria-hidden="true">→</span>
+                    </button>
+                </div>
+            </details>
 
             <div class="simple-footer-hint">
                 Need the full office, command box, and dashboards?

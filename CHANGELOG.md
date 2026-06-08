@@ -1,6 +1,126 @@
 # PartnerDeskAI Changelog
 
-Newest first. v12.6 is the current shipped version.
+Newest first. v12.7 is the current shipped version.
+
+---
+
+## v12.7 — Continuing thread
+
+v12.6 was "better but still a long way away." The honest gap, named
+by the user: **"each task is one-shot, no sense we're building
+toward anything together."** Clicking Back always returned to the
+same five generic buttons. v12.7 makes the landing screen evolve.
+
+### The new flow
+
+**Fresh state** (nothing done today, or first run):
+- Greeting + 5 buttons. Same as v12.6.
+
+**Continuing state** (after one or more tasks today):
+
+```
+Good afternoon, Topher.
+Here's where we are.
+
+TODAY SO FAR
+📍 ✓ Found 1 possible client — top is 501 Plumbing.        12:43
+🔎 ✓ Checked your website.                                 12:58
+
+NEXT:
+[📣 Draft outreach for the top client →]
+     Parker uses Logan's picks
+
+or pick something else ▾
+```
+
+Click the big "Next" button → that workflow runs immediately, the
+takeover panel shows working/result, hit Back → thread updates with
+the new ✓ row + a new smart next-step.
+
+### How "smart next" is computed
+
+Ordered rules in `compute_smart_next()`. First match wins:
+
+1. Logan ran but Parker hasn't → "Draft outreach for the top N clients"
+2. Sage ran with fixes waiting → "Approve the top website fix"
+3. Parker ran but Video hasn't → "Turn the promo into a video script"
+4. Video ran but YouTube hasn't → "Spin into YouTube title ideas"
+5. Logan + Parker + Video all done → "Tell me what's next" (asks Olivia)
+6. Sage ran without Parker → "Draft a promo from the website wins"
+7. None match → returns null; UI falls back to the 5 buttons
+
+Each rule produces a button that knows what came before — clicking
+"Draft outreach for the top 3 clients" routes to Parker with the
+context that Logan's picks are the source. No more generic "Open
+Parker" or "Start SEO Audit For Me" — every next step is the next
+step in *your* current thread.
+
+### New backend
+
+- `today_thread()` in `team_office.py` — composes from existing
+  `activity_feed()` filtered to today + `_summary_for_partner()`
+  helpers that pull live per-partner state (Logan's picks count,
+  Sage's approval queue, draft counts) into one-line summaries.
+- `compute_smart_next(done)` — the rule cascade.
+- `GET /api/team-office/today-thread` — single read-only endpoint
+  returning `{today_log, next_step, has_progress}`.
+
+**No new data files.** Pure projection over existing storage. The
+thread "resets" overnight because activity feed events outside
+today's date prefix get filtered out.
+
+### Frontend
+
+- Landing template gets a `#today-thread` container (hidden by
+  default) above the 5 buttons.
+- 5 buttons wrap in `<details id="simple-buttons-details" open>`.
+  JS toggles `open=false` when a thread exists.
+- On landing load: fetch `/today-thread`. If `has_progress=true`,
+  render thread + smart-next button + close the buttons. Otherwise
+  show buttons directly (v12.6 behavior).
+- After every task completes (Back from takeover, or task panel's
+  Next): re-fetch the thread.
+
+### What stays
+
+- Onboarding wizard (v12.1) — first-time users still see it
+- Plain-language partner replies (v12.4) — Sage still says "I
+  checked your website…"
+- Result card format (v12.4) — full-screen on task complete
+- Advanced workspaces — still wraps the v12.0–v12.5 office room +
+  Today panel + partner sections
+- Per-partner result_card with headline + bullets + next_action
+- All backend endpoints unchanged
+
+### Live verification (6 tests, all pass)
+
+```
+1. /today-thread returns expected shape (today_log + next_step + has_progress)
+2. Smart next correctly identifies "all chained → ask Olivia"
+3. HTML serves with the v12.7 thread markup
+4. /summary, /briefing, /activity unchanged (back-compat)
+5. start_work result_card preserved (v12.4 back-compat)
+6. Thread refreshes correctly after work completes
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+clean. Christian Kovac safe.
+
+### Safety perimeter unchanged
+
+- ❌ No new data files. No publishing. No auto-send. No live changes.
+- ❌ No new Python deps.
+- ✅ One new read-only endpoint (`/today-thread`); pure projection.
+- ✅ Existing endpoints all backward-compatible.
+- ✅ Onboarding wizard unchanged. Advanced workspaces unchanged.
+
+### What's still on the table
+
+If "continuing thread" still doesn't fix the feel:
+- **Option A** (drop buttons entirely, chat-first with Olivia) —
+  still available as a bigger cut
+- The whole metaphor could be re-thought — partners as routes
+  inside one tool, not characters
 
 ---
 

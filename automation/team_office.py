@@ -2280,6 +2280,249 @@ def run_auto_delegation(text: str, chain: tuple[str, ...],
     }
 
 
+# ======================================================================
+# v12.7 — Today's thread + smart next-step
+# ----------------------------------------------------------------------
+# Makes the landing screen evolve as the user works. Reads today's
+# activity feed, summarizes what's been done, and computes the most
+# useful next step based on partner sequencing rules. Pure projection
+# over existing storage — no new persistence.
+#
+# Goal: tasks should feel like a continuing thread, not isolated
+# one-shots that always return to the same five buttons.
+# ======================================================================
+
+def _today_prefix() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def today_thread() -> dict:
+    """
+    Compose a 'Today so far' view + smart next-step recommendation.
+
+    Returns:
+        {
+          today_log:    [{partner, summary, when, icon}, ...],   # newest first
+          next_step:    {label, partner, context, kind, target/prompt},
+          has_progress: bool,
+        }
+
+    Reads from existing storage (activity_feed) — no new persistence.
+    """
+    today = _today_prefix()
+
+    # Walk today's events. Compress to one row per partner-action so
+    # the thread doesn't repeat the same partner three times in a row.
+    feed = activity_feed(limit=50)
+    today_events: list[dict] = []
+    seen_keys: set[str] = set()
+    partners_done_today: dict[str, list[dict]] = {}  # partner_id → events
+
+    for ev in feed:
+        when = ev.get("when") or ""
+        if not when.startswith(today):
+            continue
+        # Compress: only keep the most recent event per (partner, kind).
+        # Multiple "message" rows from one partner collapse to one line.
+        compress_key = f"{ev.get('partner')}|{ev.get('kind')}"
+        if compress_key in seen_keys:
+            continue
+        seen_keys.add(compress_key)
+        today_events.append(ev)
+        partners_done_today.setdefault(ev.get("partner") or "?", []).append(ev)
+
+    # Build the user-facing log with a friendly one-line summary per
+    # partner showing what they DID, not what kind of event it was.
+    log_rows: list[dict] = []
+    partner_summaries: dict[str, str] = {}
+    for pid in ("logan", "sage", "parker", "video", "youtube", "olivia"):
+        events = partners_done_today.get(pid)
+        if not events:
+            continue
+        line = _summary_for_partner(pid)
+        if not line:
+            # Fallback to the most recent event's title.
+            line = events[0].get("title") or ""
+        partner_summaries[pid] = line
+        latest_when = events[0].get("when", "")
+        log_rows.append({
+            "partner": pid,
+            "icon":    PARTNERS.get(pid, {}).get("emoji", "•"),
+            "summary": line,
+            "when":    latest_when[11:16] if len(latest_when) > 10 else latest_when,
+        })
+
+    # Order log rows by most recent partner activity (newest first).
+    log_rows.sort(
+        key=lambda r: max(
+            (e.get("when", "") for e in partners_done_today.get(r["partner"], [])),
+            default="",
+        ),
+        reverse=True,
+    )
+
+    has_progress = bool(log_rows)
+    next_step = compute_smart_next(partners_done_today)
+    return {
+        "today_log":    log_rows,
+        "next_step":    next_step,
+        "has_progress": has_progress,
+    }
+
+
+def _summary_for_partner(pid: str) -> str:
+    """
+    Live one-line summary of what this partner has on their desk
+    today. Used by the today_thread renderer instead of raw event
+    titles which read like log lines.
+    """
+    try:
+        if pid == "logan":
+            import lead_candidates as _lc
+            picks = _lc.compute_picks(k=10)
+            if picks:
+                n = len(picks)
+                return (f"Found {n} possible client{'s' if n != 1 else ''} "
+                        f"— top is {picks[0].get('business_name', 'one of them')}.")
+        if pid == "sage":
+            import seo_partner as _sp
+            queue = _sp.list_approval_queue()
+            projects = _sp.load_projects()
+            if queue:
+                return (f"Flagged {len(queue)} website fix"
+                        f"{'es' if len(queue) != 1 else ''} for your review.")
+            if projects:
+                audits = _sp.list_audits(projects[0]["id"])
+                if audits:
+                    return f"Checked your website."
+        if pid == "parker":
+            docs = list_documents(partner="parker", type_="promo_copy")
+            if docs:
+                return f"Drafted a promo around your free offer."
+        if pid == "video":
+            import video_partner as _vp
+            packages = _vp.load_packages()
+            if packages:
+                latest = packages[-1]
+                return f"Wrote a {latest.get('content_type', 'script')} for you."
+        if pid == "youtube":
+            import youtube_partner as _yt
+            packages = _yt.load_packages()
+            if packages:
+                latest = packages[-1]
+                return f"Drafted {latest.get('content_type', 'video ideas')}."
+        if pid == "olivia":
+            return "Ranked the next 3 things to do."
+    except Exception:
+        pass
+    return ""
+
+
+def compute_smart_next(partners_done_today: dict[str, list[dict]]) -> dict | None:
+    """
+    Return the most useful next step given what's been done today.
+    Ordered rules so the first match wins — each rule corresponds to
+    a real handoff pattern (Logan → Parker, Sage → fix approval,
+    Parker → Video, Video → YouTube).
+
+    Returns a dict the frontend uses to render the smart-next button:
+        {
+          label:     "Draft outreach for the top 3 clients",
+          partner:   "parker",            # who handles it
+          context:   "based on Logan's picks",
+          kind:      "do_it_for_me" | "scroll" | "ask_partner",
+          target?:   "<element id>" | "<partner id>",
+          prompt?:   "..."
+        }
+
+    Returns None if there's no clear next step (the UI falls back
+    to the 5 simple buttons).
+    """
+    done = set(partners_done_today.keys())
+    has_logan   = "logan"   in done
+    has_sage    = "sage"    in done
+    has_parker  = "parker"  in done
+    has_video   = "video"   in done
+    has_youtube = "youtube" in done
+
+    # Rule 1: Logan found clients but Parker hasn't drafted outreach yet.
+    if has_logan and not has_parker:
+        try:
+            import lead_candidates as _lc
+            n = len(_lc.compute_picks(k=10))
+        except Exception:
+            n = 0
+        label = (f"Draft outreach for the top {min(n, 3)} client"
+                 f"{'s' if min(n, 3) != 1 else ''}" if n else
+                 "Draft outreach for your top client")
+        return {
+            "label":   label,
+            "partner": "parker",
+            "context": "Parker uses Logan's picks",
+            "kind":    "do_it_for_me",
+            "target":  "parker",
+        }
+
+    # Rule 2: Sage checked the site but no fixes approved yet.
+    if has_sage:
+        try:
+            import seo_partner as _sp
+            queue = _sp.list_approval_queue()
+            if queue:
+                return {
+                    "label":   f"Approve the top website fix",
+                    "partner": "sage",
+                    "context": f"{(queue[0].get('issue') or 'top fix')}",
+                    "kind":    "scroll",
+                    "target":  "sage-details",
+                }
+        except Exception:
+            pass
+
+    # Rule 3: Parker drafted a promo, Video hasn't scripted it.
+    if has_parker and not has_video:
+        return {
+            "label":   "Turn the promo into a video script",
+            "partner": "video",
+            "context": "Video Partner picks up Parker's promo",
+            "kind":    "do_it_for_me",
+            "target":  "video",
+        }
+
+    # Rule 4: Video scripted, YouTube hasn't ideated.
+    if has_video and not has_youtube:
+        return {
+            "label":   "Spin into YouTube title ideas",
+            "partner": "youtube",
+            "context": "YouTube Growth takes Video's script",
+            "kind":    "do_it_for_me",
+            "target":  "youtube",
+        }
+
+    # Rule 5: Everything chained — ask Olivia what to focus on next.
+    if has_logan and has_parker and has_video:
+        return {
+            "label":   "Tell me what's next",
+            "partner": "olivia",
+            "context": "Olivia reviews the whole desk",
+            "kind":    "do_it_for_me",
+            "target":  "olivia",
+        }
+
+    # Rule 6: Sage but not the website fix chain → suggest content.
+    if has_sage and not has_parker:
+        return {
+            "label":   "Draft a promo from the website wins",
+            "partner": "parker",
+            "context": "Parker uses Sage's notes",
+            "kind":    "do_it_for_me",
+            "target":  "parker",
+        }
+
+    # Fallback: nothing matched cleanly — let the UI show the 5 buttons.
+    return None
+
+
 def summary() -> dict:
     """
     One-shot UI payload: every partner's desk status + task count.

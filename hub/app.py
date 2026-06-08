@@ -1850,6 +1850,16 @@ def api_team_activity(limit: int = 20) -> dict:
     return {"items": items, "count": len(items)}
 
 
+@app.get("/api/team-office/today-thread")
+def api_team_today_thread() -> dict:
+    """v12.7: 'Today so far' thread + smart next-step recommendation.
+    Reads today's activity feed and computes the most useful next
+    handoff (Logan → Parker, Sage → fix approval, Parker → Video,
+    Video → YouTube). Pure projection over existing storage; no
+    persistence."""
+    return team_mod.today_thread()
+
+
 @app.post("/api/team-office/start-work/{partner_id}")
 def api_team_start_work(partner_id: str) -> dict:
     """v12.2: actually do the partner's first piece of work and surface

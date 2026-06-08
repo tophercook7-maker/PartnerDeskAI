@@ -9176,6 +9176,74 @@ function _setSimpleGreeting() {
 }
 _setSimpleGreeting();
 
+// v12.7: Today's thread — shown above the 5 buttons when there's
+// progress today. The 5 buttons collapse under "or pick something
+// else" when the thread is active so the smart next-step is the
+// most obvious thing to click.
+async function _loadTodayThread() {
+    const el      = document.getElementById('today-thread');
+    const subtitle = document.getElementById('simple-subtitle');
+    const details = document.getElementById('simple-buttons-details');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/team-office/today-thread');
+        if (!r.ok) return;
+        const t = await r.json();
+        if (!t.has_progress) {
+            // Fresh state: hide the thread card, leave the 5 buttons
+            // open as the primary view.
+            el.hidden = true;
+            el.innerHTML = '';
+            if (subtitle) subtitle.textContent = 'Pick what we should work on.';
+            if (details) details.open = true;
+            return;
+        }
+        // Continuing state: render the thread + smart next-step,
+        // collapse the 5 buttons.
+        const logHtml = (t.today_log || []).map(row => (
+            '<div class="tt-log-row">' +
+              '<span class="tt-log-icon">' + (row.icon || '•') + '</span>' +
+              '<span class="tt-log-check">✓</span>' +
+              '<span class="tt-log-text">' + _escape(row.summary || '') + '</span>' +
+              '<span class="tt-log-when">' + _escape(row.when || '') + '</span>' +
+            '</div>'
+        )).join('');
+        const next = t.next_step;
+        let nextHtml = '';
+        if (next && next.label) {
+            const emoji = _SIMPLE_PARTNER_EMOJI[next.partner] || '→';
+            nextHtml =
+              '<div class="tt-next-section">' +
+                '<div class="tt-section-label">Next:</div>' +
+                '<button type="button" class="tt-next-btn-big" data-tt-smart-next=\'' +
+                  _escape(JSON.stringify(next)) + '\'>' +
+                  '<span class="tt-next-emoji">' + emoji + '</span>' +
+                  '<span class="tt-next-text">' +
+                    '<span class="tt-next-label">' + _escape(next.label) + '</span>' +
+                    (next.context
+                      ? '<span class="tt-next-context">' + _escape(next.context) + '</span>'
+                      : '') +
+                  '</span>' +
+                  '<span class="tt-next-arrow" aria-hidden="true">→</span>' +
+                '</button>' +
+              '</div>';
+        }
+        el.innerHTML =
+          '<div>' +
+            '<div class="tt-section-label">Today so far</div>' +
+            '<div class="tt-log">' + logHtml + '</div>' +
+          '</div>' +
+          nextHtml;
+        el.hidden = false;
+        if (subtitle) subtitle.textContent = 'Here\'s where we are.';
+        if (details) details.open = false;
+    } catch (err) {
+        // Silent failure — leave the 5 buttons as the primary view.
+    }
+}
+// Initial fetch on page load.
+_loadTodayThread();
+
 function _showTaskWorking(partnerId) {
     const tt = document.getElementById('task-takeover');
     if (!tt) return;
@@ -9265,11 +9333,13 @@ async function _runSimpleTask(partnerId) {
     }
 }
 
-// Single delegator for landing buttons + task-takeover buttons.
+// Single delegator for landing buttons + task-takeover buttons +
+// v12.7 smart-next button.
 document.addEventListener('click', async (e) => {
     const simpleBtn = e.target.closest('button[data-simple-task]');
     const backBtn   = e.target.closest('button[data-tt-back]');
     const nextBtn   = e.target.closest('button[data-tt-next]');
+    const smartBtn  = e.target.closest('button[data-tt-smart-next]');
     if (simpleBtn) {
         e.preventDefault();
         const partnerId = simpleBtn.dataset.simpleTask;
@@ -9279,6 +9349,9 @@ document.addEventListener('click', async (e) => {
     if (backBtn) {
         e.preventDefault();
         _hideTask();
+        // v12.7: after a task completes and the user goes back to home,
+        // refresh the thread so the new event appears.
+        _loadTodayThread();
         return;
     }
     if (nextBtn) {
@@ -9289,10 +9362,30 @@ document.addEventListener('click', async (e) => {
         // _runTeamAction handle it. The Advanced workspaces details
         // wrap most of the scroll targets, so we open Advanced first.
         _hideTask();
+        _loadTodayThread();
         const adv = document.getElementById('advanced-workspaces');
         if (adv && action.kind === 'scroll') adv.open = true;
         if (typeof _runTeamAction === 'function') {
             await _runTeamAction(action);
+        }
+        return;
+    }
+    if (smartBtn) {
+        // v12.7: smart next-step button on the today-thread card.
+        // Action shape: {label, partner, context, kind, target}.
+        e.preventDefault();
+        let action;
+        try { action = JSON.parse(smartBtn.dataset.ttSmartNext); } catch { return; }
+        if (action.kind === 'do_it_for_me' && action.target) {
+            await _runSimpleTask(action.target);
+        } else if (action.kind === 'scroll' && action.target) {
+            const adv = document.getElementById('advanced-workspaces');
+            if (adv) adv.open = true;
+            if (typeof _runTeamAction === 'function') {
+                await _runTeamAction(action);
+            }
+        } else if (action.kind === 'ask_partner' && action.partner) {
+            await _runSimpleTask(action.partner);
         }
     }
 });
