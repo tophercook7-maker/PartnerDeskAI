@@ -1,6 +1,107 @@
 # PartnerDeskAI Changelog
 
-Newest first. v12.8 is the current shipped version.
+Newest first. v12.9 is the current shipped version.
+
+---
+
+## v12.9 — Sharper Logan (parses what you already said)
+
+User reported the v12.8 problem precisely: *"i have told it 3 times to
+find me 100 leads with no website but with an email from all over
+arkansas, they reply 'what kind of business and what city or area' —
+i want them to be a lot sharper and helpful than that."*
+
+The bug: Logan's clarifying question was static. He asked the same
+generic thing regardless of what the user had already specified. The
+user said count + filters + statewide location, and Logan acted like
+none of it existed.
+
+### Fix
+
+**1. Comprehensive Logan parser.** `_parse_logan_full()` extracts:
+- `count` (1-100) — "100 leads", "30 prospects", "find me 5"
+- `category` — matches 60+ business words (plumbers, lawn care, etc.)
+- `city` — handles "X, ST", "in X TX", bare "in city"
+- `state` + `is_statewide` — "all over arkansas", "in arkansas",
+  full state names and 2-letter codes
+- `filters` — `no_website`, `has_email`, `facebook_only`,
+  `weak_presence`, `no_email`, `no_phone`
+
+**2. Smart question logic.** `_logan_smart_question()`:
+- If category AND location are both already in the text → return ""
+  (signals "run immediately, no question needed")
+- If only category is missing → "Got it — up to 100, no website, has
+  an email, statewide Arkansas. What kind of business should I look for?"
+- If only location is missing → "Got it — plumbers. What city or area?"
+- If both missing → standard "what kind of business and what area?"
+
+**3. Statewide aggregation.** `_logan_run()`:
+- If user said "all over arkansas", Logan fans out across 4 anchor
+  cities (`STATE_ANCHOR_CITIES['arkansas']` = Little Rock, Fayetteville,
+  Fort Smith, Conway)
+- Aggregates results across all anchors
+- Applies post-filters (no_website, has_email, etc.) across the
+  aggregate
+- Honest message: *"Heads up — OSM rarely has email on file. Of the N
+  I'm showing, only M have an email confirmed; the rest are good
+  candidates by other signals."*
+
+**4. Context stitching.** `_stitch_user_context()`: when a partner
+asks and the user replies with just "plumbers", Logan re-loads the
+ORIGINAL request from the console and parses both together. So
+"find me 100 leads no website all over arkansas" + "plumbers" gives
+Logan the full picture.
+
+**5. Logan affinity override.** `route_command()`: if the user's
+message has clear lead-search signal (category + location, or
+filters + category, or contains "leads/prospects/clients") → route
+to Logan regardless of keyword scoring. Fixes the case where
+"50 plumbers all over arkansas with no website" got hijacked to Sage
+because of the word "website".
+
+### State anchor cities (top 16 states)
+
+Hardcoded list of 3-4 anchor cities per state for statewide
+discovery: Arkansas, Texas, California, Florida, New York, Illinois,
+Georgia, Tennessee, Missouri, Oklahoma, Louisiana, Mississippi,
+Alabama, Kentucky, North/South Carolina. Other states fall back to
+the parsed city or the agency profile's default area.
+
+### Live verification (4 scenarios)
+
+```
+A. "find me 100 leads with no website but with an email from all
+   over arkansas" → Logan acknowledges all 4 fields (count, no
+   website, email, Arkansas) and asks ONLY for business type ✓
+B. User answers "plumbers" → Logan stitches with original message,
+   scans 4 Arkansas anchor cities, applies no-website + has-email
+   filters across aggregate, reports honestly (0 with-email matches
+   in OSM) ✓
+C. "50 plumbers all over arkansas with no website" → runs
+   immediately, no question (Logan affinity wins over Sage's
+   "website" keyword match), finds 4 candidates ✓
+D. "find me clients" (ambiguous) → still asks standard question ✓
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+clean. Christian Kovac safe.
+
+### Safety perimeter unchanged
+
+- ❌ No new data files. No new endpoints. No new Python deps.
+- ❌ No publishing. No auto-send. No live changes.
+- ✅ Statewide aggregation uses the same OSM discovery calls already
+  approved since v8.9.1 — just runs them 4× across anchor cities.
+- ✅ Honest reporting: when filters narrow results to 0, Logan says
+  so plainly and explains why (OSM doesn't always have email).
+
+### Same upgrade for other partners — TODO
+
+This version fixes Logan because that's the partner the user
+explicitly complained about. The same "parse first, ask only what's
+missing, acknowledge what's there" pattern should apply to Sage,
+Parker, Video, and YouTube. Left for a follow-up version — the user
+can guide which one most needs it next.
 
 ---
 

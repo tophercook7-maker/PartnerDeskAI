@@ -1090,8 +1090,14 @@ _OLIVIA_HANDOFFS: dict[str, str] = {
 }
 
 
-def _format_partner_question(partner_id: str) -> str:
-    """Resolve template placeholders in the question text."""
+def _format_partner_question(partner_id: str, user_text: str = "") -> str:
+    """
+    v12.9: smart question — acknowledges what the user already said
+    and asks only for what's missing. For Logan, this means parsing
+    count/filters/location/category first, then asking only the gap.
+    """
+    if partner_id == "logan":
+        return _logan_smart_question(user_text)
     tmpl = PARTNER_QUESTIONS.get(partner_id, "")
     if not tmpl:
         return ""
@@ -1103,6 +1109,64 @@ def _format_partner_question(partner_id: str) -> str:
         )
     except Exception:
         return tmpl
+
+
+def _logan_smart_question(user_text: str) -> str:
+    """
+    Smart Logan question:
+      - Parse the user's text for count/filters/location/category
+      - Acknowledge what was understood
+      - Ask only for what's actually missing
+    Returns "" (empty string) if we have enough to run without asking —
+    in that case the caller should fall through to running directly.
+    """
+    parsed = _parse_logan_full(user_text)
+
+    # What do we have?
+    have_category = bool(parsed["category"])
+    have_location = bool(parsed["city"]) or bool(parsed["state"])
+
+    # Build a human acknowledgement of what's pinned down.
+    parts: list[str] = []
+    if parsed["count"] != 10:
+        parts.append(f"up to {parsed['count']}")
+    nice_filter = {
+        "no_website":      "no website",
+        "has_email":       "has an email",
+        "facebook_only":   "Facebook only",
+        "weak_presence":   "weak web presence",
+        "no_email":        "no email",
+        "no_phone":        "no phone",
+    }
+    for f in parsed["filters"]:
+        parts.append(nice_filter.get(f, f))
+    if parsed["is_statewide"] and parsed["state"]:
+        parts.append(f"statewide {parsed['state'].title()}")
+    elif parsed["state"] and parsed["city"]:
+        parts.append(f"{parsed['city']}, {parsed['state'].title()}")
+    elif parsed["state"]:
+        parts.append(parsed["state"].title())
+    elif parsed["city"]:
+        parts.append(parsed["city"])
+    if parsed["category"]:
+        parts.append(parsed["category"])
+
+    ack = ", ".join(parts) if parts else ""
+
+    if have_category and have_location:
+        # Nothing missing — caller should run directly.
+        return ""
+    if not have_category and not have_location:
+        # Nothing pinned — full question.
+        if ack:
+            return (f"Got it — {ack}. "
+                    "What kind of business should I look for, and what city or area?")
+        return ("Sure thing. What kind of business should I look for, "
+                "and what city or area?")
+    if not have_category:
+        return (f"Got it — {ack}. What kind of business should I look for?")
+    # Missing location only
+    return (f"Got it — {ack}. What city or area?")
 
 
 def _find_pending_partner() -> str | None:
@@ -1170,6 +1234,280 @@ def _parse_logan_request(text: str) -> tuple[str | None, str | None]:
     return s, None
 
 
+# ----- v12.9: comprehensive Logan parser -------------------------------
+# The v12.8 parser only handled "X in Y". The real complaint was that
+# Logan ignored everything the user already said. v12.9 pulls structured
+# fields from the user's free text so Logan only has to ask for what's
+# actually missing.
+
+# US state abbreviation + name → canonical lowercase full name.
+US_STATE_LOOKUP: dict[str, str] = {
+    "al": "alabama", "alabama": "alabama",
+    "ak": "alaska", "alaska": "alaska",
+    "az": "arizona", "arizona": "arizona",
+    "ar": "arkansas", "arkansas": "arkansas",
+    "ca": "california", "california": "california",
+    "co": "colorado", "colorado": "colorado",
+    "ct": "connecticut", "connecticut": "connecticut",
+    "de": "delaware", "delaware": "delaware",
+    "fl": "florida", "florida": "florida",
+    "ga": "georgia", "georgia": "georgia",
+    "hi": "hawaii", "hawaii": "hawaii",
+    "id": "idaho", "idaho": "idaho",
+    "il": "illinois", "illinois": "illinois",
+    "in": "indiana", "indiana": "indiana",
+    "ia": "iowa", "iowa": "iowa",
+    "ks": "kansas", "kansas": "kansas",
+    "ky": "kentucky", "kentucky": "kentucky",
+    "la": "louisiana", "louisiana": "louisiana",
+    "me": "maine", "maine": "maine",
+    "md": "maryland", "maryland": "maryland",
+    "ma": "massachusetts", "massachusetts": "massachusetts",
+    "mi": "michigan", "michigan": "michigan",
+    "mn": "minnesota", "minnesota": "minnesota",
+    "ms": "mississippi", "mississippi": "mississippi",
+    "mo": "missouri", "missouri": "missouri",
+    "mt": "montana", "montana": "montana",
+    "ne": "nebraska", "nebraska": "nebraska",
+    "nv": "nevada", "nevada": "nevada",
+    "nh": "new hampshire", "new hampshire": "new hampshire",
+    "nj": "new jersey", "new jersey": "new jersey",
+    "nm": "new mexico", "new mexico": "new mexico",
+    "ny": "new york", "new york": "new york",
+    "nc": "north carolina", "north carolina": "north carolina",
+    "nd": "north dakota", "north dakota": "north dakota",
+    "oh": "ohio", "ohio": "ohio",
+    "ok": "oklahoma", "oklahoma": "oklahoma",
+    "or": "oregon", "oregon": "oregon",
+    "pa": "pennsylvania", "pennsylvania": "pennsylvania",
+    "ri": "rhode island", "rhode island": "rhode island",
+    "sc": "south carolina", "south carolina": "south carolina",
+    "sd": "south dakota", "south dakota": "south dakota",
+    "tn": "tennessee", "tennessee": "tennessee",
+    "tx": "texas", "texas": "texas",
+    "ut": "utah", "utah": "utah",
+    "vt": "vermont", "vermont": "vermont",
+    "va": "virginia", "virginia": "virginia",
+    "wa": "washington", "washington": "washington",
+    "wv": "west virginia", "west virginia": "west virginia",
+    "wi": "wisconsin", "wisconsin": "wisconsin",
+    "wy": "wyoming", "wyoming": "wyoming",
+}
+
+# Top anchor cities per state — for statewide aggregation Logan can
+# fan OSM queries out across these. Picked for population + spread.
+STATE_ANCHOR_CITIES: dict[str, list[str]] = {
+    "arkansas":    ["Little Rock, AR", "Fayetteville, AR", "Fort Smith, AR", "Conway, AR"],
+    "texas":       ["Houston, TX", "Dallas, TX", "Austin, TX", "San Antonio, TX"],
+    "california":  ["Los Angeles, CA", "San Diego, CA", "San Jose, CA", "San Francisco, CA"],
+    "florida":     ["Jacksonville, FL", "Miami, FL", "Tampa, FL", "Orlando, FL"],
+    "new york":    ["New York, NY", "Buffalo, NY", "Rochester, NY", "Albany, NY"],
+    "illinois":    ["Chicago, IL", "Aurora, IL", "Springfield, IL", "Rockford, IL"],
+    "georgia":     ["Atlanta, GA", "Augusta, GA", "Columbus, GA", "Savannah, GA"],
+    "tennessee":   ["Nashville, TN", "Memphis, TN", "Knoxville, TN", "Chattanooga, TN"],
+    "missouri":    ["Kansas City, MO", "St. Louis, MO", "Springfield, MO", "Columbia, MO"],
+    "oklahoma":    ["Oklahoma City, OK", "Tulsa, OK", "Norman, OK", "Broken Arrow, OK"],
+    "louisiana":   ["New Orleans, LA", "Baton Rouge, LA", "Shreveport, LA", "Lafayette, LA"],
+    "mississippi": ["Jackson, MS", "Gulfport, MS", "Hattiesburg, MS", "Tupelo, MS"],
+    "alabama":     ["Birmingham, AL", "Montgomery, AL", "Mobile, AL", "Huntsville, AL"],
+    "kentucky":    ["Louisville, KY", "Lexington, KY", "Bowling Green, KY", "Owensboro, KY"],
+    "north carolina": ["Charlotte, NC", "Raleigh, NC", "Greensboro, NC", "Durham, NC"],
+    "south carolina": ["Charleston, SC", "Columbia, SC", "Greenville, SC", "Myrtle Beach, SC"],
+}
+
+# Common business categories for keyword detection.
+_LOGAN_CATEGORY_WORDS = (
+    "lawn care", "pressure washing", "pest control", "tree service",
+    "hair salon", "beauty salon", "nail salon", "tattoo shop",
+    "coffee shop", "ice cream shop", "convenience store",
+    "personal trainer", "yoga studio",
+    "plumbers", "plumber", "plumbing",
+    "electricians", "electrician",
+    "roofers", "roofer", "roofing",
+    "landscapers", "landscaping", "landscaper",
+    "lawn", "hvac", "heating", "cooling", "ac",
+    "painters", "painter", "painting",
+    "cleaners", "cleaning", "maid",
+    "salons", "salon", "barbers", "barber",
+    "restaurants", "restaurant", "cafes", "cafe",
+    "gyms", "gym", "fitness",
+    "dentists", "dentist", "doctors", "doctor",
+    "chiropractors", "chiropractor",
+    "lawyers", "lawyer", "attorneys", "attorney",
+    "churches", "church",
+    "florists", "florist",
+    "photographers", "photographer",
+    "bakeries", "bakery", "bakers", "baker",
+    "auto repair", "mechanic", "mechanics",
+    "tire shop", "car wash",
+    "boutique", "clothing store",
+    "jeweler", "jewelry",
+    "bookstore", "books",
+    "thrift store", "antiques",
+    "real estate", "realtor",
+    "accountants", "accountant",
+    "insurance",
+    "vets", "veterinarian", "vet",
+    "pet groomer", "pet store",
+    "daycare", "preschool",
+    "movers", "moving company",
+    "locksmiths", "locksmith",
+)
+
+
+def _parse_logan_full(text: str) -> dict:
+    """
+    v12.9: extract every parseable field from a Logan request.
+
+    Returns a dict:
+        {
+          count:        int       (1-100, default 10),
+          category:     str|None,
+          city:         str|None  (best-guess single city),
+          state:        str|None  (canonical lowercase full name),
+          is_statewide: bool,
+          filters:      list[str] (subset of: no_website, has_email,
+                                   facebook_only, weak_presence,
+                                   no_email, no_phone),
+        }
+    """
+    import re as _re
+    s = (text or "").strip()
+    sl = s.lower()
+
+    # Count — "100 leads" / "30 prospects" / "find me 5 clients"
+    count = 10
+    m = _re.search(
+        r'\b(\d{1,3})\s*(?:leads?|prospects?|clients?|businesses?|results?)?\b',
+        sl,
+    )
+    if m:
+        try:
+            count = max(1, min(100, int(m.group(1))))
+        except ValueError:
+            pass
+
+    # Filters — order doesn't matter; multiple can be set.
+    filters: list[str] = []
+    if any(p in sl for p in ("no website", "without a website", "without website",
+                              "no site", "without a site", "no web", "no online")):
+        filters.append("no_website")
+    if any(p in sl for p in ("with email", "with an email", "has email",
+                              "have email", "have an email", "email address",
+                              "email on file")):
+        filters.append("has_email")
+    if any(p in sl for p in ("facebook only", "just facebook", "fb only",
+                              "facebook page only")):
+        filters.append("facebook_only")
+    if any(p in sl for p in ("weak web", "weak online", "weak presence",
+                              "weak site", "thin website", "dated website",
+                              "old website", "outdated website")):
+        filters.append("weak_presence")
+    if "no email" in sl or "without email" in sl:
+        filters.append("no_email")
+    if "no phone" in sl or "without phone" in sl:
+        filters.append("no_phone")
+
+    # Location — try statewide, city+state, then bare city.
+    state = None
+    is_statewide = False
+    city = None
+
+    # Statewide markers
+    statewide_markers = (
+        "all over", "all across", "throughout", "across",
+        "anywhere in", "around the state", "statewide",
+        "everywhere in",
+    )
+    for marker in statewide_markers:
+        idx = sl.find(marker)
+        if idx == -1:
+            continue
+        rest = sl[idx + len(marker):].strip()
+        # The phrase right after should be a state name (one or two words)
+        candidate1 = rest.split()[:1]
+        candidate2 = " ".join(rest.split()[:2])
+        for cand in (candidate2, " ".join(candidate1)):
+            cand = cand.strip(".,?!").strip()
+            if cand in US_STATE_LOOKUP:
+                state = US_STATE_LOOKUP[cand]
+                is_statewide = True
+                break
+        if is_statewide:
+            break
+
+    # Also catch bare "in Arkansas" with no city specified.
+    if not is_statewide and not city:
+        # Match "in X" / "across X" / "from X" where X is a state name
+        for word in (statewide_markers + ("in", "from", "for")):
+            patt = _re.compile(
+                r'\b' + _re.escape(word) + r'\s+([a-z][a-z\s]+?)(?:\s+(?:with|having|that|who|but|and)|$|[.,?!])',
+                _re.IGNORECASE,
+            )
+            mm = patt.search(sl)
+            if not mm:
+                continue
+            candidate = mm.group(1).strip().lower()
+            # Trim trailing "state" word
+            if candidate.endswith(" state"):
+                candidate = candidate[:-6].strip()
+            if candidate in US_STATE_LOOKUP:
+                state = US_STATE_LOOKUP[candidate]
+                # If marker was "in X" with NO city before, treat as statewide
+                is_statewide = True
+                break
+
+    # City+state: "X, ST" pattern
+    if not is_statewide:
+        cs = _re.search(
+            r'(?:in|near|around|from|at)\s+([a-z][a-z\s]+?),\s*([a-z]{2,})\b',
+            sl,
+        )
+        if cs:
+            city = cs.group(1).strip().title()
+            st_cand = cs.group(2).strip().lower()
+            state = US_STATE_LOOKUP.get(st_cand)
+        else:
+            # Try "in <city> <ST>" without comma (e.g. "in austin tx")
+            cs2 = _re.search(
+                r'(?:in|near|around|from|at)\s+([a-z][a-z\s]+?)\s+(' +
+                "|".join(_re.escape(k) for k in US_STATE_LOOKUP if len(k) == 2) +
+                r')\b',
+                sl,
+            )
+            if cs2:
+                city = cs2.group(1).strip().title()
+                state = US_STATE_LOOKUP.get(cs2.group(2).strip().lower())
+            else:
+                # Try bare "in <city>" (no state)
+                cs3 = _re.search(
+                    r'(?:in|near|around|from|at)\s+([a-z][a-z\s]+?)(?:\s+(?:with|having|that|who|but|and)|$|[.,?!])',
+                    sl,
+                )
+                if cs3:
+                    cand = cs3.group(1).strip()
+                    # Only accept as city if it's not a state name
+                    if cand.lower() not in US_STATE_LOOKUP:
+                        city = cand.title()
+
+    # Category — first match wins
+    category = None
+    for cat in _LOGAN_CATEGORY_WORDS:
+        # word-boundary match
+        if _re.search(r'\b' + _re.escape(cat) + r'\b', sl):
+            category = cat
+            break
+
+    return {
+        "count":        count,
+        "category":     category,
+        "city":         city,
+        "state":        state,
+        "is_statewide": is_statewide,
+        "filters":      filters,
+    }
+
+
 def _parse_video_request(text: str) -> tuple[str | None, str | None]:
     """
     Heuristic parse of video request like 'free mockup for tiktok' →
@@ -1201,11 +1539,87 @@ def _parse_video_request(text: str) -> tuple[str | None, str | None]:
     return (topic or None), platform
 
 
+def _stitch_user_context(latest_answer: str, partner_id: str) -> str:
+    """
+    v12.9: when a partner asks a clarifying question and the user
+    answers, the answer alone often loses context (e.g. user typed
+    "find me 100 leads no website in arkansas" → partner asked
+    "what business type?" → user typed "plumbers"). The partner
+    needs both messages to honor what the user originally said.
+
+    Walks back through console messages to find the most recent
+    USER message before the partner's question, and concatenates it
+    with the latest answer.
+    """
+    msgs = load_messages()
+    # Walk backward. Skip the latest user message we just appended.
+    # Find the partner's pending question, then the user message
+    # immediately before that.
+    found_partner_q = False
+    original = ""
+    for m in reversed(msgs[:-1]):  # exclude the new answer we just appended
+        if not found_partner_q:
+            if m.get("partner") == partner_id and m.get("pending"):
+                found_partner_q = True
+                continue
+            # The most recent partner message MIGHT not be marked
+            # pending anymore (cleared). Also accept if it's just
+            # the partner's most recent message.
+            if m.get("partner") == partner_id:
+                found_partner_q = True
+                continue
+        else:
+            if m.get("role") == "user":
+                original = m.get("text") or ""
+                break
+    if original and original.lower().strip() != latest_answer.lower().strip():
+        return f"{original}. {latest_answer}".strip()
+    return latest_answer
+
+
 def _ask_first_flow(user_msg: dict, primary: str, text: str) -> dict:
     """
     v12.8: Olivia briefly hands off, then the partner asks one
     clarifying question and marks itself pending. No work runs yet.
+    v12.9: Logan can skip the question entirely if the user already
+    specified everything (category + location). In that case we
+    short-circuit to running directly.
     """
+    # v12.9: smart question — Logan only. If Logan has enough to run,
+    # _logan_smart_question returns "" and we run immediately with the
+    # original text as context.
+    question = _format_partner_question(primary, text)
+    if not question and primary == "logan":
+        # The user already told Logan everything they need. Run now.
+        olivia_line = _OLIVIA_HANDOFFS.get(primary, "On it.")
+        olivia_msg = append_message({
+            "role": "olivia", "partner": "olivia", "text": olivia_line,
+        })
+        try:
+            result = start_work(primary, context=text)
+        except Exception as e:
+            err_text = f"Hit a snag: {e}. Want to try again?"
+            err_msg = append_message({
+                "role": primary, "partner": primary, "text": err_text,
+            })
+            return {
+                "chosen_partner":     primary,
+                "secondary_partners": [],
+                "intent":             "error",
+                "messages":           [user_msg, olivia_msg, err_msg],
+                "asked":              False,
+            }
+        return {
+            "chosen_partner":     primary,
+            "secondary_partners": [],
+            "intent":             "follow_up",
+            "messages":           [user_msg, olivia_msg] + list(result.get("messages", [])),
+            "result_card":        result.get("result_card"),
+            "documents":          result.get("documents", []),
+            "asked":              False,
+        }
+
+    # Standard ask-first flow
     olivia_line = _OLIVIA_HANDOFFS.get(
         primary, f"On it. {PARTNERS[primary]['short_name']}, take this."
     )
@@ -1215,7 +1629,9 @@ def _ask_first_flow(user_msg: dict, primary: str, text: str) -> dict:
         "text":    olivia_line,
     })
 
-    question = _format_partner_question(primary)
+    if not question:
+        question = PARTNER_QUESTIONS.get(primary, "What do you want me to focus on?")
+
     # Wrap in the partner's voice so the opener + handoff ack land
     # naturally ("On it, Olivia. Topher — ...").
     voiced = _wrap_with_voice(
@@ -1247,13 +1663,19 @@ def _handle_partner_clarification(partner_id: str, answer: str) -> dict:
     real work with the user's answer as context, and return the
     partner's reply (with result_card so the UI can render bullets +
     next-step button inline).
+    v12.9: combine the user's original request (last user message
+    before the partner's question) with their answer so the partner
+    has the full picture — count, filters, location, etc. that were
+    in the original message.
     """
     user_msg = append_message({
         "role": "user", "partner": "user", "text": answer,
     })
     _clear_pending_flags()
+    # v12.9: stitch the original request + answer for richer context
+    full_context = _stitch_user_context(answer, partner_id)
     try:
-        result = start_work(partner_id, context=answer)
+        result = start_work(partner_id, context=full_context)
     except Exception as e:
         err_text = (
             f"Hm, I tried to start but hit a snag: {e}. Want to "
@@ -1335,6 +1757,28 @@ def route_command(text: str) -> dict:
     # 2. Detect partner
     primary, secondary = _detect_partner(text)
     intent = _classify_intent(text)
+
+    # v12.9: Logan affinity override. If the user clearly described a
+    # lead search (category + location, or strong filters like
+    # "no website" / "with email" alongside any business word),
+    # route to Logan regardless of what keyword scoring picked.
+    # This fixes "50 plumbers all over arkansas with no website"
+    # getting hijacked to Sage because "website" matches Sage's
+    # keyword list.
+    if primary != "olivia":
+        parsed_logan = _parse_logan_full(text)
+        strong_signal = (
+            (parsed_logan["category"] and (parsed_logan["city"] or
+                                             parsed_logan["state"]))
+            or
+            (parsed_logan["filters"] and parsed_logan["category"])
+            or
+            ("leads" in text.lower() or "prospects" in text.lower()
+             or "clients" in text.lower() or "businesses" in text.lower())
+        )
+        if strong_signal:
+            primary = "logan"
+            secondary = []
 
     # v12.8: if the primary partner has an ask-first question
     # registered and isn't already responding to a clarification,
@@ -1575,54 +2019,144 @@ def _start_logan(context: str | None = None) -> dict:
     """Run the v9.1 do_it_all pipeline with the agency-profile defaults.
     Real OSM discovery + bulk-enrich + ranking in one round trip.
 
-    v12.8: if `context` is provided (the user's answer to Logan's
-    clarifying question), parse category + city from it.
+    v12.9: comprehensive parsing of `context` — count, category, city,
+    state, statewide flag, filters. If statewide, fan out across
+    state anchor cities and aggregate. Apply post-filters across
+    aggregated results.
     """
     profile = _agency_profile()
-    category = "plumber"  # OSM-friendly default; user can refine in Logan
+    # Defaults
+    category = "plumber"
     city = profile.get("default_search_area") or "Hot Springs, AR"
+    state = None
+    is_statewide = False
+    count = 10
+    filters: list[str] = []
+
     if context:
-        parsed_cat, parsed_city = _parse_logan_request(context)
-        if parsed_cat: category = parsed_cat
-        if parsed_city: city = parsed_city
-    try:
-        import lead_candidates as _lc
-        result = _lc.do_it_all(category=category, city_state=city, count=10)
-    except Exception as e:
-        msg = append_message({
-            "role": "logan", "partner": "logan",
-            "text": (
-                f"I tried to start hunting in {city} but hit a snag: {e}. "
-                "Open my section and run Find Leads For Me manually with "
-                "the category you want — I'll pick up from there."
-            ),
-            "actions": [{"label": "Open Logan", "kind": "scroll",
-                         "target": "logan-details"}],
-        })
-        return {"ok": False, "partner": "logan", "messages": [msg],
-                "documents": [], "work_item": None,
-                "summary": f"Logan stalled: {e}"}
+        parsed = _parse_logan_full(context)
+        if parsed["category"]:     category = parsed["category"]
+        if parsed["city"]:         city = parsed["city"]
+        if parsed["state"]:        state = parsed["state"]
+        is_statewide = parsed["is_statewide"]
+        count = parsed["count"]
+        filters = parsed["filters"]
+        # If state was parsed without an explicit city, treat as statewide
+        if state and not parsed["city"] and not is_statewide:
+            is_statewide = True
+    return _logan_run(
+        category=category, city=city, state=state,
+        is_statewide=is_statewide, count=count, filters=filters,
+        original_context=context,
+    )
 
-    disc = result.get("discover") or {}
-    picks = result.get("picks") or []
-    osm_n = disc.get("osm_added") or 0
-    rm_n  = disc.get("research_missions_added") or 0
-    total = disc.get("added_count") or 0
 
-    # Build a lead-list document so the shared library shows what Logan did.
-    body_lines = [
-        f"First discovery run — category={category}, area={city}, count=10.",
-        f"OSM hits: {osm_n}. Research missions: {rm_n}. Total queued: {total}.",
-        "",
-        "Top picks:",
-    ]
-    for i, p in enumerate(picks[:5], 1):
+def _logan_run(
+    category: str,
+    city: str,
+    state: str | None,
+    is_statewide: bool,
+    count: int,
+    filters: list[str],
+    original_context: str | None,
+) -> dict:
+    """Execute discovery — single-city or statewide aggregation —
+    apply filters, build result_card + console message."""
+    import lead_candidates as _lc
+
+    # Cap requested count at lead_candidates' MAX_FIND_COUNT per call.
+    # For statewide we split count across anchor cities.
+    per_call_cap = 25
+
+    all_picks: list[dict] = []
+    sources_run: list[str] = []
+    osm_total = 0
+    rm_total = 0
+
+    if is_statewide and state:
+        anchors = STATE_ANCHOR_CITIES.get(state.lower())
+        if not anchors:
+            # Fallback: just use the primary city (state capital / largest)
+            anchors = [city] if city else []
+        # Split count budget across anchors
+        per_city = max(3, min(per_call_cap, count // max(1, len(anchors))))
+        # If filters include has_email, we'll need MORE candidates upstream
+        # since OSM rarely has email — bump per-city to maximize.
+        if "has_email" in filters or "no_website" in filters:
+            per_city = min(per_call_cap, per_city * 2)
+        for anchor in anchors:
+            try:
+                r = _lc.do_it_all(
+                    category=category, city_state=anchor, count=per_city,
+                )
+                all_picks.extend(r.get("picks") or [])
+                disc = r.get("discover") or {}
+                osm_total += int(disc.get("osm_added") or 0)
+                rm_total  += int(disc.get("research_missions_added") or 0)
+                sources_run.append(anchor)
+            except Exception:
+                continue
+    else:
+        try:
+            r = _lc.do_it_all(
+                category=category, city_state=city, count=min(per_call_cap, count),
+            )
+            all_picks = r.get("picks") or []
+            disc = r.get("discover") or {}
+            osm_total = int(disc.get("osm_added") or 0)
+            rm_total  = int(disc.get("research_missions_added") or 0)
+            sources_run = [city]
+        except Exception as e:
+            # Same error-path as v12.2
+            err = append_message({
+                "role": "logan", "partner": "logan",
+                "text": (
+                    f"I tried to start in {city} but hit a snag: {e}. "
+                    "Open my section and run Find Leads For Me manually."
+                ),
+                "actions": [{"label": "Open Logan", "kind": "scroll",
+                             "target": "logan-details"}],
+            })
+            return {"ok": False, "partner": "logan", "messages": [err],
+                    "documents": [], "work_item": None,
+                    "summary": f"Logan stalled: {e}"}
+
+    # Apply filters across the aggregated picks.
+    filtered = _apply_logan_filters(all_picks, filters)
+
+    # Cap to the requested count (after filtering).
+    final_picks = filtered[:count]
+
+    # Build the document body — name list with WHY each stands out.
+    body_lines: list[str] = []
+    place_label = (
+        f"statewide {state.title()}" if (is_statewide and state)
+        else city
+    )
+    body_lines.append(f"Search: category={category}, place={place_label}, count_target={count}.")
+    if filters:
+        nice = {"no_website": "no website", "has_email": "has email",
+                "facebook_only": "Facebook only", "weak_presence": "weak web presence",
+                "no_email": "no email", "no_phone": "no phone"}
+        body_lines.append("Filters: " + ", ".join(nice.get(f, f) for f in filters) + ".")
+    body_lines.append(
+        f"Scanned {len(sources_run)} place"
+        f"{'s' if len(sources_run) != 1 else ''}: {', '.join(sources_run)}."
+    )
+    body_lines.append(
+        f"OSM hits across all places: {osm_total}. "
+        f"Research missions: {rm_total}. "
+        f"Final after filtering: {len(final_picks)} of {len(all_picks)} unfiltered."
+    )
+    body_lines.append("")
+    body_lines.append("Top picks:")
+    for i, p in enumerate(final_picks[:25], 1):
         body_lines.append(
             f"  {i}. {p.get('business_name') or '(unnamed)'} — "
             f"score {p.get('score', 0)} ({p.get('confidence', '?')})"
         )
     doc = create_document({
-        "title":      f"Lead picks — {city} {category}",
+        "title":      f"Lead picks — {place_label} {category}",
         "type":       "lead_list",
         "created_by": "logan",
         "shared_with": ["olivia", "parker"],
@@ -1630,66 +2164,148 @@ def _start_logan(context: str | None = None) -> dict:
         "status":     "ready",
     })
 
-    # Post a Logan message with the picks summary.
-    reply_body = (
-        f"I ran a first pass on **{category}** in **{city}** — OSM gave "
-        f"me {osm_n} real businesses, plus {rm_n} research missions to "
-        f"fill the gap. {len(picks)} ranked picks ready for you. "
-        f"I picked plumbers to start; tell me what category you want next."
+    # Build the Logan message + honest caveats.
+    msg_lines: list[str] = []
+    if is_statewide and state:
+        msg_lines.append(
+            f"I scanned {len(sources_run)} {state.title()} "
+            f"{'cities' if len(sources_run) != 1 else 'city'}"
+            f"{' (' + ', '.join(sources_run) + ')' if sources_run else ''} "
+            f"for **{category}**."
+        )
+    else:
+        msg_lines.append(f"I ran a pass on **{category}** in **{place_label}**.")
+
+    if filters:
+        nice = {"no_website": "no website", "has_email": "with email",
+                "facebook_only": "Facebook only", "weak_presence": "weak web presence",
+                "no_email": "no email yet", "no_phone": "no phone yet"}
+        msg_lines.append(
+            "Filters applied: " + ", ".join(nice.get(f, f) for f in filters) + "."
+        )
+
+    # Honest caveats
+    caveats: list[str] = []
+    if "has_email" in filters:
+        with_email = sum(1 for p in final_picks if (p.get("email") or "").strip())
+        caveats.append(
+            f"Heads up — OSM rarely has email on file. "
+            f"Of the {len(final_picks)} I'm showing, only {with_email} have an email confirmed; "
+            f"the rest are good candidates by other signals (no website, contact route, local fit)."
+        )
+    if "no_website" in filters and not final_picks:
+        caveats.append(
+            "OSM didn't have many no-website businesses for this category here. "
+            "The research missions I queued are search-link stubs — open them to research manually."
+        )
+
+    if caveats:
+        msg_lines.append("")
+        msg_lines.extend(caveats)
+
+    # Picks summary
+    msg_lines.append("")
+    msg_lines.append(
+        f"{len(final_picks)} ranked pick{'s' if len(final_picks) != 1 else ''} ready."
     )
+    if final_picks:
+        msg_lines.append("Top 3:")
+        for i, p in enumerate(final_picks[:3], 1):
+            why = ""
+            flags = p.get("weak_presence_flags") or []
+            if "No website found" in flags: why = "no website"
+            elif "Facebook only" in flags:   why = "Facebook only"
+            elif "Old or weak website" in flags: why = "dated website"
+            name = p.get("business_name") or "(unnamed)"
+            msg_lines.append(f"  {i}. {name}" + (f" — {why}" if why else ""))
+
     msg = append_message({
         "role": "logan", "partner": "logan",
-        "text": _wrap_with_voice("logan", reply_body, "start"),
+        "text": _wrap_with_voice("logan", "\n".join(msg_lines), "start"),
         "actions": [
             {"label": "Open Logan", "kind": "scroll", "target": "logan-details"},
-            {"label": "Show me what's next", "kind": "ask_partner",
-             "partner": "olivia", "prompt": "What should I do next?"},
         ],
     })
 
     wi = _bump_work_item("logan")
 
-    # v12.4: spec-format results card. Plain language ("possible
-    # clients" / "best one is"); top-3 bullets explain WHY they
-    # stand out; next action is one obvious button.
-    bullets: list[str] = []
-    for p in picks[:3]:
+    # Result card — plain bullets per pick
+    rc_bullets: list[str] = []
+    for p in final_picks[:3]:
         name = p.get("business_name") or "(unnamed)"
         flags = p.get("weak_presence_flags") or []
         why = ""
-        if "Facebook only" in flags:
-            why = "on Facebook only"
-        elif "No website found" in flags:
-            why = "no website yet"
-        elif "Old or weak website" in flags:
-            why = "dated website"
-        elif "Gmail/Yahoo/Outlook email" in flags:
-            why = "uses a free email"
-        bullets.append(f"{name}{' — ' + why if why else ''}")
-    if not bullets:
-        bullets = [f"{total} possible client{'s' if total != 1 else ''} added in {city}."]
-    result_card = {
-        "headline":  (
-            f"I found {len(picks)} possible client{'s' if len(picks) != 1 else ''} "
-            f"in {city}."
-        ),
-        "bullets":   bullets,
-        "next_action": {
-            "label":   "See the list",
-            "kind":    "scroll",
-            "target":  "logan-details",
+        if "No website found" in flags: why = "no website yet"
+        elif "Facebook only" in flags:   why = "on Facebook only"
+        elif "Old or weak website" in flags: why = "dated website"
+        elif "Gmail/Yahoo/Outlook email" in flags: why = "uses a free email"
+        rc_bullets.append(f"{name}{' — ' + why if why else ''}")
+    if not rc_bullets:
+        rc_bullets = [f"Scanned {place_label}. {len(all_picks)} candidates pre-filter; "
+                      f"strict filters narrowed to {len(final_picks)}."]
+
+    return {
+        "ok":        True,
+        "partner":   "logan",
+        "messages":  [msg],
+        "documents": [doc],
+        "work_item": wi,
+        "summary":   (f"Logan: {len(final_picks)} ranked clients in "
+                      f"{place_label}{' (' + ', '.join(filters) + ')' if filters else ''}."),
+        "result_card": {
+            "headline":  (
+                f"I found {len(final_picks)} possible client"
+                f"{'s' if len(final_picks) != 1 else ''} in {place_label}."
+            ),
+            "bullets":   rc_bullets,
+            "next_action": {
+                "label":  "See the list",
+                "kind":   "scroll",
+                "target": "logan-details",
+            },
         },
     }
 
-    return {
-        "ok":          True,
-        "partner":     "logan",
-        "messages":    [msg],
-        "documents":   [doc],
-        "work_item":   wi,
-        "summary":     f"Logan found {total} possible clients ({osm_n} from maps + {rm_n} from research).",
-        "result_card": result_card,
-    }
+
+def _apply_logan_filters(picks: list[dict], filters: list[str]) -> list[dict]:
+    """Post-filter aggregated picks per the user's constraints."""
+    if not filters:
+        return list(picks)
+    out: list[dict] = []
+    for p in picks:
+        ws_lower = (p.get("website_status") or "").lower()
+        has_site = bool((p.get("website_url") or "").strip())
+        has_email = bool((p.get("email") or "").strip())
+        has_phone = bool((p.get("phone") or "").strip())
+        flags = p.get("weak_presence_flags") or []
+
+        if "no_website" in filters:
+            # Strict: site URL must be empty
+            if has_site:
+                continue
+        if "has_email" in filters:
+            if not has_email:
+                continue
+        if "no_email" in filters:
+            if has_email:
+                continue
+        if "no_phone" in filters:
+            if has_phone:
+                continue
+        if "facebook_only" in filters:
+            if "Facebook only" not in flags:
+                continue
+        if "weak_presence" in filters:
+            # At least one weak-presence flag, but not strict no-website
+            if not flags:
+                continue
+        out.append(p)
+    # Sort filtered picks by score descending so best survives caps.
+    out.sort(key=lambda p: (
+        -(1 if p.get("ready_for_outreach") else 0),
+        -(p.get("score") or 0),
+    ))
+    return out
 
 
 def _start_sage(context: str | None = None) -> dict:
