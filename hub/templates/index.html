@@ -2145,6 +2145,211 @@
             .office-desk.is-waking .desk-avatar { animation: none; }
         }
 
+        /* ===== v12.6: Simple landing — one task at a time ==============
+           Strips the default view to a greeting + 5 big buttons. The
+           v12.0-v12.5 office room (mission/briefing/desks/console/
+           activity feed) is preserved in DOM but hidden by default
+           via body.simple-mode. Advanced workspaces disclosure stays
+           accessible below. */
+        body.simple-mode #team-office-section,
+        body.simple-mode #today-section,
+        body.simple-mode .h1-subtitle-hint /* if any */ {
+            display: none !important;
+        }
+        /* The h1 + subtitle at the top of the page are noisy in simple
+           mode — collapse them so the greeting is the first thing. */
+        body.simple-mode > h1,
+        body.simple-mode > .subtitle {
+            display: none;
+        }
+
+        .simple-landing {
+            max-width: 36rem;
+            margin: 1.2rem auto 1.6rem;
+            padding: 0 1.2rem;
+        }
+        .simple-landing-inner {
+            display: flex; flex-direction: column;
+            gap: 1rem;
+        }
+        .simple-greeting {
+            font-size: 1.7rem; font-weight: 700;
+            color: #1f2937;
+            line-height: 1.2;
+        }
+        .simple-subtitle {
+            font-size: 1.05rem; color: #475569;
+            margin-top: -0.5rem;
+        }
+        .simple-buttons {
+            display: flex; flex-direction: column;
+            gap: 0.6rem;
+            margin-top: 0.5rem;
+        }
+        .simple-button {
+            display: flex; align-items: center; gap: 0.9rem;
+            width: 100%;
+            padding: 1rem 1.1rem;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            font-family: inherit; text-align: left;
+            cursor: pointer;
+            transition: transform 90ms ease-out,
+                        border-color 90ms,
+                        box-shadow 90ms,
+                        background 90ms;
+        }
+        .simple-button:hover {
+            border-color: #1f2937;
+            background: #fafbfd;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(31,41,55,0.08);
+        }
+        .simple-button:active { transform: translateY(0); }
+        .simple-button .sb-emoji {
+            font-size: 2.1rem;
+            line-height: 1;
+            flex-shrink: 0;
+            width: 2.6rem; height: 2.6rem;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .simple-button .sb-text {
+            display: flex; flex-direction: column; gap: 0.15rem;
+            flex: 1; min-width: 0;
+        }
+        .simple-button .sb-label {
+            font-size: 1.05rem; font-weight: 700; color: #1f2937;
+        }
+        .simple-button .sb-sub {
+            font-size: 0.84rem; color: #64748b; line-height: 1.35;
+        }
+        .simple-button .sb-arrow {
+            font-size: 1.3rem; color: #cbd5e1;
+            flex-shrink: 0;
+            transition: color 90ms, transform 90ms;
+        }
+        .simple-button:hover .sb-arrow {
+            color: #1f2937; transform: translateX(2px);
+        }
+        .simple-footer-hint {
+            margin-top: 0.8rem;
+            font-size: 0.82rem; color: #94a3b8;
+            text-align: center;
+        }
+        .simple-advanced-link {
+            color: #64748b; text-decoration: underline;
+        }
+        .simple-advanced-link:hover { color: #1f2937; }
+        @media (prefers-reduced-motion: reduce) {
+            .simple-button,
+            .simple-button .sb-arrow { transition: none !important; }
+            .simple-button:hover { transform: none; }
+        }
+
+        /* TASK TAKEOVER — full-section panel that appears in place when
+           a simple-button is clicked. Replaces the landing buttons
+           with a single working/result panel until Back is hit. */
+        .task-takeover {
+            max-width: 36rem;
+            margin: 0 auto;
+            padding: 0 1.2rem;
+        }
+        .task-takeover[hidden] { display: none; }
+        body.task-active .simple-landing-inner > *:not(#task-takeover) {
+            display: none;
+        }
+        .tt-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 1.4rem 1.3rem 1.2rem;
+            display: flex; flex-direction: column;
+            gap: 0.8rem; align-items: center; text-align: center;
+            animation: tt-fade-in 220ms ease-out;
+        }
+        @keyframes tt-fade-in {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .tt-card { animation: none; }
+        }
+        .tt-avatar {
+            font-size: 3.6rem; line-height: 1;
+            width: 4.2rem; height: 4.2rem;
+            display: flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #fff8ed 0%, #fff 100%);
+            border: 1px solid #f0d9a6;
+            border-radius: 50%;
+            box-shadow: inset 0 -2px 0 rgba(180,140,40,0.05);
+        }
+        .tt-partner-name {
+            font-size: 0.9rem; color: #64748b;
+            text-transform: uppercase; letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+        .tt-working {
+            font-size: 1.1rem; color: #1f2937; font-weight: 600;
+        }
+        .tt-typing-dots {
+            display: inline-flex; gap: 0.35rem;
+            margin-top: 0.3rem;
+        }
+        .tt-typing-dots span {
+            width: 0.5rem; height: 0.5rem; border-radius: 50%;
+            background: #94a3b8;
+            animation: tt-bounce 1.2s infinite ease-in-out;
+        }
+        .tt-typing-dots span:nth-child(2) { animation-delay: 0.18s; }
+        .tt-typing-dots span:nth-child(3) { animation-delay: 0.36s; }
+        @keyframes tt-bounce {
+            0%, 60%, 100% { opacity: 0.4; transform: translateY(0); }
+            30%           { opacity: 1;   transform: translateY(-0.25rem); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .tt-typing-dots span { animation: none; opacity: 0.7; }
+        }
+
+        .tt-done-badge {
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            background: #d8efd8; color: #2d6a3a;
+            padding: 0.25rem 0.7rem; border-radius: 999px;
+            font-size: 0.78rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.05em;
+        }
+        .tt-headline {
+            font-size: 1.2rem; font-weight: 700; color: #1f2937;
+            line-height: 1.3;
+        }
+        .tt-bullets {
+            text-align: left;
+            margin: 0.4rem 0; padding-left: 1.3rem;
+            font-size: 0.95rem; color: #334155; line-height: 1.5;
+            align-self: stretch;
+        }
+        .tt-bullets li { margin: 0.2rem 0; }
+        .tt-next-btn {
+            padding: 0.7rem 1.4rem;
+            font-size: 1rem; font-weight: 700;
+            background: #1f2937; color: #fff;
+            border: 1px solid #1f2937; border-radius: 8px;
+            cursor: pointer;
+            margin-top: 0.3rem;
+        }
+        .tt-next-btn:hover { background: #111827; }
+        .tt-back-link {
+            font-size: 0.85rem; color: #64748b;
+            background: none; border: none;
+            padding: 0.4rem 0.6rem;
+            cursor: pointer; font-family: inherit;
+            margin-top: 0.2rem;
+        }
+        .tt-back-link:hover { color: #1f2937; text-decoration: underline; }
+        .tt-error {
+            color: #b34a4a; font-size: 0.95rem;
+        }
+
         /* ===== v12.1: Onboarding overlay =============================== */
         .onboarding-overlay {
             position: fixed; inset: 0; z-index: 200;
@@ -3579,7 +3784,7 @@
         .system-sub > *:not(summary):last-child { padding-bottom: 0.75rem; }
     </style>
 </head>
-<body>
+<body class="simple-mode">
     <!-- v12.1: Onboarding overlay. Hidden by default; JS shows it on
          first page load when GET /api/onboarding/state returns
          complete=false. Olivia hosts a 7-step wizard, then a success
@@ -3624,12 +3829,79 @@
          console + 6 cartoon partner desks. Olivia is the dispatcher.
          No external AI; rule-based routing. No auto-send, no publishing,
          no live changes — every action surfaces a card the user clicks. -->
-    <!-- v12.3: AGENCY OFFICE — living office experience. Six desks
-         laid out as a room, each with role-specific decor. Morning
-         briefing card replaces the v12.1 greeting. Activity feed runs
-         alongside the console so collaboration is visible. The Today
-         panel + every partner dashboard now live under "Advanced
-         workspaces" below — the office is the primary surface. -->
+    <!-- v12.6: SIMPLE LANDING — one task at a time. Greeting + 5
+         big buttons + a hidden task-takeover panel. The v12.0-v12.5
+         office room is preserved below (hidden by default; user can
+         opt back in via the body-level class on the body, removed
+         when in simple mode). Click a button → that single workflow
+         takes over until Back is hit. -->
+    <section id="simple-landing" class="simple-landing">
+        <div class="simple-landing-inner">
+            <div class="simple-greeting" id="simple-greeting">Good afternoon, Topher.</div>
+            <div class="simple-subtitle">Pick what we should work on.</div>
+
+            <div class="simple-buttons">
+                <button type="button" class="simple-button" data-simple-task="logan">
+                    <span class="sb-emoji">📍</span>
+                    <span class="sb-text">
+                        <span class="sb-label">Find Clients</span>
+                        <span class="sb-sub">Logan finds local businesses worth reaching out to.</span>
+                    </span>
+                    <span class="sb-arrow" aria-hidden="true">→</span>
+                </button>
+
+                <button type="button" class="simple-button" data-simple-task="sage">
+                    <span class="sb-emoji">🔎</span>
+                    <span class="sb-text">
+                        <span class="sb-label">Check My Website</span>
+                        <span class="sb-sub">Sage walks your site and tells you what to improve first.</span>
+                    </span>
+                    <span class="sb-arrow" aria-hidden="true">→</span>
+                </button>
+
+                <button type="button" class="simple-button" data-simple-task="parker">
+                    <span class="sb-emoji">📣</span>
+                    <span class="sb-text">
+                        <span class="sb-label">Make a Promo</span>
+                        <span class="sb-sub">Parker drafts a friendly promo around your free offer.</span>
+                    </span>
+                    <span class="sb-arrow" aria-hidden="true">→</span>
+                </button>
+
+                <button type="button" class="simple-button" data-simple-task="video">
+                    <span class="sb-emoji">🎬</span>
+                    <span class="sb-text">
+                        <span class="sb-label">Make a Video</span>
+                        <span class="sb-sub">Video Partner writes a short script for review.</span>
+                    </span>
+                    <span class="sb-arrow" aria-hidden="true">→</span>
+                </button>
+
+                <button type="button" class="simple-button" data-simple-task="olivia">
+                    <span class="sb-emoji">🗂️</span>
+                    <span class="sb-text">
+                        <span class="sb-label">Tell Me What's Next</span>
+                        <span class="sb-sub">Olivia looks at the whole team and ranks your top 3.</span>
+                    </span>
+                    <span class="sb-arrow" aria-hidden="true">→</span>
+                </button>
+            </div>
+
+            <div class="simple-footer-hint">
+                Need the full office, command box, and dashboards?
+                <a href="#advanced-workspaces" class="simple-advanced-link">
+                    Open Advanced workspaces below.
+                </a>
+            </div>
+        </div>
+
+        <!-- Task takeover panel — appears in place when a button is clicked. -->
+        <div id="task-takeover" class="task-takeover" hidden></div>
+    </section>
+
+    <!-- v12.3: AGENCY OFFICE — preserved in DOM but HIDDEN BY DEFAULT
+         in v12.6's simple mode. Toggle this back on by removing the
+         body class `simple-mode`. -->
     <section id="team-office-section" class="team-office-section office-room">
         <!-- v12.4: HQ sign + room atmosphere details (water cooler, A/C vent) -->
         <div class="office-head office-head-v124">

@@ -1,6 +1,147 @@
 # PartnerDeskAI Changelog
 
-Newest first. v12.5 is the current shipped version.
+Newest first. v12.6 is the current shipped version.
+
+---
+
+## v12.6 — Strip to one task at a time
+
+After v12.0–v12.5 added layer after layer of polish (voices, briefing,
+mission board, desk decor, animations, results card, staged messages),
+the honest user feedback was "it's still confusing." Adding more
+polish wasn't going to fix it.
+
+**v12.6 reverses course.** Default view is now a single screen with a
+greeting and 5 big buttons. Nothing else. Click a button → that ONE
+workflow takes over the screen until you hit Back.
+
+### The new default view
+
+```
+Good afternoon, Topher.
+Pick what we should work on.
+
+📍 Find Clients
+   Logan finds local businesses worth reaching out to.    →
+
+🔎 Check My Website
+   Sage walks your site and tells you what to improve first. →
+
+📣 Make a Promo
+   Parker drafts a friendly promo around your free offer. →
+
+🎬 Make a Video
+   Video Partner writes a short script for review.        →
+
+🗂️ Tell Me What's Next
+   Olivia looks at the whole team and ranks your top 3.   →
+
+Need the full office, command box, and dashboards?
+[Open Advanced workspaces below.]
+```
+
+That's it. The five plain action labels from v12.4 become the only
+five starting points.
+
+### Click a button → full task takeover
+
+```
+            🔎
+        SAGE SEO PARTNER
+   Sage is checking your website…
+              • • •
+            [← Cancel]
+```
+
+Then the result lands in the same panel:
+
+```
+            🔎
+        SAGE SEO PARTNER
+            ✓ DONE
+   I checked MMS - MixedMakerShop - SEO.
+
+   1. Fix homepage wording
+   2. Add local service terms
+   3. Improve page titles
+   4. Add calls to action
+
+      [Open the checklist]
+       ← Back to home
+```
+
+No other surfaces compete for attention while a task is running.
+
+### Removed from the default view
+
+Everything from v12.0–v12.5 that was visible on the landing screen
+is now hidden by default:
+
+- ❌ Mission whiteboard
+- ❌ Morning briefing card (Olivia greeting)
+- ❌ Six partner desks with decor + animations
+- ❌ Team console / command box
+- ❌ Office activity feed
+- ❌ Team Tasks / Shared Files side panels
+- ❌ Today panel
+- ❌ HQ sign + water cooler / AC vent decor
+
+All of these still exist in the DOM. They're hidden via `body.simple-mode`
+class and accessible through the "Advanced workspaces" disclosure at
+the bottom. Nothing was deleted — just demoted.
+
+### What stays
+
+- **Onboarding wizard** (v12.1) — still gates first-time users
+- **Plain-language replies** (v12.4) — Sage still says "I checked
+  your website. The first thing I'd improve is..."
+- **Result card format** (v12.4) — Done badge + headline + 1.2.3.
+  bullets + next-step button — but now full-screen instead of
+  competing with a console
+- **Advanced workspaces** — single disclosure that still wraps the
+  whole v12.0–v12.5 office room + Today panel + 6 partner sections
+- **System section** — outside Advanced, so Reset Onboarding stays
+  accessible
+- **All backend endpoints** — unchanged
+
+### Honest framing
+
+This is a UI strip-down. The team-of-coworkers metaphor that drove
+v12.0–v12.5 stops being the primary visual. Partners are still
+characters in the working/result text, but they're no longer set
+dressing. If the simple landing turns out to be too plain, the
+advanced workspaces are one click away.
+
+### Live verification (5 tests, all pass)
+
+```
+1. Landing renders 5 simple-buttons with body.simple-mode class
+2. Each partner's start-work endpoint returns a result_card with
+   headline + bullets + next_action (Logan/Sage/Parker/Video/Olivia
+   all verified)
+3. Advanced workspaces disclosure preserved in DOM
+4. /summary, /activity, /briefing endpoints unchanged (back-compat)
+5. /onboarding/state still gates first-time users
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+clean. Christian Kovac safe.
+
+### Safety perimeter unchanged
+
+- ❌ No new endpoints. No new data files. No new Python deps.
+- ❌ No publishing. No auto-send. No live changes.
+- ✅ All hidden surfaces still exist in DOM — removable via removing
+  the `simple-mode` class on the body if you want v12.5's UI back.
+- ✅ Existing endpoints all backward-compatible. Power users using
+  the Hub via API or scripts see no change.
+
+### Notes for future iterations
+
+If "one task at a time" still feels wrong, the next reasonable
+direction is **Option A: strip it to chat only** — drop the buttons
+too and make the whole thing a conversation with Olivia. v12.6 is
+the smaller cut; if you want the bigger one, say so.
 
 ---
 

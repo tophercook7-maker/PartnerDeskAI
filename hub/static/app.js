@@ -9134,3 +9134,165 @@ refreshTeamOffice();
 _initOnboarding();
 // v12.3: poll the activity feed periodically so the office feels alive.
 _startActivityPolling();
+
+// ======================================================================
+// v12.6: Simple landing — one task at a time. Five big buttons.
+// Click one → task-takeover panel replaces the buttons until Back is hit.
+// No new endpoints; uses existing POST /api/team-office/start-work/{partner}.
+// ======================================================================
+
+const _SIMPLE_PARTNER_NAMES = {
+    olivia:  'Olivia Office',
+    logan:   'Logan Leads',
+    sage:    'Sage SEO Partner',
+    parker:  'Parker Promo',
+    video:   'Video Partner',
+    youtube: 'YouTube Growth Partner',
+};
+const _SIMPLE_PARTNER_EMOJI = {
+    olivia: '🗂️', logan: '📍', sage: '🔎',
+    parker: '📣', video: '🎬', youtube: '▶️',
+};
+const _SIMPLE_WORKING_VERBS = {
+    olivia:  'is looking at everyone\'s desk',
+    logan:   'is finding clients',
+    sage:    'is checking your website',
+    parker:  'is writing your promo',
+    video:   'is drafting your video script',
+    youtube: 'is finding video ideas',
+};
+
+function _setSimpleGreeting() {
+    const el = document.getElementById('simple-greeting');
+    if (!el) return;
+    const hour = new Date().getHours();
+    let phrase;
+    if (hour < 5)       phrase = 'Still up, Topher?';
+    else if (hour < 12) phrase = 'Good morning, Topher.';
+    else if (hour < 17) phrase = 'Good afternoon, Topher.';
+    else if (hour < 22) phrase = 'Good evening, Topher.';
+    else                phrase = 'Late night, Topher.';
+    el.textContent = phrase;
+}
+_setSimpleGreeting();
+
+function _showTaskWorking(partnerId) {
+    const tt = document.getElementById('task-takeover');
+    if (!tt) return;
+    document.body.classList.add('task-active');
+    const name  = _SIMPLE_PARTNER_NAMES[partnerId] || partnerId;
+    const emoji = _SIMPLE_PARTNER_EMOJI[partnerId] || '•';
+    const verb  = _SIMPLE_WORKING_VERBS[partnerId] || 'is working';
+    tt.innerHTML =
+        '<div class="tt-card">' +
+          '<div class="tt-avatar">' + emoji + '</div>' +
+          '<div class="tt-partner-name">' + _escape(name) + '</div>' +
+          '<div class="tt-working">' + _escape(name.split(' ')[0]) + ' ' + _escape(verb) + '…</div>' +
+          '<div class="tt-typing-dots"><span></span><span></span><span></span></div>' +
+          '<button type="button" class="tt-back-link" data-tt-back>← Cancel</button>' +
+        '</div>';
+    tt.hidden = false;
+}
+
+function _showTaskResult(partnerId, result) {
+    const tt = document.getElementById('task-takeover');
+    if (!tt) return;
+    document.body.classList.add('task-active');
+    const name  = _SIMPLE_PARTNER_NAMES[partnerId] || partnerId;
+    const emoji = _SIMPLE_PARTNER_EMOJI[partnerId] || '•';
+    const rc    = (result && result.result_card) || {};
+    const headline = rc.headline || (result && result.summary) || 'Done.';
+    const bullets  = Array.isArray(rc.bullets) ? rc.bullets : [];
+    const nextAct  = rc.next_action;
+    const bulletsHtml = bullets.length
+        ? '<ol class="tt-bullets">' +
+            bullets.map(b => '<li>' + _escape(b) + '</li>').join('') +
+          '</ol>'
+        : '';
+    const nextHtml = nextAct && nextAct.label
+        ? '<button type="button" class="tt-next-btn" data-tt-next=\'' +
+          _escape(JSON.stringify(nextAct)) + '\'>' +
+          _escape(nextAct.label) + '</button>'
+        : '';
+    tt.innerHTML =
+        '<div class="tt-card">' +
+          '<div class="tt-avatar">' + emoji + '</div>' +
+          '<div class="tt-partner-name">' + _escape(name) + '</div>' +
+          '<div class="tt-done-badge">✓ Done</div>' +
+          '<div class="tt-headline">' + _escape(headline) + '</div>' +
+          bulletsHtml +
+          nextHtml +
+          '<button type="button" class="tt-back-link" data-tt-back>← Back to home</button>' +
+        '</div>';
+    tt.hidden = false;
+}
+
+function _showTaskError(partnerId, err) {
+    const tt = document.getElementById('task-takeover');
+    if (!tt) return;
+    document.body.classList.add('task-active');
+    const name  = _SIMPLE_PARTNER_NAMES[partnerId] || partnerId;
+    const emoji = _SIMPLE_PARTNER_EMOJI[partnerId] || '•';
+    tt.innerHTML =
+        '<div class="tt-card">' +
+          '<div class="tt-avatar">' + emoji + '</div>' +
+          '<div class="tt-partner-name">' + _escape(name) + '</div>' +
+          '<div class="tt-headline">Something went wrong.</div>' +
+          '<div class="tt-error">' + _escape(String(err)) + '</div>' +
+          '<button type="button" class="tt-back-link" data-tt-back>← Back to home</button>' +
+        '</div>';
+    tt.hidden = false;
+}
+
+function _hideTask() {
+    const tt = document.getElementById('task-takeover');
+    document.body.classList.remove('task-active');
+    if (tt) { tt.hidden = true; tt.innerHTML = ''; }
+}
+
+async function _runSimpleTask(partnerId) {
+    _showTaskWorking(partnerId);
+    try {
+        const r = await fetch(
+            '/api/team-office/start-work/' + encodeURIComponent(partnerId),
+            { method: 'POST' },
+        );
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || ('http ' + r.status));
+        _showTaskResult(partnerId, d);
+    } catch (err) {
+        _showTaskError(partnerId, err.message || err);
+    }
+}
+
+// Single delegator for landing buttons + task-takeover buttons.
+document.addEventListener('click', async (e) => {
+    const simpleBtn = e.target.closest('button[data-simple-task]');
+    const backBtn   = e.target.closest('button[data-tt-back]');
+    const nextBtn   = e.target.closest('button[data-tt-next]');
+    if (simpleBtn) {
+        e.preventDefault();
+        const partnerId = simpleBtn.dataset.simpleTask;
+        await _runSimpleTask(partnerId);
+        return;
+    }
+    if (backBtn) {
+        e.preventDefault();
+        _hideTask();
+        return;
+    }
+    if (nextBtn) {
+        e.preventDefault();
+        let action;
+        try { action = JSON.parse(nextBtn.dataset.ttNext); } catch { return; }
+        // Hide task panel; if action is scroll, let the existing
+        // _runTeamAction handle it. The Advanced workspaces details
+        // wrap most of the scroll targets, so we open Advanced first.
+        _hideTask();
+        const adv = document.getElementById('advanced-workspaces');
+        if (adv && action.kind === 'scroll') adv.open = true;
+        if (typeof _runTeamAction === 'function') {
+            await _runTeamAction(action);
+        }
+    }
+});
