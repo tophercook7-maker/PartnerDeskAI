@@ -1123,7 +1123,8 @@ def _logan_smart_question(user_text: str) -> str:
     parsed = _parse_logan_full(user_text)
 
     # What do we have?
-    have_category = bool(parsed["category"])
+    # v12.10: umbrella categories ALSO count as having a category.
+    have_category = bool(parsed["category"]) or bool(parsed.get("umbrella_subs"))
     have_location = bool(parsed["city"]) or bool(parsed["state"])
 
     # Build a human acknowledgement of what's pinned down.
@@ -1315,6 +1316,35 @@ STATE_ANCHOR_CITIES: dict[str, list[str]] = {
     "south carolina": ["Charleston, SC", "Columbia, SC", "Greenville, SC", "Myrtle Beach, SC"],
 }
 
+# v12.10: umbrella category terms — when the user says "trade
+# business" instead of a specific trade, Logan expands the term into
+# a list of sub-categories and runs them all, aggregating. Keys are
+# matched longest-first so "trade business" wins over "trade".
+CATEGORY_UMBRELLAS: dict[str, list[str]] = {
+    "trade businesses":  ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
+    "trade business":    ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
+    "skilled trades":    ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
+    "service businesses":["plumber", "electrician", "hvac", "landscaper", "cleaners", "handyman"],
+    "service business":  ["plumber", "electrician", "hvac", "landscaper", "cleaners", "handyman"],
+    "local services":    ["plumber", "electrician", "hvac", "landscaper", "cleaners", "handyman"],
+    "local service":     ["plumber", "electrician", "hvac", "landscaper", "cleaners", "handyman"],
+    "home services":     ["plumber", "electrician", "hvac", "roofer", "painter", "landscaper"],
+    "home service":      ["plumber", "electrician", "hvac", "roofer", "painter", "landscaper"],
+    "contractors":       ["plumber", "electrician", "hvac", "roofer", "painter", "carpenter"],
+    "contractor":        ["plumber", "electrician", "hvac", "roofer", "painter", "carpenter"],
+    "blue collar":       ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
+    "tradesmen":         ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
+    "tradespeople":      ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
+    "trades":            ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
+    "trade":             ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
+    "small businesses":  ["restaurant", "salon", "cafe", "shop", "boutique"],
+    "small business":    ["restaurant", "salon", "cafe", "shop", "boutique"],
+    "local businesses":  ["restaurant", "salon", "cafe", "shop", "plumber"],
+    "local business":    ["restaurant", "salon", "cafe", "shop", "plumber"],
+    "any":               ["restaurant", "salon", "plumber", "electrician", "shop"],
+    "anything":          ["restaurant", "salon", "plumber", "electrician", "shop"],
+}
+
 # Common business categories for keyword detection.
 _LOGAN_CATEGORY_WORDS = (
     "lawn care", "pressure washing", "pest control", "tree service",
@@ -1490,21 +1520,124 @@ def _parse_logan_full(text: str) -> dict:
                     if cand.lower() not in US_STATE_LOOKUP:
                         city = cand.title()
 
-    # Category — first match wins
+    # v12.10: more permissive location detection. If we haven't found
+    # a location yet, try several looser shapes.
+    if not state and not city and not is_statewide:
+        # "City, ST" anywhere in the message (no preposition needed)
+        bare_cs = _re.search(
+            r'\b([a-z][a-z\s]+?),\s*([a-z]{2})\b', sl,
+        )
+        if bare_cs:
+            cand_city = bare_cs.group(1).strip()
+            cand_state = bare_cs.group(2).strip().lower()
+            if cand_state in US_STATE_LOOKUP and cand_city not in US_STATE_LOOKUP:
+                city = cand_city.title()
+                state = US_STATE_LOOKUP[cand_state]
+        # "City ST" without comma — try a 2-or-3-word capitalized
+        # sequence followed by a 2-letter state code at the end of the
+        # message (or before a preposition like "with"/"that").
+        if not state and not city:
+            bare_no_comma = _re.search(
+                r'\b([a-z][a-z\s]{2,30}?)\s+(' +
+                "|".join(_re.escape(k) for k in US_STATE_LOOKUP if len(k) == 2) +
+                r')\b(?!\w)',
+                sl,
+            )
+            if bare_no_comma:
+                cand_city = bare_no_comma.group(1).strip()
+                cand_state = bare_no_comma.group(2).strip().lower()
+                # Strip likely-noise leading words from city
+                noise_prefixes = ("find me", "find", "me", "the", "a", "an",
+                                  "near", "in", "at", "from", "for",
+                                  "with", "but", "and", "all over",
+                                  "leads with", "leads", "client", "clients",
+                                  "businesses", "business", "prospect",
+                                  "prospects")
+                for noise in sorted(noise_prefixes, key=len, reverse=True):
+                    if cand_city.startswith(noise + " "):
+                        cand_city = cand_city[len(noise):].strip()
+                if cand_city and cand_city not in US_STATE_LOOKUP:
+                    city = cand_city.title()
+                    state = US_STATE_LOOKUP[cand_state]
+        # Bare state name anywhere in message (treat as statewide)
+        if not state and not city:
+            for word in sorted(US_STATE_LOOKUP, key=len, reverse=True):
+                if len(word) < 4:  # skip 2-letter codes here
+                    continue
+                if _re.search(r'\b' + _re.escape(word) + r'\b', sl):
+                    state = US_STATE_LOOKUP[word]
+                    is_statewide = True
+                    break
+        # Region phrases — "northwest arkansas", "central texas" etc.
+        # treat as statewide for the corresponding state.
+        if not state:
+            region_m = _re.search(
+                r'\b(northwest|southwest|northeast|southeast|north|south|east|west|central|greater)\s+([a-z][a-z\s]+?)\b',
+                sl,
+            )
+            if region_m:
+                region_state = region_m.group(2).strip().lower()
+                # Try to match a state name
+                for word in sorted(US_STATE_LOOKUP, key=len, reverse=True):
+                    if len(word) < 4:
+                        continue
+                    if region_state.startswith(word):
+                        state = US_STATE_LOOKUP[word]
+                        is_statewide = True
+                        break
+
+    # v12.10: post-process city to catch two common shapes that earlier
+    # patterns mis-classify.
+    if city:
+        # (a) leading business category word — "Plumbers Little Rock"
+        # should become "Little Rock" (the category will be parsed
+        # separately a few lines down).
+        for noise_cat in sorted(
+            list(CATEGORY_UMBRELLAS.keys()) + list(_LOGAN_CATEGORY_WORDS),
+            key=len, reverse=True,
+        ):
+            if city.lower().startswith(noise_cat + " "):
+                city = city[len(noise_cat):].strip().title() or None
+                break
+        # (b) "region state" — "Central Texas" should be statewide TX,
+        # not a city called "Central Texas".
+        if city and not state:
+            parts = city.lower().split()
+            regions = {
+                "northwest", "southwest", "northeast", "southeast",
+                "north", "south", "east", "west", "central", "greater",
+            }
+            if len(parts) >= 2 and parts[0] in regions:
+                rest = " ".join(parts[1:])
+                if rest in US_STATE_LOOKUP:
+                    state = US_STATE_LOOKUP[rest]
+                    is_statewide = True
+                    city = None
+
+    # v12.10: Category — umbrellas first (longest match wins), then
+    # specific terms. Umbrellas expand into a sub-category list that
+    # _logan_run iterates over.
     category = None
-    for cat in _LOGAN_CATEGORY_WORDS:
-        # word-boundary match
-        if _re.search(r'\b' + _re.escape(cat) + r'\b', sl):
-            category = cat
+    umbrella_subs: list[str] = []
+    for term in sorted(CATEGORY_UMBRELLAS.keys(), key=len, reverse=True):
+        if _re.search(r'\b' + _re.escape(term) + r'\b', sl):
+            category = term
+            umbrella_subs = list(CATEGORY_UMBRELLAS[term])
             break
+    if not category:
+        for cat in _LOGAN_CATEGORY_WORDS:
+            if _re.search(r'\b' + _re.escape(cat) + r'\b', sl):
+                category = cat
+                break
 
     return {
-        "count":        count,
-        "category":     category,
-        "city":         city,
-        "state":        state,
-        "is_statewide": is_statewide,
-        "filters":      filters,
+        "count":         count,
+        "category":      category,
+        "umbrella_subs": umbrella_subs,
+        "city":          city,
+        "state":         state,
+        "is_statewide":  is_statewide,
+        "filters":       filters,
     }
 
 
@@ -2033,11 +2166,13 @@ def _start_logan(context: str | None = None) -> dict:
     count = 10
     filters: list[str] = []
 
+    umbrella_subs: list[str] = []
     if context:
         parsed = _parse_logan_full(context)
-        if parsed["category"]:     category = parsed["category"]
-        if parsed["city"]:         city = parsed["city"]
-        if parsed["state"]:        state = parsed["state"]
+        if parsed["category"]:       category = parsed["category"]
+        if parsed.get("umbrella_subs"): umbrella_subs = parsed["umbrella_subs"]
+        if parsed["city"]:           city = parsed["city"]
+        if parsed["state"]:          state = parsed["state"]
         is_statewide = parsed["is_statewide"]
         count = parsed["count"]
         filters = parsed["filters"]
@@ -2047,7 +2182,7 @@ def _start_logan(context: str | None = None) -> dict:
     return _logan_run(
         category=category, city=city, state=state,
         is_statewide=is_statewide, count=count, filters=filters,
-        original_context=context,
+        original_context=context, umbrella_subs=umbrella_subs,
     )
 
 
@@ -2059,69 +2194,104 @@ def _logan_run(
     count: int,
     filters: list[str],
     original_context: str | None,
+    umbrella_subs: list[str] | None = None,
 ) -> dict:
     """Execute discovery — single-city or statewide aggregation —
-    apply filters, build result_card + console message."""
+    apply filters, build result_card + console message.
+
+    v12.10: if `umbrella_subs` is provided (e.g. user said "trade
+    business" → ["plumber", "electrician", "hvac", ...]), Logan runs
+    OSM for each sub-category and aggregates.
+    """
     import lead_candidates as _lc
 
-    # Cap requested count at lead_candidates' MAX_FIND_COUNT per call.
-    # For statewide we split count across anchor cities.
     per_call_cap = 25
 
+    # Categories to actually query — list of one (specific) or many
+    # (umbrella expansion).
+    if umbrella_subs:
+        query_categories = list(umbrella_subs)
+    else:
+        query_categories = [category]
+
     all_picks: list[dict] = []
-    sources_run: list[str] = []
+    sources_run: list[tuple[str, str]] = []   # (place, category) pairs
     osm_total = 0
     rm_total = 0
 
     if is_statewide and state:
         anchors = STATE_ANCHOR_CITIES.get(state.lower())
         if not anchors:
-            # Fallback: just use the primary city (state capital / largest)
             anchors = [city] if city else []
-        # Split count budget across anchors
-        per_city = max(3, min(per_call_cap, count // max(1, len(anchors))))
-        # If filters include has_email, we'll need MORE candidates upstream
-        # since OSM rarely has email — bump per-city to maximize.
+        # Budget split: per (anchor × sub-category) call.
+        total_calls = max(1, len(anchors) * len(query_categories))
+        per_call = max(3, min(per_call_cap, count // total_calls))
         if "has_email" in filters or "no_website" in filters:
-            per_city = min(per_call_cap, per_city * 2)
+            per_call = min(per_call_cap, per_call * 2)
         for anchor in anchors:
+            for sub_cat in query_categories:
+                try:
+                    r = _lc.do_it_all(
+                        category=sub_cat, city_state=anchor, count=per_call,
+                    )
+                    all_picks.extend(r.get("picks") or [])
+                    disc = r.get("discover") or {}
+                    osm_total += int(disc.get("osm_added") or 0)
+                    rm_total  += int(disc.get("research_missions_added") or 0)
+                    sources_run.append((anchor, sub_cat))
+                except Exception:
+                    continue
+    else:
+        # Single-place discovery; loop over sub-categories.
+        per_call = min(per_call_cap, max(3, count // max(1, len(query_categories))))
+        for sub_cat in query_categories:
             try:
                 r = _lc.do_it_all(
-                    category=category, city_state=anchor, count=per_city,
+                    category=sub_cat, city_state=city, count=per_call,
                 )
                 all_picks.extend(r.get("picks") or [])
                 disc = r.get("discover") or {}
                 osm_total += int(disc.get("osm_added") or 0)
                 rm_total  += int(disc.get("research_missions_added") or 0)
-                sources_run.append(anchor)
-            except Exception:
+                sources_run.append((city, sub_cat))
+            except Exception as e:
+                # On hard failure of the FIRST sub-category, surface
+                # the error. If later sub-cats fail, continue silently.
+                if not all_picks and len(sources_run) == 0:
+                    err = append_message({
+                        "role": "logan", "partner": "logan",
+                        "text": (
+                            f"I tried to start in {city} but hit a snag: {e}. "
+                            "Open my section and run Find Leads For Me manually."
+                        ),
+                        "actions": [{"label": "Open Logan", "kind": "scroll",
+                                     "target": "logan-details"}],
+                    })
+                    return {"ok": False, "partner": "logan", "messages": [err],
+                            "documents": [], "work_item": None,
+                            "summary": f"Logan stalled: {e}"}
                 continue
-    else:
-        try:
-            r = _lc.do_it_all(
-                category=category, city_state=city, count=min(per_call_cap, count),
-            )
-            all_picks = r.get("picks") or []
-            disc = r.get("discover") or {}
-            osm_total = int(disc.get("osm_added") or 0)
-            rm_total  = int(disc.get("research_missions_added") or 0)
-            sources_run = [city]
-        except Exception as e:
-            # Same error-path as v12.2
-            err = append_message({
-                "role": "logan", "partner": "logan",
-                "text": (
-                    f"I tried to start in {city} but hit a snag: {e}. "
-                    "Open my section and run Find Leads For Me manually."
-                ),
-                "actions": [{"label": "Open Logan", "kind": "scroll",
-                             "target": "logan-details"}],
-            })
-            return {"ok": False, "partner": "logan", "messages": [err],
-                    "documents": [], "work_item": None,
-                    "summary": f"Logan stalled: {e}"}
 
-    # Apply filters across the aggregated picks.
+    # v12.10: dedupe aggregated picks — when umbrellas run multiple
+    # sub-categories, the same business can come back more than once.
+    deduped: list[dict] = []
+    seen_keys: set[str] = set()
+    for p in all_picks:
+        name = (p.get("business_name") or "").strip().lower()
+        loc  = (p.get("city_state") or "").strip().lower()
+        # Use phone or address as a tiebreaker when name is empty
+        # (research-mission stubs).
+        if not name:
+            key = "phrase:" + (p.get("search_phrase") or "")[:80] + "|" + loc
+        else:
+            key = f"{name}|{loc}"
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(p)
+    all_picks = deduped
+
+    # Apply filters across the aggregated (deduped) picks.
     filtered = _apply_logan_filters(all_picks, filters)
 
     # Cap to the requested count (after filtering).
@@ -2133,16 +2303,25 @@ def _logan_run(
         f"statewide {state.title()}" if (is_statewide and state)
         else city
     )
-    body_lines.append(f"Search: category={category}, place={place_label}, count_target={count}.")
+    # Distinct places + sub-categories actually run
+    distinct_places = list(dict.fromkeys(p for p, _ in sources_run))
+    distinct_cats   = list(dict.fromkeys(c for _, c in sources_run))
+    cat_label = category if not umbrella_subs else f"{category} ({', '.join(distinct_cats)})"
+    body_lines.append(f"Search: category={cat_label}, place={place_label}, count_target={count}.")
     if filters:
         nice = {"no_website": "no website", "has_email": "has email",
                 "facebook_only": "Facebook only", "weak_presence": "weak web presence",
                 "no_email": "no email", "no_phone": "no phone"}
         body_lines.append("Filters: " + ", ".join(nice.get(f, f) for f in filters) + ".")
     body_lines.append(
-        f"Scanned {len(sources_run)} place"
-        f"{'s' if len(sources_run) != 1 else ''}: {', '.join(sources_run)}."
+        f"Scanned {len(distinct_places)} place"
+        f"{'s' if len(distinct_places) != 1 else ''}: {', '.join(distinct_places)}."
     )
+    if umbrella_subs:
+        body_lines.append(
+            f"Across {len(distinct_cats)} sub-categor"
+            f"{'ies' if len(distinct_cats) != 1 else 'y'}: {', '.join(distinct_cats)}."
+        )
     body_lines.append(
         f"OSM hits across all places: {osm_total}. "
         f"Research missions: {rm_total}. "
@@ -2167,14 +2346,22 @@ def _logan_run(
     # Build the Logan message + honest caveats.
     msg_lines: list[str] = []
     if is_statewide and state:
+        cat_text = (
+            f"**{category}** (covering {', '.join(distinct_cats)})"
+            if umbrella_subs else f"**{category}**"
+        )
         msg_lines.append(
-            f"I scanned {len(sources_run)} {state.title()} "
-            f"{'cities' if len(sources_run) != 1 else 'city'}"
-            f"{' (' + ', '.join(sources_run) + ')' if sources_run else ''} "
-            f"for **{category}**."
+            f"I scanned {len(distinct_places)} {state.title()} "
+            f"{'cities' if len(distinct_places) != 1 else 'city'}"
+            f"{' (' + ', '.join(distinct_places) + ')' if distinct_places else ''} "
+            f"for {cat_text}."
         )
     else:
-        msg_lines.append(f"I ran a pass on **{category}** in **{place_label}**.")
+        cat_text = (
+            f"**{category}** (covering {', '.join(distinct_cats)})"
+            if umbrella_subs else f"**{category}**"
+        )
+        msg_lines.append(f"I ran a pass on {cat_text} in **{place_label}**.")
 
     if filters:
         nice = {"no_website": "no website", "has_email": "with email",

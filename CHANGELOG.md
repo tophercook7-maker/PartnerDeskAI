@@ -1,6 +1,104 @@
 # PartnerDeskAI Changelog
 
-Newest first. v12.9 is the current shipped version.
+Newest first. v12.10 is the current shipped version.
+
+---
+
+## v12.10 — Umbrella categories + permissive location parsing
+
+User reported v12.9 still had two problems:
+- *"Logan can't figure out what i mean by a trade business"* — the
+  parser only knew specific business words like "plumbers", not
+  umbrella terms like "trade business" or "service business".
+- *"still wants to know what city or area and i've already told him"*
+  — location parsing was too rigid; missed common shapes like "City
+  ST" without a preposition, region phrases like "central texas",
+  and put leading category words ("Plumbers Little Rock") into the
+  city field.
+
+### Umbrella category dictionary
+
+`CATEGORY_UMBRELLAS` maps natural umbrella terms to lists of sub-
+categories that Logan runs in parallel and aggregates:
+
+| Term | Expands to |
+|---|---|
+| trade business / trades / contractors / blue collar | plumber, electrician, hvac, roofer, carpenter, painter |
+| service business / local services | plumber, electrician, hvac, landscaper, cleaners, handyman |
+| home services | plumber, electrician, hvac, roofer, painter, landscaper |
+| small / local business | restaurant, salon, cafe, shop, plumber/boutique |
+| any / anything | restaurant, salon, plumber, electrician, shop |
+
+Matching is longest-first so "trade business" wins over "trade".
+
+### Multi-category aggregation
+
+When an umbrella is detected, `_logan_run()` loops over each sub-
+category × each anchor city. Results are aggregated then **deduped**
+by `(business_name, city_state)` so the same business doesn't appear
+6× (once per sub-category match).
+
+Logan reports what he actually did:
+
+> "I scanned 4 Arkansas cities (Little Rock, Fayetteville, Fort Smith,
+> Conway) for **trade businesses** (covering plumber, electrician,
+> hvac, roofer, carpenter, painter). Filters applied: no website."
+
+### More permissive location parsing
+
+Three new patterns added on top of v12.9's:
+
+1. **"City, ST" anywhere** (no preposition needed) — "russell plumbing
+   little rock, ar" → city="Little Rock", state=Arkansas
+2. **"City ST" without comma** — "plumbers little rock ar" →
+   city="Little Rock", state=Arkansas
+3. **Region phrases** — "northwest arkansas", "central texas",
+   "greater nashville" → statewide for the matching state
+
+Two post-processing fixes:
+
+1. **Strip leading category words** — if parsed city starts with a
+   known business term ("Plumbers Little Rock"), strip it ("Little Rock").
+2. **Region + state collapse** — if city ends up as
+   "Central Texas" / "Northwest Arkansas", convert to statewide Texas
+   / Arkansas instead.
+
+### Live verification (user's actual phrasings)
+
+```
+"find me trade businesses with no website in hot springs ar"
+  → cat=trade businesses (6 subs), city=Hot Springs, state=AR,
+    filters=[no_website]
+  → Logan runs immediately, no question. Returns 6 picks.
+
+"trade businesses all over arkansas no website"
+  → cat=trade businesses (6 subs), state=AR statewide,
+    filters=[no_website]
+  → Logan scans 4 Arkansas cities × 6 sub-categories = 24 OSM calls,
+    dedupes, returns 1 unique business with no website.
+
+"plumbers little rock ar"
+  → cat=plumbers, city=Little Rock, state=AR
+
+"find me leads in central texas"
+  → city=None, state=Texas, statewide=True
+  (region+state correctly collapses)
+
+"service business northwest arkansas"
+  → cat=service business (6 subs), state=AR statewide
+```
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+clean. Christian Kovac safe.
+
+### Safety perimeter unchanged
+
+- ❌ No new data files. No new endpoints. No new Python deps.
+- ❌ No publishing. No auto-send. No live changes.
+- ✅ Umbrella runs use the same OSM discovery calls already approved
+  since v8.9.1 — just runs them per sub-category. Dedup before
+  applying filters prevents the same business from being counted
+  multiple times.
 
 ---
 
