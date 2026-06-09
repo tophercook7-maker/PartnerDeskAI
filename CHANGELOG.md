@@ -1,6 +1,144 @@
 # PartnerDeskAI Changelog
 
-Newest first. v12.10 is the current shipped version.
+Newest first. v12.11 is the current shipped version.
+
+---
+
+## v12.11 — Gmail send integration (Layer 2 — OAuth + auto-send authorized)
+
+**STANDING RULE CHANGE.** The user explicitly waived the no-OAuth and
+no-auto-send rules for this version. v12.11 ships Gmail send through
+the user's own Google Cloud OAuth project. Per-message preview-and-
+confirm is still enforced in the UI; no batched auto-sending.
+
+This is the first Layer 2 integration. Future integrations (Calendar,
+Outlook, Meta posting, LinkedIn, X, Twilio) will each require their
+own explicit authorization the same way.
+
+### What ships
+
+**New `automation/gmail_partner.py`** (+440 LOC) — Gmail OAuth + send
+via stdlib only (urllib + base64 + email.mime.text + email.mime.multipart):
+
+- `save_client_config(client_id, client_secret)` — user pastes their
+  own Google Cloud OAuth credentials. Stored at
+  `data/google_oauth_client.json` (gitignored).
+- `get_authorize_url()` — builds the URL the user opens in a browser
+  to authorize. `access_type=offline` + `prompt=consent` to reliably
+  get a refresh token.
+- `exchange_code(code)` — exchanges the OAuth code for access +
+  refresh tokens. Persists at `data/gmail_tokens.json` (gitignored).
+  Also fetches the user's email address via openid `userinfo` so the
+  UI can show "Connected as ___".
+- `_refresh_if_needed()` — auto-refreshes the access token when it
+  expires (1 hour by default).
+- `send_email(to, subject, body_text, body_html, cc, bcc)` — builds
+  MIME message, base64-urlsafe encodes, POSTs to
+  `gmail.googleapis.com/users/me/messages/send`. Returns message_id +
+  thread_id. Records every send in `data/gmail_send_log.json` (local
+  audit log, gitignored).
+- 1 MiB hard cap on raw message size.
+- Scope kept minimal: `gmail.send` + `openid` + `email`. Does NOT
+  request read access.
+- Disconnect deletes tokens but keeps client config so reconnect is
+  one click.
+
+**6 new endpoints in `hub/app.py`:**
+- `GET /api/gmail/status` — single-call UI summary
+- `POST /api/gmail/configure` — save client_id + client_secret
+- `POST /api/gmail/connect` — return authorize URL
+- `GET /api/gmail/oauth/callback?code=…` — Google redirects here;
+  exchanges code, returns a small HTML success page that auto-closes
+- `POST /api/gmail/send` — send one email; if `lead_id` provided,
+  calls `leads.schedule_follow_up` (v9.2 plumbing)
+- `POST /api/gmail/disconnect` — clears tokens
+- `GET /api/gmail/send-log` — local audit list
+
+**UI integration:**
+- **✉ Gmail** button in the chat header opens a settings panel with
+  full setup instructions linking to the Google Cloud console
+- Settings panel guides through: project creation → enable Gmail API
+  → OAuth consent screen → credentials → paste here
+- Once configured: **Connect Gmail** button opens authorize URL in a
+  new tab. Hub polls `/status` every 3s until the callback completes.
+- Once connected: status pill `✉ your@gmail.com` next to the chat title
+- **Detect-and-augment**: when Gmail is connected, any chat message
+  containing a "Subject:" line (heuristic for Parker drafts and
+  outreach text) gets an inline green **✉ Send via Gmail** button
+- Click → full-screen preview modal with editable To / Subject / Body
+  + a yellow warning ("This sends a real email immediately when you
+  click Send")
+- Confirmation appends to chat: "✓ Sent to … (Gmail message id: …)"
+- All animations honor `prefers-reduced-motion`
+
+**`GMAIL_SETUP.md`** — 6-step guide covering everything from "create
+the Google Cloud project" through "what to do when your token expires
+after 7 days in test mode". Honest about Google's app verification
+process and what test-mode means for refresh token lifetime.
+
+### Live verification (9 endpoint tests, all pass without touching Google)
+
+```
+1. GET /status (fresh)         → configured=false, connected=false
+2. POST /configure             → saves credentials, status reflects it
+3. POST /connect               → returns Google authorize URL with
+                                  correct scopes + redirect_uri
+4. POST /configure with empty  → 400 with helpful detail
+5. POST /send without tokens   → 400 "Not connected to Gmail"
+6. POST /disconnect            → clears tokens
+7. GET /callback (no code)     → 400
+8. GET /send-log               → 200, empty list
+9. Hub HTML serves 4 Gmail
+   DOM nodes (settings btn,
+   status pill, settings panel,
+   send modal)                 → all present
+```
+
+Real OAuth flow not exercised in automated tests — requires actual
+Google account interaction. End-to-end testable by following the
+GMAIL_SETUP.md steps.
+
+py_compile + node --check + module-init smoke all PASS. Leak scan
+clean across the full Gmail diff (extra patterns added for
+`GOCSPX-` client secrets and `ya29.` access tokens — zero hits).
+Christian Kovac safe.
+
+### What's gitignored (CRITICAL — never commit these)
+
+- `data/google_oauth_client.json` — your Client ID + Secret
+- `data/gmail_tokens.json` — access + refresh tokens
+- `data/gmail_send_log.json` — local audit log of every send
+
+Three new gitignore patterns added. Confirmed via `git check-ignore`.
+
+### Safety model after waiver
+
+Rules that REMAIN in effect:
+- ❌ No batch send (one email per click)
+- ❌ No auto-send-without-preview (UI always shows full email + confirm)
+- ❌ No reading other people's email (scope is `gmail.send` only)
+- ❌ No sending as anyone except the authenticated account
+- ❌ No new Python dependencies (stdlib only)
+- ❌ 1 MiB hard cap on message size
+
+Rules explicitly WAIVED for this version only:
+- ✅ OAuth flow with Google
+- ✅ Persistent token storage
+- ✅ Outbound API calls to Gmail
+- ✅ Sending email (after per-message user confirmation)
+
+### What still has to happen for end-to-end
+
+The user has to complete the Google Cloud setup (project + OAuth
+consent + credentials + redirect URI). Code is fully built and
+tested for what it can be tested for; real send requires the user's
+credentials to exist. GMAIL_SETUP.md walks through every step.
+
+### Future Layer 2 work (none yet authorized)
+
+If the user wants to add Calendar / Outlook / Meta posting / LinkedIn /
+X / Twilio, each would need its own explicit authorization the same
+way. They are NOT pre-approved by this version's waiver.
 
 ---
 

@@ -2549,6 +2549,150 @@
         .chat-advanced-link { color: #64748b; text-decoration: underline; }
         .chat-advanced-link:hover { color: #1f2937; }
 
+        /* ===== v12.11: Gmail integration UI ============================ */
+        .gmail-status-pill {
+            font-size: 0.7rem; font-weight: 600;
+            padding: 0.18rem 0.55rem; border-radius: 999px;
+            background: #d8efd8; color: #2d6a3a;
+            margin-right: auto; margin-left: 0.5rem;
+            text-transform: none; letter-spacing: 0;
+        }
+        .gmail-status-pill[data-state="disconnected"] {
+            background: #fff6e0; color: #8a6320;
+        }
+        .gmail-status-pill[data-state="not-configured"] {
+            background: #e2e8f0; color: #475569;
+        }
+
+        /* Settings panel — slides down inside the chat */
+        .gmail-settings-panel {
+            background: #f0f6ff; border: 1px solid #cfe1ff;
+            border-radius: 10px;
+            padding: 0.9rem 1rem;
+            margin: 0.4rem 0;
+            font-size: 0.88rem;
+        }
+        .gmail-settings-panel[hidden] { display: none; }
+        .gmail-settings-panel h3 {
+            margin: 0 0 0.4rem; font-size: 1rem; color: #1c4f8f;
+        }
+        .gmail-settings-panel .gmail-instructions {
+            font-size: 0.82rem; color: #475569; line-height: 1.5;
+            margin-bottom: 0.6rem;
+        }
+        .gmail-settings-panel ol {
+            font-size: 0.82rem; color: #475569; padding-left: 1.2rem;
+            margin: 0.2rem 0 0.6rem;
+        }
+        .gmail-settings-panel code {
+            background: #fff; padding: 0.05rem 0.3rem; border-radius: 3px;
+            font-size: 0.78rem; border: 1px solid #cfe1ff;
+        }
+        .gmail-settings-form { display: flex; flex-direction: column; gap: 0.5rem; }
+        .gmail-settings-form label {
+            font-size: 0.78rem; color: #1c4f8f; font-weight: 600;
+        }
+        .gmail-settings-form input {
+            padding: 0.5rem 0.7rem; font-size: 0.85rem;
+            border: 1px solid #cbd5e1; border-radius: 6px;
+            font-family: inherit;
+        }
+        .gmail-settings-actions {
+            display: flex; gap: 0.4rem; flex-wrap: wrap;
+            margin-top: 0.4rem;
+        }
+        .gmail-btn {
+            padding: 0.45rem 0.9rem;
+            font-size: 0.85rem; font-weight: 600;
+            border-radius: 6px; cursor: pointer; font-family: inherit;
+        }
+        .gmail-btn-primary {
+            background: #1c4f8f; color: #fff; border: 1px solid #1c4f8f;
+        }
+        .gmail-btn-primary:hover { background: #163e72; }
+        .gmail-btn-secondary {
+            background: #fff; color: #1f2937; border: 1px solid #cbd5e1;
+        }
+        .gmail-btn-secondary:hover { background: #f8fafc; }
+        .gmail-btn-danger {
+            background: #fff; color: #b34a4a; border: 1px solid #fde2e2;
+        }
+        .gmail-btn-danger:hover { background: #fff5f5; }
+
+        /* Send button inline on partner message bubbles */
+        .chat-msg-send-btn {
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            margin-top: 0.4rem;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.82rem; font-weight: 700;
+            background: #2d6a3a; color: #fff;
+            border: 1px solid #2d6a3a; border-radius: 6px;
+            cursor: pointer; font-family: inherit;
+        }
+        .chat-msg-send-btn:hover { background: #1e4d28; }
+        .chat-msg-send-btn[disabled] {
+            opacity: 0.55; cursor: not-allowed;
+        }
+
+        /* Full-screen send preview modal */
+        .gmail-send-modal {
+            position: fixed; inset: 0; z-index: 250;
+            background: rgba(31, 41, 55, 0.55);
+            display: flex; align-items: center; justify-content: center;
+            padding: 1rem;
+            overflow-y: auto;
+        }
+        .gmail-send-modal[hidden] { display: none; }
+        .gmail-send-modal-inner {
+            background: #fff; border-radius: 12px;
+            padding: 1.4rem 1.5rem;
+            max-width: 38rem; width: 100%;
+            display: flex; flex-direction: column; gap: 0.55rem;
+            animation: gmail-pop 200ms ease-out;
+        }
+        @keyframes gmail-pop {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .gmail-send-modal-inner { animation: none; }
+        }
+        .gmail-send-modal-title {
+            font-size: 1.05rem; font-weight: 700; color: #1f2937;
+            display: flex; align-items: center; gap: 0.4rem;
+        }
+        .gmail-send-modal-sub {
+            font-size: 0.82rem; color: #64748b; margin-top: -0.2rem;
+        }
+        .gmail-send-modal label {
+            font-size: 0.74rem; font-weight: 600;
+            color: #64748b; margin-bottom: 0.1rem;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .gmail-send-modal input,
+        .gmail-send-modal textarea {
+            padding: 0.55rem 0.75rem;
+            font-size: 0.9rem; font-family: inherit;
+            border: 1px solid #cbd5e1; border-radius: 6px;
+            width: 100%; box-sizing: border-box;
+        }
+        .gmail-send-modal textarea {
+            min-height: 14rem; resize: vertical;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.85rem; line-height: 1.5;
+        }
+        .gmail-send-modal-warn {
+            font-size: 0.78rem; color: #8a6320;
+            background: #fff6e0; padding: 0.4rem 0.6rem;
+            border-radius: 6px; border: 1px solid #f3d28a;
+        }
+        .gmail-send-modal-actions {
+            display: flex; gap: 0.4rem; justify-content: flex-end;
+            margin-top: 0.3rem;
+        }
+        .gmail-send-modal-actions .gmail-btn-primary {
+            font-size: 0.95rem; padding: 0.6rem 1.3rem;
+        }
         /* ===== v12.7: Today's thread + smart next-step ================
            Makes the landing screen evolve as the user works. When
            there's progress today, render the thread + a single smart
@@ -4133,11 +4277,21 @@
     <section id="chat-office" class="chat-office">
         <div class="chat-office-head">
             <span class="chat-office-title">🗂️ Office</span>
+            <!-- v12.11: Gmail status pill — set by JS from /api/gmail/status -->
+            <span id="gmail-status-pill" class="gmail-status-pill" hidden></span>
+            <button type="button" id="gmail-settings-btn" class="chat-reset-btn"
+                    title="Connect your Gmail to actually send outreach.">
+                ✉ Gmail
+            </button>
             <button type="button" id="chat-reset-btn" class="chat-reset-btn"
                     title="Clear the conversation. Leads, projects, files all preserved.">
                 Reset conversation
             </button>
         </div>
+
+        <!-- v12.11: Gmail settings panel + send preview modal -->
+        <div id="gmail-settings-panel" class="gmail-settings-panel" hidden></div>
+        <div id="gmail-send-modal" class="gmail-send-modal" hidden></div>
         <div id="chat-messages" class="chat-messages">
             <div class="muted chat-loading">Olivia is at her desk…</div>
         </div>

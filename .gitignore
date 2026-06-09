@@ -63,6 +63,14 @@ data/onboarding_state.json
 data/.onboarding_state.*.tmp
 data/agency_profile.json
 data/.agency_profile.*.tmp
+# v12.11: Gmail integration — OAuth credentials + tokens + send log
+# (NEVER commit; access to these is access to send mail as you)
+data/google_oauth_client.json
+data/.google_oauth_client.*.tmp
+data/gmail_tokens.json
+data/.gmail_tokens.*.tmp
+data/gmail_send_log.json
+data/.gmail_send_log.*.tmp
 # v9.4: user-imported CSV business lists — never check these in
 data/imports/*.csv
 data/imports/*.CSV

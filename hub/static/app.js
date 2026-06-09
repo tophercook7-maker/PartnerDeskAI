@@ -9363,6 +9363,356 @@ document.addEventListener('click', async (e) => {
 _chatLoadHistory();
 
 // ======================================================================
+// v12.11: Gmail send integration (Layer 2). User explicitly waived
+// the no-OAuth + no-auto-send rules. We still enforce per-message
+// preview-and-confirm in the UI.
+// ======================================================================
+
+let _gmailState = {
+    configured: false,
+    connected:  false,
+    email:      '',
+};
+
+async function _gmailLoadStatus() {
+    try {
+        const r = await fetch('/api/gmail/status');
+        if (!r.ok) return;
+        const d = await r.json();
+        _gmailState.configured = !!d.configured;
+        _gmailState.connected  = !!d.connected;
+        _gmailState.email      = d.email_address || '';
+        _gmailRenderPill();
+        // Re-render chat so existing partner messages can pick up
+        // their Send-via-Gmail button if connected.
+        _chatRender();
+    } catch (err) { /* silent */ }
+}
+
+function _gmailRenderPill() {
+    const el = document.getElementById('gmail-status-pill');
+    if (!el) return;
+    if (_gmailState.connected) {
+        el.hidden = false;
+        el.dataset.state = 'connected';
+        el.textContent = '✉ ' + (_gmailState.email || 'Gmail connected');
+    } else if (_gmailState.configured) {
+        el.hidden = false;
+        el.dataset.state = 'disconnected';
+        el.textContent = '✉ Not connected';
+    } else {
+        el.hidden = true;
+    }
+}
+
+function _gmailOpenSettings() {
+    const el = document.getElementById('gmail-settings-panel');
+    if (!el) return;
+    if (!el.hidden) {
+        el.hidden = true;
+        el.innerHTML = '';
+        return;
+    }
+    const configured = _gmailState.configured;
+    const connected  = _gmailState.connected;
+    const email      = _gmailState.email;
+    const redirect   = 'http://127.0.0.1:8000/api/gmail/oauth/callback';
+
+    let inner;
+    if (connected) {
+        inner =
+            '<h3>✉ Gmail connected</h3>' +
+            '<div class="gmail-instructions">' +
+              'Connected as <strong>' + _escape(email) + '</strong>. ' +
+              'Parker\'s outreach drafts will now show a <strong>Send via Gmail</strong> button.' +
+            '</div>' +
+            '<div class="gmail-settings-actions">' +
+              '<button type="button" class="gmail-btn gmail-btn-danger" data-gmail-action="disconnect">Disconnect</button>' +
+              '<button type="button" class="gmail-btn gmail-btn-secondary" data-gmail-action="close">Close</button>' +
+            '</div>';
+    } else if (configured) {
+        inner =
+            '<h3>✉ Connect your Gmail</h3>' +
+            '<div class="gmail-instructions">' +
+              'Your Google credentials are saved. Click <strong>Connect</strong> ' +
+              'and grant access in the browser tab that opens.' +
+            '</div>' +
+            '<div class="gmail-settings-actions">' +
+              '<button type="button" class="gmail-btn gmail-btn-primary" data-gmail-action="connect">Connect Gmail</button>' +
+              '<button type="button" class="gmail-btn gmail-btn-secondary" data-gmail-action="reconfigure">Change credentials</button>' +
+              '<button type="button" class="gmail-btn gmail-btn-secondary" data-gmail-action="close">Close</button>' +
+            '</div>';
+    } else {
+        inner =
+            '<h3>✉ Set up Gmail sending</h3>' +
+            '<div class="gmail-instructions">' +
+              'PartnerDeskAI needs your own Google Cloud OAuth credentials so ' +
+              'it can send mail as you. Setup is one-time. Full steps in ' +
+              '<code>GMAIL_SETUP.md</code>.' +
+            '</div>' +
+            '<ol>' +
+              '<li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">console.cloud.google.com</a>, create or pick a project.</li>' +
+              '<li>Enable the <strong>Gmail API</strong>.</li>' +
+              '<li>OAuth consent screen: External, add your email as a test user, scope <code>gmail.send</code>.</li>' +
+              '<li>Credentials → <strong>OAuth Client ID</strong> → Web application.</li>' +
+              '<li>Authorized redirect URI: <code>' + _escape(redirect) + '</code></li>' +
+              '<li>Copy the Client ID + Client Secret and paste below.</li>' +
+            '</ol>' +
+            '<form id="gmail-config-form" class="gmail-settings-form">' +
+              '<label for="gmail-cfg-id">Client ID</label>' +
+              '<input id="gmail-cfg-id" name="client_id" required ' +
+                'placeholder="123456789012-abc...apps.googleusercontent.com">' +
+              '<label for="gmail-cfg-secret">Client Secret</label>' +
+              '<input id="gmail-cfg-secret" name="client_secret" required ' +
+                'placeholder="GOCSPX-...">' +
+              '<div class="gmail-settings-actions">' +
+                '<button type="submit" class="gmail-btn gmail-btn-primary">Save credentials</button>' +
+                '<button type="button" class="gmail-btn gmail-btn-secondary" data-gmail-action="close">Cancel</button>' +
+              '</div>' +
+            '</form>';
+    }
+    el.innerHTML = inner;
+    el.hidden = false;
+}
+
+async function _gmailConnect() {
+    try {
+        const r = await fetch('/api/gmail/connect', { method: 'POST' });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+        if (d.authorize_url) {
+            window.open(d.authorize_url, '_blank', 'noopener,noreferrer');
+            // After ~3s start polling for status — the popup will
+            // redirect to the local callback which sets tokens.
+            setTimeout(_gmailPollUntilConnected, 3000);
+        }
+    } catch (err) {
+        alert('Gmail connect failed: ' + (err.message || err));
+    }
+}
+
+async function _gmailPollUntilConnected(attempts) {
+    attempts = attempts || 0;
+    if (attempts > 60) return;  // give up after ~3 min
+    try {
+        const r = await fetch('/api/gmail/status');
+        const d = await r.json();
+        if (d.connected) {
+            _gmailState.connected = true;
+            _gmailState.email = d.email_address || '';
+            _gmailRenderPill();
+            _gmailOpenSettings();  // refresh the panel
+            _chatRender();
+            return;
+        }
+    } catch (err) { /* keep polling */ }
+    setTimeout(function() { _gmailPollUntilConnected(attempts + 1); }, 3000);
+}
+
+async function _gmailDisconnect() {
+    if (!confirm('Disconnect Gmail? You can reconnect any time using the same credentials.')) return;
+    try {
+        await fetch('/api/gmail/disconnect', { method: 'POST' });
+        await _gmailLoadStatus();
+        _gmailOpenSettings();  // close-and-reopen to refresh the panel
+    } catch (err) {
+        alert('Disconnect failed: ' + (err.message || err));
+    }
+}
+
+async function _gmailSaveConfig(clientId, clientSecret) {
+    try {
+        const r = await fetch('/api/gmail/configure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                client_id: clientId, client_secret: clientSecret,
+            }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+        await _gmailLoadStatus();
+        _gmailOpenSettings();  // re-render
+    } catch (err) {
+        alert('Save credentials failed: ' + (err.message || err));
+    }
+}
+
+// Settings button + delegator for actions inside the panel.
+const _gmailSettingsBtn = document.getElementById('gmail-settings-btn');
+if (_gmailSettingsBtn) {
+    _gmailSettingsBtn.addEventListener('click', _gmailOpenSettings);
+}
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-gmail-action]');
+    if (!btn) return;
+    const action = btn.dataset.gmailAction;
+    if (action === 'close') {
+        const el = document.getElementById('gmail-settings-panel');
+        if (el) { el.hidden = true; el.innerHTML = ''; }
+    } else if (action === 'connect') {
+        _gmailConnect();
+    } else if (action === 'disconnect') {
+        _gmailDisconnect();
+    } else if (action === 'reconfigure') {
+        // Clear configured state forcing the form to render again
+        _gmailState.configured = false;
+        _gmailOpenSettings();
+    }
+});
+document.addEventListener('submit', (e) => {
+    const form = e.target.closest('#gmail-config-form');
+    if (!form) return;
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(form).entries());
+    _gmailSaveConfig(data.client_id, data.client_secret);
+});
+
+// ----- Send-via-Gmail button on Parker draft messages ---------------
+// When connected, partner messages whose text contains a draft email
+// (heuristic: contains "Subject:" or is from Parker with promo content)
+// get a Send button. Clicking it opens the preview modal pre-filled.
+
+function _detectGmailDraftFrom(msg) {
+    // Only relevant from partner messages (not user / system).
+    if (!msg || msg.role === 'user' || msg.role === 'system') return null;
+    const text = msg.text || '';
+    // Heuristic: any message containing a "Subject:" line is likely
+    // a draft email. Parker promos also work but we only attach the
+    // button when there's enough structure to extract subject + body.
+    const subjMatch = text.match(/(?:^|\n)\s*Subject:\s*(.+?)(?:\n|$)/i);
+    if (!subjMatch) return null;
+    const subject = subjMatch[1].trim();
+    // Body = everything after the "Subject:" line (single-line) or
+    // after a blank line following Subject.
+    const idx = text.indexOf(subjMatch[0]);
+    let body = text.slice(idx + subjMatch[0].length).trim();
+    // Strip leading newlines / quotes
+    body = body.replace(/^[\s\n>]+/, '');
+    return { subject: subject, body: body };
+}
+
+// Hook into the chat renderer — augment partner messages with a Send
+// button when Gmail is connected AND a draft is detected.
+const _origRenderTeamMessage = (typeof _renderTeamMessage === 'function') ? _renderTeamMessage : null;
+function _augmentMessageWithSendBtn(msgHtml, msg) {
+    if (!_gmailState.connected) return msgHtml;
+    const draft = _detectGmailDraftFrom(msg);
+    if (!draft) return msgHtml;
+    const payload = _escape(JSON.stringify({
+        subject: draft.subject, body: draft.body,
+        message_id: msg.id,
+    }));
+    const btnHtml =
+        '<button type="button" class="chat-msg-send-btn" ' +
+        'data-gmail-draft=\'' + payload + '\'>' +
+        '✉ Send via Gmail' +
+        '</button>';
+    // Insert before closing </div></div> at the end of the bubble.
+    // The chat msg structure: <div class="chat-msg ..."><div class="chat-msg-avatar">...</div><div class="chat-msg-body">...<div class="chat-msg-bubble">...</div>...</div></div>
+    // We want to append AFTER the chat-msg-bubble but inside chat-msg-body.
+    return msgHtml.replace(/(<\/div>\s*<\/div>\s*)$/, btnHtml + '$1');
+}
+
+// Wrap _chatMsgHtml so every rendered partner message goes through
+// the augmenter.
+if (typeof _chatMsgHtml === 'function') {
+    const _origChatMsgHtml = _chatMsgHtml;
+    _chatMsgHtml = function(msg, isPending, resultCard) {
+        const html = _origChatMsgHtml(msg, isPending, resultCard);
+        return _augmentMessageWithSendBtn(html, msg);
+    };
+}
+
+// Send-button delegator
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-gmail-draft]');
+    if (!btn) return;
+    let draft;
+    try { draft = JSON.parse(btn.dataset.gmailDraft); } catch { return; }
+    _gmailOpenSendModal(draft);
+});
+
+function _gmailOpenSendModal(draft) {
+    const el = document.getElementById('gmail-send-modal');
+    if (!el) return;
+    const inner =
+        '<div class="gmail-send-modal-inner">' +
+          '<div class="gmail-send-modal-title">✉ Review &amp; send</div>' +
+          '<div class="gmail-send-modal-sub">' +
+            'You\'ll be sending from <strong>' + _escape(_gmailState.email || 'your Gmail') +
+            '</strong>. Edit anything before hitting Send.' +
+          '</div>' +
+          '<label>To</label>' +
+          '<input id="gmail-send-to" type="email" required placeholder="recipient@example.com">' +
+          '<label>Subject</label>' +
+          '<input id="gmail-send-subject" type="text" required value="' +
+            _escape(draft.subject || '') + '">' +
+          '<label>Body</label>' +
+          '<textarea id="gmail-send-body">' + _escape(draft.body || '') + '</textarea>' +
+          '<div class="gmail-send-modal-warn">' +
+            'This sends a real email from your Gmail account immediately when you click Send.' +
+          '</div>' +
+          '<div class="gmail-send-modal-actions">' +
+            '<button type="button" class="gmail-btn gmail-btn-secondary" data-gmail-action="cancel-send">Cancel</button>' +
+            '<button type="button" class="gmail-btn gmail-btn-primary" data-gmail-action="confirm-send">Send now</button>' +
+          '</div>' +
+        '</div>';
+    el.innerHTML = inner;
+    el.hidden = false;
+    setTimeout(function() {
+        const toEl = document.getElementById('gmail-send-to');
+        if (toEl) toEl.focus();
+    }, 50);
+}
+
+function _gmailCloseSendModal() {
+    const el = document.getElementById('gmail-send-modal');
+    if (el) { el.hidden = true; el.innerHTML = ''; }
+}
+
+document.addEventListener('click', async (e) => {
+    const cancel = e.target.closest('button[data-gmail-action="cancel-send"]');
+    const confirm = e.target.closest('button[data-gmail-action="confirm-send"]');
+    if (cancel) { _gmailCloseSendModal(); return; }
+    if (!confirm) return;
+    const to      = (document.getElementById('gmail-send-to')      || {}).value || '';
+    const subject = (document.getElementById('gmail-send-subject') || {}).value || '';
+    const body    = (document.getElementById('gmail-send-body')    || {}).value || '';
+    if (!to.trim() || !subject.trim() || !body.trim()) {
+        alert('To, Subject, and Body are all required.');
+        return;
+    }
+    confirm.disabled = true;
+    confirm.textContent = 'Sending…';
+    try {
+        const r = await fetch('/api/gmail/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                to: to.trim(), subject: subject.trim(), body: body,
+            }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+        _gmailCloseSendModal();
+        // Append a confirmation message to the chat
+        _teamMessages.push({
+            role: 'olivia', partner: 'olivia',
+            text: '✓ Sent to ' + to + '. (Gmail message id: ' + (d.message_id || '—') + ')',
+        });
+        _chatRender();
+    } catch (err) {
+        confirm.disabled = false;
+        confirm.textContent = 'Send now';
+        alert('Send failed: ' + (err.message || err));
+    }
+});
+
+// Kick off initial Gmail status fetch.
+setTimeout(_gmailLoadStatus, 200);
+
+// ======================================================================
 // v12.6: Simple landing — one task at a time. Five big buttons.
 // Click one → task-takeover panel replaces the buttons until Back is hit.
 // No new endpoints; uses existing POST /api/team-office/start-work/{partner}.

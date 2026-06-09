@@ -55,6 +55,7 @@ import video_partner as vp_mod  # noqa: E402
 import seo_partner as sage_mod  # noqa: E402  (v10.0: Sage SEO Partner)
 import team_office as team_mod  # noqa: E402  (v11.0: Team Office command system)
 import onboarding as onboarding_mod  # noqa: E402  (v12.1: automated onboarding)
+import gmail_partner as gmail_mod    # noqa: E402  (v12.11: Gmail send integration — Layer 2)
 import lead_candidates as cand_mod  # noqa: E402
 import overpass_discovery as overpass_mod  # noqa: E402  (v8.9: OSM Overpass client)
 import discovery as discovery_mod  # noqa: E402  (v9.3: pluggable provider registry)
@@ -1351,6 +1352,30 @@ class OnboardingCompleteIn(BaseModel):
     default_search_area: str | None = None
 
 
+# v12.11: Gmail integration models (Layer 2)
+class GmailConfigIn(BaseModel):
+    """v12.11: user pastes their Google Cloud OAuth Client ID + Secret."""
+    client_id:     str
+    client_secret: str
+    redirect_uri:  str | None = None
+
+
+class GmailSendIn(BaseModel):
+    """v12.11: send one email. The UI shows the user a preview first;
+    this endpoint just transmits what was confirmed.
+
+    `lead_id` is optional — when set, the lead's outreach_status is
+    flipped to 'contacted' + schedule_follow_up runs (v9.2 plumbing).
+    """
+    to:        str
+    subject:   str
+    body:      str          # plain text
+    body_html: str | None = None
+    cc:        str | None = None
+    bcc:       str | None = None
+    lead_id:   str | None = None
+
+
 class ScoutLeadIn(BaseModel):
     """v7.28: scout-queue input. All optional so PUT can omit fields.
     Server's scout_mod._clean enforces business_name required +
@@ -1774,6 +1799,128 @@ def api_onboarding_reset() -> dict:
     reports, documents, work items, partner profiles all preserved.
     Re-running the wizard pre-fills with the user's last saved answers."""
     return onboarding_mod.reset()
+
+
+# ---- v12.11: Gmail send integration (Layer 2 — OAuth + send) --------
+# User explicitly waived the standing no-OAuth / no-auto-send rules
+# for this module. Per-message preview-and-confirm still enforced in
+# the UI; this endpoint only transmits what the user confirmed.
+
+@app.get("/api/gmail/status")
+def api_gmail_status() -> dict:
+    """v12.11: single-call summary so the UI can decide what to show
+    (configure pane / connect button / connected status pill)."""
+    return gmail_mod.status()
+
+
+@app.post("/api/gmail/configure")
+def api_gmail_configure(body: GmailConfigIn) -> dict:
+    """v12.11: save the user's Google Cloud OAuth Client ID + Secret
+    to data/google_oauth_client.json (gitignored)."""
+    try:
+        return gmail_mod.save_client_config(
+            body.client_id, body.client_secret, body.redirect_uri,
+        )
+    except gmail_mod.GmailError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/gmail/connect")
+def api_gmail_connect() -> dict:
+    """v12.11: return the URL the user opens in their browser to
+    authorize the app with Google. After they grant permission Google
+    redirects to /api/gmail/oauth/callback with the code."""
+    try:
+        return {"authorize_url": gmail_mod.get_authorize_url(state="ok")}
+    except gmail_mod.GmailError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/gmail/oauth/callback")
+def api_gmail_oauth_callback(code: str = "", state: str = "",
+                              error: str = "") -> dict:
+    """v12.11: Google redirects here after the user authorizes (or
+    refuses). On success exchange the code for tokens and store them.
+    Returns a small HTML success page so the user knows they can close
+    the tab."""
+    if error:
+        # User refused or Google reported an error
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": error,
+                     "hint": "Authorization was declined or failed. Try again from the chat."},
+        )
+    if not code:
+        raise HTTPException(status_code=400, detail="missing authorization code")
+    try:
+        tokens = gmail_mod.exchange_code(code)
+    except gmail_mod.GmailError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    # Return a tiny HTML page that closes itself / nudges the user back
+    # to the Hub. Doing this via a small inline HTML response so we
+    # don't need a separate template.
+    html = (
+        "<!doctype html><meta charset='utf-8'>"
+        "<title>Connected</title>"
+        "<style>body{font-family:system-ui;background:#fff8ed;"
+        "color:#1f2937;padding:2rem;text-align:center;}"
+        ".ok{font-size:3rem;color:#2d6a3a;}h1{font-size:1.3rem;}"
+        "a{color:#1c4f8f;}</style>"
+        "<div class='ok'>✓</div>"
+        f"<h1>Connected as {tokens.get('email_address', 'your Gmail account')}</h1>"
+        "<p>You can close this tab and head back to the chat.</p>"
+        "<p><a href='/'>← Back to PartnerDeskAI</a></p>"
+        "<script>setTimeout(function(){window.close();},2500);</script>"
+    )
+    return HTMLResponse(html)
+
+
+@app.post("/api/gmail/disconnect")
+def api_gmail_disconnect() -> dict:
+    """v12.11: delete the stored Gmail tokens. Client config preserved
+    so the user can reconnect with the same Google project."""
+    return gmail_mod.disconnect()
+
+
+@app.post("/api/gmail/send")
+def api_gmail_send(body: GmailSendIn) -> dict:
+    """v12.11: send ONE email. User has already confirmed via the
+    preview modal in the UI; this endpoint just transmits. After a
+    successful send, if `lead_id` was provided, the lead's outreach
+    state is updated via the v9.2 follow-up plumbing."""
+    try:
+        result = gmail_mod.send_email(
+            to=body.to,
+            subject=body.subject,
+            body_text=body.body,
+            body_html=body.body_html,
+            cc=body.cc,
+            bcc=body.bcc,
+        )
+    except gmail_mod.GmailError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # v12.11: hook into the existing v9.2 follow-up tracking. If the
+    # caller passed a lead_id, schedule a follow-up so this lead
+    # appears in the v9.2 due list 3 days from now.
+    if body.lead_id:
+        try:
+            leads_mod.schedule_follow_up(body.lead_id, days=3)
+            result["lead_updated"] = True
+        except Exception as e:
+            result["lead_updated"] = False
+            result["lead_update_error"] = str(e)
+
+    return result
+
+
+@app.get("/api/gmail/send-log")
+def api_gmail_send_log(limit: int = 50) -> dict:
+    """v12.11: list of recently-sent emails. Local audit log."""
+    if limit < 1: limit = 1
+    if limit > 1000: limit = 1000
+    items = gmail_mod.load_send_log(limit=limit)
+    return {"items": items, "count": len(items)}
 
 
 # ---- v11.0: Team Office command system -------------------------------
