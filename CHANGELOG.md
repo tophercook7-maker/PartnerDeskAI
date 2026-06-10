@@ -1,6 +1,139 @@
 # PartnerDeskAI Changelog
 
-Newest first. v12.11 is the current shipped version.
+Newest first. v13.0 is the current shipped version.
+
+---
+
+## v13.0 — One Screen At A Time (kid-mode default surface)
+
+User feedback after v12.11: *"it's still way too complicated."*
+
+Every prior version added polish, characters, or features. Adding
+wasn't fixing it. The real ask, surfaced through one more question:
+*"a complete system to use that a 7 year old could use."*
+
+v13.0 keeps the full feature set but replaces the visible surface
+with a radically simpler shell — big buttons, one question per screen,
+plain language, zero jargon.
+
+### The new default view
+
+Land on the Hub → 6 colorful task tiles. That's it.
+
+```
+                Good afternoon, Topher.
+            What do you want to do today?
+
+  ┌─────────────────┐   ┌─────────────────┐
+  │       🔍        │   │       ✉️        │
+  │  Find clients   │   │   Send a note   │
+  └─────────────────┘   └─────────────────┘
+  ┌─────────────────┐   ┌─────────────────┐
+  │       📝        │   │       🎬        │
+  │  Make a promo   │   │  Make a video   │
+  └─────────────────┘   └─────────────────┘
+  ┌─────────────────┐   ┌─────────────────┐
+  │       ▶️        │   │       🔎        │
+  │  Video ideas    │   │  Check website  │
+  └─────────────────┘   └─────────────────┘
+
+       Power user mode (everything) ↓
+```
+
+Tap any tile → focused wizard with ONE question per screen, big
+input, plain language suggestion chips, progress dots top right, big
+Next button, back arrow top left.
+
+### "Find clients" wizard
+
+3 steps:
+1. **"What kind of people do you want to find?"** — big input + chips
+   (trade business, plumbers, salons, restaurants, lawn care, roofers,
+   electricians, cafes)
+2. **"Where should we look?"** — big input + chips (Hot Springs AR,
+   Little Rock AR, all over Arkansas, Austin TX, all over Texas)
+3. **"Any filters?"** — 3 big toggleable rows (No website / Has email
+   / Just a Facebook page)
+
+Tap **Find them →** → working screen with spinning 🔍 → result screen:
+
+```
+Found 8 people to talk to.
+
+┌────────────────────────────────┐
+│  501 Plumbing                  │
+│  plumbers · Hot Springs, AR    │
+│  📞 (501) 555-1234             │
+│  no website yet                │
+│                                │
+│  [ ✉ Write a note for them ]   │
+└────────────────────────────────┘
+```
+
+Click **Write a note** → goes straight into the Send Note wizard
+with To / Subject / Body pre-filled from agency profile defaults.
+
+### "Send a note" wizard
+
+One screen: To, Subject, Note (big editable textarea), yellow warning,
+big **✉ Send now** button. Calls the v12.11 Gmail send endpoint.
+Success → big ✓ "Sent!" screen → Back home.
+
+### Promo / Video / YouTube ideas / Website check
+
+Same pattern: one optional question ("What's the promo about?" — or
+skip for defaults), working screen, result screen with the headline +
+bullets from the existing v12.4 `result_card` payload.
+
+### What's preserved
+
+**Everything from v12.0–v12.11.** All partners (Olivia, Logan, Sage,
+Parker, Video, YouTube) still work. All endpoints unchanged. All
+data files unchanged. Gmail integration (v12.11) works inside the
+new wizard. Onboarding (v12.1) still runs on first load.
+
+Power-user mode link at the bottom of the home screen jumps to the
+existing Advanced workspaces disclosure where every prior surface
+(chat, office room, mission board, etc.) still lives. Nothing was
+deleted from the DOM — just hidden by `body.kid-mode`.
+
+### CSS notes
+
+- Base font 1.05rem (up from 0.92), wizard questions 1.65rem, tile
+  labels 1.15rem — touch-friendly everywhere
+- Tile minimum height 8.5rem
+- Soft warm palette per tile (linen, amber, sage, slate, rose)
+- Hover lift + color-coded borders
+- All transitions / animations honor `prefers-reduced-motion`
+
+### Live verification
+
+```
+1. HTML serves with body.kid-mode and all 6 task tiles (find_clients,
+   send_note, make_promo, make_video, video_ideas, check_site)
+2. Backend regression: /summary returns 6 desks + mission OK;
+   /gmail/status returns shape; /lead-candidates/picks works
+3. py_compile + node --check + module-init smoke all PASS
+4. Leak scan clean (0 hits in v13.0 diff)
+5. Christian Kovac safe
+```
+
+### Safety perimeter unchanged
+
+- ❌ No new endpoints. No new data files. No new Python deps.
+- ❌ No publishing beyond v12.11's authorized Gmail send.
+- ✅ Existing onboarding still runs (could be made wizard-style in
+  a follow-up).
+- ✅ All v12.0–v12.11 surfaces preserved in DOM under `body.kid-mode`.
+  Toggleable.
+- ✅ Backend endpoints all backward-compatible.
+
+### What's still on the table
+
+If even this is too complicated, the honest next step is to question
+whether the underlying feature set is right. But the surface is now
+about as simple as I can make it while keeping all the features
+working.
 
 ---
 

@@ -9713,6 +9713,624 @@ document.addEventListener('click', async (e) => {
 setTimeout(_gmailLoadStatus, 200);
 
 // ======================================================================
+// v13.0: KID-MODE — one screen at a time.
+// 6 task tiles on the home screen. Each opens a focused wizard:
+// step → step → working → result. Big buttons, plain language,
+// progress dots, no jargon. All backend calls reuse existing endpoints.
+// ======================================================================
+
+// State machine — current task + step + collected answers.
+const _kid = {
+    task: null,         // 'find_clients' | 'send_note' | 'make_promo' | ...
+    step: 0,            // 0-indexed within task
+    answers: {},        // accumulated per-task
+    leads: [],          // for find_clients result
+};
+
+// Time-aware greeting on first paint.
+(function _kidSetGreeting() {
+    const el = document.getElementById('kid-greeting');
+    if (!el) return;
+    const hour = new Date().getHours();
+    let g;
+    if      (hour < 5)  g = 'Still up, Topher?';
+    else if (hour < 12) g = 'Good morning, Topher.';
+    else if (hour < 17) g = 'Good afternoon, Topher.';
+    else if (hour < 22) g = 'Good evening, Topher.';
+    else                g = 'Late night, Topher.';
+    el.textContent = g;
+})();
+
+// Home / wizard swap
+function _kidShowHome() {
+    document.getElementById('kid-home').hidden = false;
+    document.getElementById('kid-wizard').hidden = true;
+    document.getElementById('kid-wizard').innerHTML = '';
+    _kid.task = null; _kid.step = 0; _kid.answers = {}; _kid.leads = [];
+}
+
+function _kidShowWizard(html) {
+    document.getElementById('kid-home').hidden = true;
+    const wiz = document.getElementById('kid-wizard');
+    wiz.hidden = false;
+    wiz.innerHTML = html;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Common header for wizard steps — back button + progress dots
+function _kidHead(totalSteps, currentStep) {
+    let dots = '';
+    for (let i = 0; i < totalSteps; i++) {
+        const cls = i < currentStep ? 'is-done'
+                  : i === currentStep ? 'is-active' : '';
+        dots += '<div class="kid-wiz-dot ' + cls + '"></div>';
+    }
+    return (
+        '<div class="kid-wiz-head">' +
+          '<button type="button" class="kid-wiz-back" data-kid-action="back">← Back</button>' +
+          '<div class="kid-wiz-dots">' + dots + '</div>' +
+        '</div>'
+    );
+}
+
+// Click delegator — tile clicks open wizards, in-wizard clicks dispatch
+document.addEventListener('click', async (e) => {
+    const tile = e.target.closest('button[data-kid-task]');
+    if (tile) {
+        e.preventDefault();
+        _kid.task = tile.dataset.kidTask;
+        _kid.step = 0;
+        _kid.answers = {};
+        _kid.leads = [];
+        _kidRunCurrentStep();
+        return;
+    }
+    const action = e.target.closest('[data-kid-action]');
+    if (!action) return;
+    const kind = action.dataset.kidAction;
+    if (kind === 'back') {
+        e.preventDefault();
+        if (_kid.step > 0) { _kid.step -= 1; _kidRunCurrentStep(); }
+        else { _kidShowHome(); }
+        return;
+    }
+    if (kind === 'home') { e.preventDefault(); _kidShowHome(); return; }
+    if (kind === 'next') {
+        e.preventDefault();
+        _kidCollectStep();
+        _kid.step += 1;
+        _kidRunCurrentStep();
+        return;
+    }
+    if (kind === 'chip') {
+        e.preventDefault();
+        const target = action.dataset.kidChipTarget;
+        const val    = action.dataset.kidChipValue;
+        const inp = document.getElementById(target);
+        if (inp) { inp.value = val; inp.focus(); }
+        return;
+    }
+    if (kind === 'lead_write_note') {
+        e.preventDefault();
+        const idx = parseInt(action.dataset.kidLeadIdx, 10);
+        const lead = _kid.leads[idx];
+        if (lead) _kidOpenSendNoteForLead(lead);
+        return;
+    }
+    if (kind === 'send_note_now') {
+        e.preventDefault();
+        await _kidSendNote();
+        return;
+    }
+});
+
+// Chips can also auto-advance on click (set value + go next on the chip)
+document.addEventListener('click', (e) => {
+    const chip = e.target.closest('button[data-kid-chip-go]');
+    if (!chip) return;
+    e.preventDefault();
+    const target = chip.dataset.kidChipTarget;
+    const val    = chip.dataset.kidChipValue;
+    const inp = document.getElementById(target);
+    if (inp) inp.value = val;
+    _kidCollectStep();
+    _kid.step += 1;
+    _kidRunCurrentStep();
+});
+
+// Forms submit via Enter
+document.addEventListener('submit', (e) => {
+    const form = e.target.closest('form[data-kid-form]');
+    if (!form) return;
+    e.preventDefault();
+    _kidCollectStep();
+    _kid.step += 1;
+    _kidRunCurrentStep();
+});
+
+// Read whatever is in the current step's inputs into _kid.answers.
+function _kidCollectStep() {
+    const inputs = document.querySelectorAll('[data-kid-collect]');
+    inputs.forEach((el) => {
+        const key = el.dataset.kidCollect;
+        if (el.type === 'checkbox') {
+            _kid.answers[key] = el.checked;
+        } else {
+            _kid.answers[key] = (el.value || '').trim();
+        }
+    });
+}
+
+// ----- Task dispatcher --------------------------------------------------
+
+async function _kidRunCurrentStep() {
+    if (_kid.task === 'find_clients')  return _kidStep_findClients();
+    if (_kid.task === 'send_note')     return _kidStep_sendNote();
+    if (_kid.task === 'make_promo')    return _kidStep_makePromo();
+    if (_kid.task === 'make_video')    return _kidStep_makeVideo();
+    if (_kid.task === 'video_ideas')   return _kidStep_videoIdeas();
+    if (_kid.task === 'check_site')    return _kidStep_checkSite();
+    _kidShowHome();
+}
+
+// ----- FIND CLIENTS wizard ---------------------------------------------
+// Step 0: business type
+// Step 1: where
+// Step 2: filters
+// Step 3: working (auto-runs start_work)
+// Step 4: result list
+
+function _kidStep_findClients() {
+    if (_kid.step === 0) {
+        _kidShowWizard(
+            _kidHead(3, 0) +
+            '<div class="kid-wiz-question">What kind of people do you want to find?</div>' +
+            '<div class="kid-wiz-hint">A business type, or an umbrella like "trade business".</div>' +
+            '<form data-kid-form>' +
+              '<input type="text" id="kid-q-cat" class="kid-wiz-input" ' +
+                'data-kid-collect="category" ' +
+                'value="' + _escape(_kid.answers.category || '') + '" ' +
+                'placeholder="plumbers, salons, cafes..." autofocus required>' +
+              '<div class="kid-wiz-chips">' +
+                ['trade business', 'plumbers', 'salons', 'restaurants',
+                 'lawn care', 'roofers', 'electricians', 'cafes'].map((c) =>
+                  '<button type="button" class="kid-wiz-chip" ' +
+                  'data-kid-action="chip" data-kid-chip-target="kid-q-cat" ' +
+                  'data-kid-chip-value="' + _escape(c) + '">' + _escape(c) + '</button>'
+                ).join('') +
+              '</div>' +
+              '<button type="submit" class="kid-wiz-next">Next →</button>' +
+            '</form>'
+        );
+        return;
+    }
+    if (_kid.step === 1) {
+        _kidShowWizard(
+            _kidHead(3, 1) +
+            '<div class="kid-wiz-question">Where should we look?</div>' +
+            '<div class="kid-wiz-hint">A city, or a whole state like "all over Arkansas".</div>' +
+            '<form data-kid-form>' +
+              '<input type="text" id="kid-q-where" class="kid-wiz-input" ' +
+                'data-kid-collect="where" ' +
+                'value="' + _escape(_kid.answers.where || '') + '" ' +
+                'placeholder="Hot Springs, AR or all over Arkansas" autofocus required>' +
+              '<div class="kid-wiz-chips">' +
+                ['Hot Springs, AR', 'Little Rock, AR', 'all over Arkansas',
+                 'Austin, TX', 'all over Texas'].map((c) =>
+                  '<button type="button" class="kid-wiz-chip" ' +
+                  'data-kid-action="chip" data-kid-chip-target="kid-q-where" ' +
+                  'data-kid-chip-value="' + _escape(c) + '">' + _escape(c) + '</button>'
+                ).join('') +
+              '</div>' +
+              '<button type="submit" class="kid-wiz-next">Next →</button>' +
+            '</form>'
+        );
+        return;
+    }
+    if (_kid.step === 2) {
+        const f = _kid.answers;
+        _kidShowWizard(
+            _kidHead(3, 2) +
+            '<div class="kid-wiz-question">Any filters?</div>' +
+            '<div class="kid-wiz-hint">Pick what matters. Or skip — we\'ll show everyone.</div>' +
+            '<form data-kid-form>' +
+              '<div class="kid-wiz-checks">' +
+                _kidCheckHtml('no_website',    'No website (best for our offer)', f.no_website) +
+                _kidCheckHtml('has_email',     'Has an email on file',            f.has_email) +
+                _kidCheckHtml('facebook_only', 'Just a Facebook page',            f.facebook_only) +
+              '</div>' +
+              '<button type="submit" class="kid-wiz-next">Find them →</button>' +
+            '</form>'
+        );
+        // Toggle on click anywhere in label
+        document.querySelectorAll('.kid-wiz-check').forEach((lbl) => {
+            lbl.addEventListener('click', (e) => {
+                const cb = lbl.querySelector('input[type=checkbox]');
+                if (!cb) return;
+                if (e.target !== cb) cb.checked = !cb.checked;
+                lbl.classList.toggle('is-checked', cb.checked);
+            });
+        });
+        return;
+    }
+    if (_kid.step === 3) {
+        // Working — kick off the backend call
+        _kidShowWizard(
+            _kidHead(3, 2) +
+            '<div class="kid-wiz-working">' +
+              '<div class="kid-wiz-working-icon is-spin">🔍</div>' +
+              '<div class="kid-wiz-working-text">Looking now…</div>' +
+              '<div class="kid-wiz-working-sub">This might take 5–15 seconds. Real businesses, not made up.</div>' +
+            '</div>'
+        );
+        // Compose request string for Logan's natural-language parser.
+        const a = _kid.answers;
+        const filters = [];
+        if (a.no_website)    filters.push('no website');
+        if (a.has_email)     filters.push('with email');
+        if (a.facebook_only) filters.push('facebook only');
+        const filterStr = filters.length ? ' with ' + filters.join(' and ') : '';
+        const requestText = (a.category || 'businesses') + ' in ' +
+                            (a.where || 'Hot Springs, AR') + filterStr;
+        _kidRunFindClients(requestText);
+        return;
+    }
+    if (_kid.step === 4) {
+        // Result list
+        const leads = _kid.leads || [];
+        let html = _kidHead(3, 2) +
+            '<div class="kid-results-headline">' +
+              'Found ' + leads.length + ' ' + (leads.length === 1 ? 'person' : 'people') + ' to talk to.' +
+            '</div>';
+        if (!leads.length) {
+            html +=
+                '<div class="kid-result-card">' +
+                  '<div class="kid-result-card-title">Nothing came back this time.</div>' +
+                  '<div class="kid-result-card-sub">Try a broader category or a bigger area.</div>' +
+                  '<button type="button" class="kid-result-card-action is-info" data-kid-action="back">Try again</button>' +
+                '</div>';
+        } else {
+            html += '<div class="kid-result-cards">';
+            leads.forEach((l, idx) => {
+                const why = (l.weak_presence_flags || [])[0] || '';
+                const whyHtml = why ? '<div class="kid-result-card-why">' + _escape(why) + '</div>' : '';
+                const contact = l.phone || l.email || (l.website_url ? 'website on file' : 'research needed');
+                html +=
+                    '<div class="kid-result-card">' +
+                      '<div class="kid-result-card-title">' + _escape(l.business_name || '(no name)') + '</div>' +
+                      '<div class="kid-result-card-sub">' + _escape(l.category || '') + ' · ' + _escape(l.city_state || '') + '</div>' +
+                      '<div class="kid-result-card-sub">📞 ' + _escape(contact) + '</div>' +
+                      whyHtml +
+                      '<button type="button" class="kid-result-card-action" data-kid-action="lead_write_note" data-kid-lead-idx="' + idx + '">' +
+                        '✉ Write a note for them' +
+                      '</button>' +
+                    '</div>';
+            });
+            html += '</div>';
+        }
+        html += '<button type="button" class="kid-wiz-skip" data-kid-action="home">← Done, back home</button>';
+        _kidShowWizard(html);
+        return;
+    }
+}
+
+function _kidCheckHtml(key, label, checked) {
+    return (
+        '<label class="kid-wiz-check' + (checked ? ' is-checked' : '') + '">' +
+          '<input type="checkbox" data-kid-collect="' + key + '" ' + (checked ? 'checked' : '') + '>' +
+          _escape(label) +
+        '</label>'
+    );
+}
+
+async function _kidRunFindClients(requestText) {
+    try {
+        // Use the existing /command endpoint with Logan-routing.
+        // Send the full natural-language request — Logan's v12.10 parser
+        // handles count + filters + location.
+        const r = await fetch('/api/team-office/command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: requestText }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+        // Pull the top picks from the candidate queue
+        const picksRes = await fetch('/api/lead-candidates/picks?k=12');
+        const picksJ = await picksRes.json();
+        _kid.leads = picksJ.picks || [];
+        _kid.step = 4;
+        _kidRunCurrentStep();
+    } catch (err) {
+        _kidShowWizard(
+            _kidHead(3, 2) +
+            '<div class="kid-wiz-working">' +
+              '<div class="kid-wiz-working-icon">⚠️</div>' +
+              '<div class="kid-wiz-working-text">Something went wrong.</div>' +
+              '<div class="kid-wiz-working-sub">' + _escape(err.message || String(err)) + '</div>' +
+            '</div>' +
+            '<button type="button" class="kid-wiz-next" data-kid-action="back">← Try again</button>'
+        );
+    }
+}
+
+// ----- SEND NOTE for a specific lead -----------------------------------
+function _kidOpenSendNoteForLead(lead) {
+    // Pre-fill a draft from agency profile defaults + lead info
+    const to = (lead.email || '').trim();
+    const subject = 'Quick idea for ' + (lead.business_name || 'your business');
+    const body =
+        'Hi ' + (lead.business_name || 'there') + ' team,\n\n' +
+        'I help local ' + (lead.category || 'businesses') + ' put together a simple, ' +
+        'phone-first homepage that makes it easier for customers to call, ' +
+        'message, and trust the business.\n\n' +
+        'If you\'d like, I can put together a free homepage mockup for ' +
+        (lead.business_name || 'you') + ' — just a clean visual you can keep, ' +
+        'no commitment. Want me to make one?\n\n' +
+        '— Topher';
+    _kid.answers = {
+        to: to, subject: subject, body: body,
+        lead_id: lead.converted_lead_id || '',
+    };
+    _kid.task = 'send_note';
+    _kid.step = 0;
+    _kidStep_sendNote();
+}
+
+function _kidStep_sendNote() {
+    if (_kid.step === 0) {
+        const a = _kid.answers || {};
+        _kidShowWizard(
+            _kidHead(2, 0) +
+            '<div class="kid-wiz-question">Ready to send a note.</div>' +
+            '<div class="kid-wiz-hint">Edit anything you want. Then hit Send.</div>' +
+            '<form data-kid-form>' +
+              '<div class="kid-note-row">' +
+                '<label class="kid-note-label">To</label>' +
+                '<input type="email" class="kid-note-input" ' +
+                  'data-kid-collect="to" value="' + _escape(a.to || '') + '" ' +
+                  'placeholder="them@example.com" required>' +
+              '</div>' +
+              '<div class="kid-note-row">' +
+                '<label class="kid-note-label">Subject</label>' +
+                '<input type="text" class="kid-note-input" ' +
+                  'data-kid-collect="subject" value="' + _escape(a.subject || '') + '" required>' +
+              '</div>' +
+              '<div class="kid-note-row">' +
+                '<label class="kid-note-label">Note</label>' +
+                '<textarea class="kid-note-input kid-note-textarea" ' +
+                  'data-kid-collect="body">' + _escape(a.body || '') + '</textarea>' +
+              '</div>' +
+              '<div class="kid-note-warn">' +
+                '<strong>Heads up:</strong> when you tap Send, this goes out from your Gmail. ' +
+                'No undo. Make sure it\'s right.' +
+              '</div>' +
+              '<button type="button" class="kid-wiz-next" data-kid-action="send_note_now">' +
+                '✉ Send now' +
+              '</button>' +
+            '</form>'
+        );
+        return;
+    }
+    if (_kid.step === 1) {
+        _kidShowWizard(
+            _kidHead(2, 1) +
+            '<div class="kid-wiz-working">' +
+              '<div class="kid-wiz-working-icon">✓</div>' +
+              '<div class="kid-wiz-working-text">Sent!</div>' +
+              '<div class="kid-wiz-working-sub">' +
+                'To ' + _escape(_kid.answers.to || '') +
+              '</div>' +
+            '</div>' +
+            '<button type="button" class="kid-wiz-next" data-kid-action="home">Back home</button>'
+        );
+        return;
+    }
+}
+
+async function _kidSendNote() {
+    _kidCollectStep();
+    const a = _kid.answers;
+    if (!a.to || !a.subject || !a.body) {
+        alert('To, Subject, and Note are all required.');
+        return;
+    }
+    // Check Gmail status first
+    try {
+        const sres = await fetch('/api/gmail/status');
+        const s = await sres.json();
+        if (!s.connected) {
+            alert('Gmail isn\'t connected yet. Open Power user mode (bottom of home) → Gmail to set it up. See GMAIL_SETUP.md for steps.');
+            return;
+        }
+    } catch (err) { /* ignore */ }
+
+    // Show working
+    _kidShowWizard(
+        _kidHead(2, 1) +
+        '<div class="kid-wiz-working">' +
+          '<div class="kid-wiz-working-icon is-spin">✉</div>' +
+          '<div class="kid-wiz-working-text">Sending now…</div>' +
+        '</div>'
+    );
+    try {
+        const r = await fetch('/api/gmail/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                to: a.to, subject: a.subject, body: a.body,
+                lead_id: a.lead_id || null,
+            }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+        _kid.step = 1;
+        _kidStep_sendNote();
+    } catch (err) {
+        _kidShowWizard(
+            _kidHead(2, 1) +
+            '<div class="kid-wiz-working">' +
+              '<div class="kid-wiz-working-icon">⚠️</div>' +
+              '<div class="kid-wiz-working-text">Send failed.</div>' +
+              '<div class="kid-wiz-working-sub">' + _escape(err.message || String(err)) + '</div>' +
+            '</div>' +
+            '<button type="button" class="kid-wiz-next" data-kid-action="back">← Try again</button>'
+        );
+    }
+}
+
+// ----- MAKE PROMO / VIDEO / YT IDEAS / CHECK SITE -----------------------
+// All four follow the same flow: optional topic question → working → result
+
+function _kidStartWorkFlow(opts) {
+    // opts: { partner, question, hint, placeholder, headlinePrefix }
+    if (_kid.step === 0) {
+        _kidShowWizard(
+            _kidHead(1, 0) +
+            '<div class="kid-wiz-question">' + _escape(opts.question) + '</div>' +
+            '<div class="kid-wiz-hint">' + _escape(opts.hint) + '</div>' +
+            '<form data-kid-form>' +
+              '<input type="text" class="kid-wiz-input" ' +
+                'data-kid-collect="topic" value="' + _escape(_kid.answers.topic || '') + '" ' +
+                'placeholder="' + _escape(opts.placeholder) + '">' +
+              '<button type="submit" class="kid-wiz-next">' + _escape(opts.cta || 'Go →') + '</button>' +
+              '<button type="button" class="kid-wiz-skip" data-kid-action="next">Skip (use defaults)</button>' +
+            '</form>'
+        );
+        return;
+    }
+    if (_kid.step === 1) {
+        _kidShowWizard(
+            _kidHead(1, 0) +
+            '<div class="kid-wiz-working">' +
+              '<div class="kid-wiz-working-icon is-spin">' + opts.emoji + '</div>' +
+              '<div class="kid-wiz-working-text">' + _escape(opts.working) + '</div>' +
+            '</div>'
+        );
+        _kidRunStartWork(opts);
+        return;
+    }
+    if (_kid.step === 2) {
+        const rc = _kid.lastResult || {};
+        const bullets = rc.bullets || [];
+        let bulletsHtml = '';
+        if (bullets.length) {
+            bulletsHtml = '<ul class="kid-result-card-sub" style="padding-left:1.2rem;font-size:1rem;color:#1f2937;">' +
+                bullets.map(b => '<li style="margin:0.25rem 0;">' + _escape(b) + '</li>').join('') +
+                '</ul>';
+        }
+        _kidShowWizard(
+            _kidHead(1, 0) +
+            '<div class="kid-results-headline">' + _escape(rc.headline || 'Done.') + '</div>' +
+            '<div class="kid-result-card">' +
+              bulletsHtml +
+              '<button type="button" class="kid-wiz-next" data-kid-action="home">Back home</button>' +
+            '</div>'
+        );
+        return;
+    }
+}
+
+async function _kidRunStartWork(opts) {
+    try {
+        // If a topic was given, send it through /command so the partner
+        // parses it. Otherwise hit /start-work directly with defaults.
+        const topic = (_kid.answers.topic || '').trim();
+        let result;
+        if (topic) {
+            const phrase = (opts.commandPhrase || '') + ' ' + topic;
+            const r = await fetch('/api/team-office/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: phrase }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            result = d.result_card;
+        } else {
+            const r = await fetch('/api/team-office/start-work/' + encodeURIComponent(opts.partner), {
+                method: 'POST',
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
+            result = d.result_card;
+        }
+        _kid.lastResult = result || { headline: 'Done.', bullets: [] };
+        _kid.step = 2;
+        _kidStartWorkFlow(opts);
+    } catch (err) {
+        _kidShowWizard(
+            _kidHead(1, 0) +
+            '<div class="kid-wiz-working">' +
+              '<div class="kid-wiz-working-icon">⚠️</div>' +
+              '<div class="kid-wiz-working-text">Something went wrong.</div>' +
+              '<div class="kid-wiz-working-sub">' + _escape(err.message || String(err)) + '</div>' +
+            '</div>' +
+            '<button type="button" class="kid-wiz-next" data-kid-action="back">← Try again</button>'
+        );
+    }
+}
+
+function _kidStep_makePromo() {
+    _kidStartWorkFlow({
+        partner: 'parker',
+        question: 'What\'s the promo about?',
+        hint: 'A short phrase. Or skip and we\'ll use your free homepage mockup offer.',
+        placeholder: 'free homepage mockup',
+        commandPhrase: 'Make a promo about',
+        cta: 'Write it →',
+        working: 'Writing your promo…',
+        emoji: '📝',
+    });
+}
+
+function _kidStep_makeVideo() {
+    _kidStartWorkFlow({
+        partner: 'video',
+        question: 'What\'s the video about?',
+        hint: 'A topic + platform if you have one. e.g. "free mockup for TikTok".',
+        placeholder: 'free homepage mockup for TikTok',
+        commandPhrase: 'Make a video script about',
+        cta: 'Write it →',
+        working: 'Writing your script…',
+        emoji: '🎬',
+    });
+}
+
+function _kidStep_videoIdeas() {
+    _kidStartWorkFlow({
+        partner: 'youtube',
+        question: 'What angle should I explore?',
+        hint: 'A topic, or skip for ideas around your free offer.',
+        placeholder: 'small business website tips',
+        commandPhrase: 'Find video ideas about',
+        cta: 'Find ideas →',
+        working: 'Finding video ideas…',
+        emoji: '▶️',
+    });
+}
+
+function _kidStep_checkSite() {
+    _kidStartWorkFlow({
+        partner: 'sage',
+        question: 'Want to check a specific page?',
+        hint: 'Or skip and I\'ll check the whole site.',
+        placeholder: 'homepage, services page, etc.',
+        commandPhrase: 'Check my website ',
+        cta: 'Check it →',
+        working: 'Checking your website…',
+        emoji: '🔎',
+    });
+}
+
+// Disable the v12.8 chat-mode load on body.kid-mode so we don't fight
+// over the chat container.
+if (document.body.classList.contains('kid-mode')) {
+    // No-op: kid-mode owns the surface. _chatLoadHistory was already
+    // kicked off, but the chat container is hidden by CSS.
+}
+
+// ======================================================================
 // v12.6: Simple landing — one task at a time. Five big buttons.
 // Click one → task-takeover panel replaces the buttons until Back is hit.
 // No new endpoints; uses existing POST /api/team-office/start-work/{partner}.

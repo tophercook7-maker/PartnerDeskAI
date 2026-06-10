@@ -2549,6 +2549,285 @@
         .chat-advanced-link { color: #64748b; text-decoration: underline; }
         .chat-advanced-link:hover { color: #1f2937; }
 
+        /* ===== v13.0: Kid-Mode — one screen at a time =================
+           Hides EVERYTHING from v12.0-v12.11 by default. The only
+           visible surface is the kid-app section: home with 6 big
+           tiles, or a focused wizard. Power users can flip to the
+           old UI via the Advanced workspaces toggle at the bottom. */
+        body.kid-mode #simple-landing,
+        body.kid-mode #chat-office,
+        body.kid-mode #team-office-section,
+        body.kid-mode #today-section,
+        body.kid-mode #task-takeover,
+        body.kid-mode #gmail-settings-panel,
+        body.kid-mode > h1,
+        body.kid-mode > .subtitle {
+            display: none !important;
+        }
+        body.kid-mode #kid-app { display: block; }
+        body:not(.kid-mode) #kid-app { display: none; }
+
+        .kid-app {
+            max-width: 42rem;
+            margin: 1.2rem auto;
+            padding: 0 1.2rem 1.5rem;
+            font-size: 1.05rem;
+        }
+        /* Home — 6 tiles in a 2-column grid */
+        .kid-greeting {
+            font-size: 1.85rem; font-weight: 700;
+            color: #1f2937; margin-bottom: 0.2rem;
+        }
+        .kid-subtitle {
+            font-size: 1.1rem; color: #475569;
+            margin-bottom: 1.4rem;
+        }
+        .kid-tiles {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.9rem;
+        }
+        @media (max-width: 480px) {
+            .kid-tiles { grid-template-columns: 1fr; }
+        }
+        .kid-tile {
+            min-height: 8.5rem;
+            border-radius: 14px;
+            border: 2px solid #f0d9a6;
+            background: #fffaf3;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 0.5rem;
+            padding: 1.2rem 0.8rem;
+            cursor: pointer;
+            font-family: inherit;
+            transition: transform 100ms ease-out,
+                        box-shadow 100ms,
+                        background 100ms;
+        }
+        .kid-tile:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(180,140,40,0.18);
+            background: #fff;
+        }
+        .kid-tile:active { transform: translateY(0); }
+        .kid-tile-icon {
+            font-size: 2.8rem; line-height: 1;
+        }
+        .kid-tile-label {
+            font-size: 1.15rem; font-weight: 700;
+            color: #1f2937;
+            text-align: center; line-height: 1.2;
+        }
+        /* Color-coded tile accents (warm palette) */
+        .kid-tile-find  { border-color: #f0d9a6; }
+        .kid-tile-send  { border-color: #cfe1ff; background: #f0f6ff; }
+        .kid-tile-promo { border-color: #f3d28a; background: #fff6e0; }
+        .kid-tile-video { border-color: #cbd5e1; background: #f8fafc; }
+        .kid-tile-yt    { border-color: #fde2e2; background: #fff5f5; }
+        .kid-tile-seo   { border-color: #cfe1ff; background: #f0f6ff; }
+
+        .kid-footer {
+            text-align: center;
+            margin-top: 1.8rem;
+            font-size: 0.85rem;
+        }
+        .kid-advanced-link {
+            color: #94a3b8; text-decoration: underline;
+        }
+        .kid-advanced-link:hover { color: #1f2937; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .kid-tile { transition: none !important; }
+            .kid-tile:hover { transform: none; }
+        }
+
+        /* ====== Wizard — one question per screen ====== */
+        .kid-wizard { padding-top: 0.4rem; }
+        .kid-wiz-head {
+            display: flex; align-items: center; gap: 0.8rem;
+            margin-bottom: 1.1rem;
+        }
+        .kid-wiz-back {
+            font-size: 1.1rem; padding: 0.5rem 0.9rem;
+            background: #fff; border: 1.5px solid #cbd5e1;
+            border-radius: 10px; cursor: pointer; font-family: inherit;
+            color: #1f2937; font-weight: 600;
+        }
+        .kid-wiz-back:hover { background: #f8fafc; }
+        .kid-wiz-dots {
+            display: flex; gap: 0.35rem; margin-left: auto;
+        }
+        .kid-wiz-dot {
+            width: 0.7rem; height: 0.7rem; border-radius: 50%;
+            background: #e2e8f0;
+        }
+        .kid-wiz-dot.is-active { background: #8a6320; transform: scale(1.3); }
+        .kid-wiz-dot.is-done   { background: #b88820; }
+
+        .kid-wiz-question {
+            font-size: 1.65rem; font-weight: 700;
+            color: #1f2937;
+            line-height: 1.25;
+            margin-bottom: 1rem;
+        }
+        .kid-wiz-hint {
+            font-size: 0.95rem; color: #64748b;
+            margin: -0.7rem 0 1rem;
+        }
+        .kid-wiz-input {
+            width: 100%; box-sizing: border-box;
+            padding: 0.9rem 1rem;
+            font-size: 1.15rem;
+            border: 2px solid #cbd5e1; border-radius: 10px;
+            font-family: inherit;
+        }
+        .kid-wiz-input:focus { outline: 3px solid #b88820; outline-offset: -1px; }
+        .kid-wiz-chips {
+            display: flex; flex-wrap: wrap; gap: 0.45rem;
+            margin-top: 0.8rem;
+        }
+        .kid-wiz-chip {
+            padding: 0.5rem 0.95rem;
+            font-size: 0.95rem; font-weight: 600;
+            background: #fff;
+            border: 1.5px solid #cbd5e1; border-radius: 999px;
+            cursor: pointer; font-family: inherit;
+            color: #1f2937;
+        }
+        .kid-wiz-chip:hover { background: #fafbfd; border-color: #1f2937; }
+        .kid-wiz-checks {
+            display: flex; flex-direction: column; gap: 0.5rem;
+            margin: 0.5rem 0 0.4rem;
+        }
+        .kid-wiz-check {
+            display: flex; align-items: center; gap: 0.7rem;
+            padding: 0.85rem 1rem;
+            font-size: 1.05rem;
+            background: #fff;
+            border: 2px solid #e2e8f0; border-radius: 10px;
+            cursor: pointer; font-family: inherit;
+        }
+        .kid-wiz-check.is-checked {
+            background: #fff6e0; border-color: #b88820;
+        }
+        .kid-wiz-check input { width: 1.2rem; height: 1.2rem; }
+        .kid-wiz-next {
+            margin-top: 1.2rem;
+            width: 100%;
+            padding: 1rem 1.4rem;
+            font-size: 1.25rem; font-weight: 700;
+            background: #1f2937; color: #fff;
+            border: 2px solid #1f2937; border-radius: 12px;
+            cursor: pointer; font-family: inherit;
+        }
+        .kid-wiz-next:hover { background: #111827; }
+        .kid-wiz-next:disabled {
+            background: #cbd5e1; border-color: #cbd5e1;
+            cursor: not-allowed;
+        }
+        .kid-wiz-skip {
+            margin-top: 0.5rem;
+            width: 100%; text-align: center;
+            background: transparent; border: none;
+            color: #94a3b8; font-size: 0.95rem;
+            cursor: pointer; padding: 0.5rem;
+            font-family: inherit;
+        }
+        .kid-wiz-skip:hover { color: #1f2937; }
+
+        /* Working state — large icon + status text */
+        .kid-wiz-working {
+            text-align: center;
+            padding: 2rem 1rem;
+        }
+        .kid-wiz-working-icon {
+            font-size: 4rem; line-height: 1;
+            margin-bottom: 0.6rem;
+            display: inline-block;
+        }
+        .kid-wiz-working-icon.is-spin {
+            animation: kid-spin 1.5s linear infinite;
+        }
+        @keyframes kid-spin {
+            from { transform: rotate(0deg); }
+            to   { transform: rotate(360deg); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .kid-wiz-working-icon.is-spin { animation: none; }
+        }
+        .kid-wiz-working-text {
+            font-size: 1.25rem; color: #1f2937; font-weight: 600;
+        }
+        .kid-wiz-working-sub {
+            font-size: 0.95rem; color: #64748b; margin-top: 0.5rem;
+        }
+
+        /* Result list — big cards */
+        .kid-results-headline {
+            font-size: 1.35rem; font-weight: 700;
+            color: #1f2937; margin-bottom: 0.9rem;
+        }
+        .kid-result-cards {
+            display: flex; flex-direction: column; gap: 0.7rem;
+        }
+        .kid-result-card {
+            background: #fff;
+            border: 2px solid #e2e8f0; border-radius: 12px;
+            padding: 1rem 1.1rem;
+            display: flex; flex-direction: column; gap: 0.4rem;
+        }
+        .kid-result-card-title {
+            font-size: 1.15rem; font-weight: 700; color: #1f2937;
+        }
+        .kid-result-card-sub {
+            font-size: 0.9rem; color: #64748b;
+        }
+        .kid-result-card-why {
+            font-size: 0.92rem; color: #1f2937;
+            background: #fff6e0; padding: 0.3rem 0.6rem;
+            border-radius: 6px; align-self: flex-start;
+            font-weight: 600;
+        }
+        .kid-result-card-action {
+            margin-top: 0.4rem;
+            padding: 0.7rem 1.1rem;
+            font-size: 1rem; font-weight: 700;
+            background: #2d6a3a; color: #fff;
+            border: 1.5px solid #2d6a3a; border-radius: 8px;
+            cursor: pointer; font-family: inherit;
+        }
+        .kid-result-card-action:hover { background: #1e4d28; }
+        .kid-result-card-action.is-info {
+            background: #1f2937; border-color: #1f2937;
+        }
+
+        /* Note (email draft) editor */
+        .kid-note-row {
+            display: flex; flex-direction: column; gap: 0.35rem;
+            margin-bottom: 0.7rem;
+        }
+        .kid-note-label {
+            font-size: 0.85rem; font-weight: 600; color: #475569;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .kid-note-input {
+            padding: 0.8rem 1rem; font-size: 1.05rem;
+            border: 2px solid #cbd5e1; border-radius: 10px;
+            font-family: inherit;
+        }
+        .kid-note-textarea {
+            min-height: 14rem; resize: vertical;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.95rem; line-height: 1.5;
+        }
+        .kid-note-warn {
+            font-size: 0.9rem; color: #8a6320;
+            background: #fff6e0; padding: 0.6rem 0.8rem;
+            border-radius: 8px; border: 1px solid #f3d28a;
+            margin-top: 0.4rem;
+        }
+
         /* ===== v12.11: Gmail integration UI ============================ */
         .gmail-status-pill {
             font-size: 0.7rem; font-weight: 600;
@@ -4225,12 +4504,63 @@
         .system-sub > *:not(summary):last-child { padding-bottom: 0.75rem; }
     </style>
 </head>
-<body class="chat-mode">
+<body class="kid-mode">
     <!-- v12.1: Onboarding overlay. Hidden by default; JS shows it on
          first page load when GET /api/onboarding/state returns
          complete=false. Olivia hosts a 7-step wizard, then a success
          screen with 3 recommended starter actions. -->
     <div id="onboarding-overlay" class="onboarding-overlay" hidden></div>
+
+    <!-- v13.0: KID-MODE — the new default surface.
+         One screen at a time. Big buttons. Plain language. 6 task
+         tiles on the home screen, each opens a focused wizard.
+         All v12.0-v12.11 surfaces preserved in DOM (hidden by
+         body.kid-mode in CSS) — togglable via Advanced workspaces
+         disclosure at the bottom. -->
+    <section id="kid-app" class="kid-app">
+        <!-- Home screen — 6 task tiles -->
+        <div id="kid-home" class="kid-home">
+            <div class="kid-greeting" id="kid-greeting">Hi Topher.</div>
+            <div class="kid-subtitle">What do you want to do today?</div>
+
+            <div class="kid-tiles">
+                <button type="button" class="kid-tile kid-tile-find" data-kid-task="find_clients">
+                    <span class="kid-tile-icon">🔍</span>
+                    <span class="kid-tile-label">Find clients</span>
+                </button>
+                <button type="button" class="kid-tile kid-tile-send" data-kid-task="send_note">
+                    <span class="kid-tile-icon">✉️</span>
+                    <span class="kid-tile-label">Send a note</span>
+                </button>
+                <button type="button" class="kid-tile kid-tile-promo" data-kid-task="make_promo">
+                    <span class="kid-tile-icon">📝</span>
+                    <span class="kid-tile-label">Make a promo</span>
+                </button>
+                <button type="button" class="kid-tile kid-tile-video" data-kid-task="make_video">
+                    <span class="kid-tile-icon">🎬</span>
+                    <span class="kid-tile-label">Make a video</span>
+                </button>
+                <button type="button" class="kid-tile kid-tile-yt" data-kid-task="video_ideas">
+                    <span class="kid-tile-icon">▶️</span>
+                    <span class="kid-tile-label">Video ideas</span>
+                </button>
+                <button type="button" class="kid-tile kid-tile-seo" data-kid-task="check_site">
+                    <span class="kid-tile-icon">🔎</span>
+                    <span class="kid-tile-label">Check website</span>
+                </button>
+            </div>
+
+            <div class="kid-footer">
+                <a href="#advanced-workspaces" class="kid-advanced-link">
+                    Power user mode (everything) ↓
+                </a>
+            </div>
+        </div>
+
+        <!-- Wizard container — populated by JS when a tile is clicked.
+             Replaces the home screen until the user hits the home icon. -->
+        <div id="kid-wizard" class="kid-wizard" hidden></div>
+    </section>
 
     <h1>PartnerDesk Hub</h1>
     <div class="subtitle">Local AI Business Partner Station
