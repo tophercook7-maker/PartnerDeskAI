@@ -9964,15 +9964,17 @@ function _kidStep_findClients() {
             '</div>'
         );
         // Compose request string for Logan's natural-language parser.
+        // Prepend "find me 10" so the v12.9 router reliably picks Logan
+        // (bare "category in place" can route to Olivia for chit-chat).
         const a = _kid.answers;
         const filters = [];
         if (a.no_website)    filters.push('no website');
         if (a.has_email)     filters.push('with email');
         if (a.facebook_only) filters.push('facebook only');
         const filterStr = filters.length ? ' with ' + filters.join(' and ') : '';
-        const requestText = (a.category || 'businesses') + ' in ' +
+        const requestText = 'find me 10 ' + (a.category || 'businesses') + ' in ' +
                             (a.where || 'Hot Springs, AR') + filterStr;
-        _kidRunFindClients(requestText);
+        _kidRunFindClients(requestText, a.where || '');
         return;
     }
     if (_kid.step === 4) {
@@ -10023,7 +10025,63 @@ function _kidCheckHtml(key, label, checked) {
     );
 }
 
-async function _kidRunFindClients(requestText) {
+// Match picks by the user-typed location.
+// "Hot Springs AR" → keep picks with "hot springs" OR " ar" in city_state.
+// "all over Arkansas" → keep picks whose city_state contains "arkansas" or " ar".
+// Empty whereText → no filter.
+const _KID_STATE_MAP = {
+    'alabama':'al','alaska':'ak','arizona':'az','arkansas':'ar','california':'ca',
+    'colorado':'co','connecticut':'ct','delaware':'de','florida':'fl','georgia':'ga',
+    'hawaii':'hi','idaho':'id','illinois':'il','indiana':'in','iowa':'ia','kansas':'ks',
+    'kentucky':'ky','louisiana':'la','maine':'me','maryland':'md','massachusetts':'ma',
+    'michigan':'mi','minnesota':'mn','mississippi':'ms','missouri':'mo','montana':'mt',
+    'nebraska':'ne','nevada':'nv','new hampshire':'nh','new jersey':'nj','new mexico':'nm',
+    'new york':'ny','north carolina':'nc','north dakota':'nd','ohio':'oh','oklahoma':'ok',
+    'oregon':'or','pennsylvania':'pa','rhode island':'ri','south carolina':'sc',
+    'south dakota':'sd','tennessee':'tn','texas':'tx','utah':'ut','vermont':'vt',
+    'virginia':'va','washington':'wa','west virginia':'wv','wisconsin':'wi','wyoming':'wy',
+};
+function _kidFilterPicksByWhere(picks, whereText) {
+    const where = (whereText || '').toLowerCase().trim();
+    if (!where) return picks;
+    // Pull state code(s) from the typed location.
+    const stateCodes = new Set();
+    const cityTokens = [];
+    // Long state names first
+    for (const [name, code] of Object.entries(_KID_STATE_MAP)) {
+        if (where.includes(name)) stateCodes.add(code);
+    }
+    // 2-letter codes — look for ", XX" or " XX" word-boundary
+    const codeMatches = where.match(/\b([a-z]{2})\b/g) || [];
+    for (const m of codeMatches) {
+        if (Object.values(_KID_STATE_MAP).includes(m)) stateCodes.add(m);
+    }
+    // City-ish phrase: everything before the state name/code
+    let cityPart = where;
+    for (const name of Object.keys(_KID_STATE_MAP)) {
+        cityPart = cityPart.replace(name, ' ');
+    }
+    cityPart = cityPart.replace(/\b[a-z]{2}\b/g, ' ')
+                       .replace(/all over|statewide|in|the|,/g, ' ')
+                       .trim();
+    if (cityPart.length >= 3) cityTokens.push(cityPart);
+    // Filter: pick matches if its city_state mentions either the state code or the city
+    return picks.filter((p) => {
+        const cs = (p.city_state || '').toLowerCase();
+        if (!cs) return true; // unknown location — keep
+        for (const code of stateCodes) {
+            if (cs.includes(' ' + code) || cs.includes(',' + code) ||
+                cs.includes(', ' + code) || cs.endsWith(' ' + code) ||
+                cs.endsWith(code)) return true;
+        }
+        for (const city of cityTokens) {
+            if (cs.includes(city)) return true;
+        }
+        return false;
+    });
+}
+
+async function _kidRunFindClients(requestText, whereText) {
     try {
         // Use the existing /command endpoint with Logan-routing.
         // Send the full natural-language request — Logan's v12.10 parser
@@ -10036,9 +10094,12 @@ async function _kidRunFindClients(requestText) {
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
         // Pull the top picks from the candidate queue
-        const picksRes = await fetch('/api/lead-candidates/picks?k=12');
+        const picksRes = await fetch('/api/lead-candidates/picks?k=24');
         const picksJ = await picksRes.json();
-        _kid.leads = picksJ.picks || [];
+        const allPicks = picksJ.picks || [];
+        // Filter picks to match the user's requested area, so stale picks
+        // from earlier sessions in other regions don't mix in.
+        _kid.leads = _kidFilterPicksByWhere(allPicks, whereText).slice(0, 12);
         _kid.step = 4;
         _kidRunCurrentStep();
     } catch (err) {
