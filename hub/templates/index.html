@@ -2802,6 +2802,75 @@
             background: #1f2937; border-color: #1f2937;
         }
 
+        /* v13.0.3 — per-lead contact lines + action grid */
+        .kid-lead-contact {
+            font-size: 0.95rem; color: #1f2937;
+            padding: 0.15rem 0;
+        }
+        .kid-lead-contact a {
+            color: #1d4ed8; text-decoration: none; font-weight: 600;
+        }
+        .kid-lead-contact a:hover { text-decoration: underline; }
+        .kid-lead-contact-empty {
+            color: #64748b; font-style: italic; font-size: 0.88rem;
+        }
+        .kid-lead-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 0.5rem;
+            margin-top: 0.65rem;
+        }
+        .kid-lead-act {
+            display: inline-flex; align-items: center; justify-content: center;
+            padding: 0.7rem 0.6rem;
+            font-size: 0.98rem; font-weight: 700;
+            background: #fff; color: #1f2937;
+            border: 1.5px solid #cbd5e1; border-radius: 8px;
+            cursor: pointer; font-family: inherit;
+            text-decoration: none; text-align: center;
+            transition: transform 0.08s, background 0.12s, border-color 0.12s;
+        }
+        .kid-lead-act:hover {
+            transform: translateY(-1px);
+            background: #f8fafc; border-color: #94a3b8;
+        }
+        .kid-lead-act.is-primary {
+            background: #2d6a3a; color: #fff; border-color: #2d6a3a;
+        }
+        .kid-lead-act.is-primary:hover { background: #1e4d28; border-color: #1e4d28; }
+        .kid-lead-act.is-call {
+            background: #1d4ed8; color: #fff; border-color: #1d4ed8;
+        }
+        .kid-lead-act.is-call:hover { background: #1e40af; border-color: #1e40af; }
+        .kid-lead-act.is-lookup {
+            background: #fff7ed; color: #9a3412; border-color: #fed7aa;
+        }
+        .kid-lead-act.is-map {
+            background: #f5f3ff; color: #5b21b6; border-color: #ddd6fe;
+        }
+        .kid-lead-act.is-fb {
+            background: #eff6ff; color: #1e3a8a; border-color: #bfdbfe;
+        }
+        .kid-lead-act.is-save {
+            background: #f0fdf4; color: #166534; border-color: #bbf7d0;
+        }
+        .kid-lead-act.is-save.is-done {
+            background: #166534; color: #fff; border-color: #166534;
+        }
+        .kid-lead-act.is-skip {
+            background: #fff; color: #64748b; border-color: #e2e8f0;
+        }
+        .kid-result-card.is-skipped {
+            opacity: 0.4;
+            transform: scale(0.97);
+            transition: opacity 0.2s, transform 0.2s;
+        }
+        .kid-result-card.is-skipped .kid-lead-act { pointer-events: none; }
+        @media (prefers-reduced-motion: reduce) {
+            .kid-lead-act, .kid-result-card { transition: none; }
+            .kid-lead-act:hover { transform: none; }
+        }
+
         /* Note (email draft) editor */
         .kid-note-row {
             display: flex; flex-direction: column; gap: 0.35rem;
@@ -5914,6 +5983,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=13.0.2"></script>
+    <script src="/static/app.js?v=13.0.3"></script>
 </body>
 </html>

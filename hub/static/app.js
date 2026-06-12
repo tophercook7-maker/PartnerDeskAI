@@ -9817,6 +9817,21 @@ document.addEventListener('click', async (e) => {
         if (lead) _kidOpenSendNoteForLead(lead);
         return;
     }
+    if (kind === 'lead_save') {
+        e.preventDefault();
+        const idx = parseInt(action.dataset.kidLeadIdx, 10);
+        const lead = _kid.leads[idx];
+        if (lead) await _kidSaveLead(lead, action);
+        return;
+    }
+    if (kind === 'lead_skip') {
+        e.preventDefault();
+        const idx = parseInt(action.dataset.kidLeadIdx, 10);
+        // Dim the card and shrink it out of the way
+        const card = action.closest('.kid-result-card');
+        if (card) { card.classList.add('is-skipped'); }
+        return;
+    }
     if (kind === 'send_note_now') {
         e.preventDefault();
         await _kidSendNote();
@@ -9993,21 +10008,7 @@ function _kidStep_findClients() {
                 '</div>';
         } else {
             html += '<div class="kid-result-cards">';
-            leads.forEach((l, idx) => {
-                const why = (l.weak_presence_flags || [])[0] || '';
-                const whyHtml = why ? '<div class="kid-result-card-why">' + _escape(why) + '</div>' : '';
-                const contact = l.phone || l.email || (l.website_url ? 'website on file' : 'research needed');
-                html +=
-                    '<div class="kid-result-card">' +
-                      '<div class="kid-result-card-title">' + _escape(l.business_name || '(no name)') + '</div>' +
-                      '<div class="kid-result-card-sub">' + _escape(l.category || '') + ' · ' + _escape(l.city_state || '') + '</div>' +
-                      '<div class="kid-result-card-sub">📞 ' + _escape(contact) + '</div>' +
-                      whyHtml +
-                      '<button type="button" class="kid-result-card-action" data-kid-action="lead_write_note" data-kid-lead-idx="' + idx + '">' +
-                        '✉ Write a note for them' +
-                      '</button>' +
-                    '</div>';
-            });
+            leads.forEach((l, idx) => { html += _kidRenderLeadCard(l, idx); });
             html += '</div>';
         }
         html += '<button type="button" class="kid-wiz-skip" data-kid-action="home">← Done, back home</button>';
@@ -10022,6 +10023,101 @@ function _kidCheckHtml(key, label, checked) {
           '<input type="checkbox" data-kid-collect="' + key + '" ' + (checked ? 'checked' : '') + '>' +
           _escape(label) +
         '</label>'
+    );
+}
+
+// Render one result card. Each lead gets 5 big actions, color-coded.
+// Phone/email/website are surfaced as live links so a single tap dials,
+// opens mail, or visits the site. When email is missing the "Write a
+// note" button flips to "Find their email" and opens a targeted search.
+function _kidRenderLeadCard(l, idx) {
+    const name = l.business_name || '(no name)';
+    const cat = l.category || '';
+    const loc = l.city_state || '';
+    const phone = (l.phone || '').trim();
+    const email = (l.email || '').trim();
+    const website = (l.website_url || '').trim();
+    const flags = l.weak_presence_flags || [];
+
+    // Contact lines — only render the rows we actually have data for.
+    const lines = [];
+    if (phone) lines.push(
+        '<div class="kid-lead-contact">📞 <a href="tel:' + _escape(phone.replace(/[^0-9+]/g,'')) + '">' +
+        _escape(phone) + '</a></div>'
+    );
+    if (email) lines.push(
+        '<div class="kid-lead-contact">✉ <a href="mailto:' + _escape(email) + '">' +
+        _escape(email) + '</a></div>'
+    );
+    if (website) lines.push(
+        '<div class="kid-lead-contact">🌐 <a href="' + _escape(website) + '" target="_blank" rel="noopener">' +
+        _escape(website.replace(/^https?:\/\//, '').replace(/\/$/, '')) + '</a></div>'
+    );
+    if (!phone && !email && !website) lines.push(
+        '<div class="kid-lead-contact kid-lead-contact-empty">No contact details on file yet — use Look them up.</div>'
+    );
+
+    // Why-it's-a-fit
+    const why = flags[0] || '';
+    const whyHtml = why ? '<div class="kid-result-card-why">' + _escape(why) + '</div>' : '';
+
+    // Look up URL: prefer the pre-built Google search link from the pick
+    const searchUrls = l.search_urls || [];
+    const findUrl = (label) => {
+        const m = searchUrls.find(s => (s.label || '').toLowerCase() === label.toLowerCase());
+        return m ? m.url : '';
+    };
+    const googleUrl = findUrl('Google')
+        || ('https://www.google.com/search?q=' + encodeURIComponent(name + ' ' + loc));
+    const mapsUrl = findUrl('Maps')
+        || ('https://www.google.com/maps/search/' + encodeURIComponent(name + ' ' + loc));
+    const contactFormUrl = findUrl('Find contact form')
+        || ('https://www.google.com/search?q=' + encodeURIComponent('"' + name + '" "' + loc + '" contact'));
+    const facebookUrl = findUrl('Find Facebook')
+        || ('https://www.google.com/search?q=' + encodeURIComponent('site:facebook.com "' + name + '" "' + loc + '"'));
+
+    // Primary action: Write a note if email, otherwise Find their email
+    const primaryBtn = email
+        ? '<button type="button" class="kid-lead-act is-primary" data-kid-action="lead_write_note" data-kid-lead-idx="' + idx + '">' +
+            '✉ Write a note' +
+          '</button>'
+        : '<a class="kid-lead-act is-primary" href="' + _escape(contactFormUrl) + '" target="_blank" rel="noopener">' +
+            '📝 Find their email' +
+          '</a>';
+
+    // Call button only if we have a phone number
+    const callBtn = phone
+        ? '<a class="kid-lead-act is-call" href="tel:' + _escape(phone.replace(/[^0-9+]/g,'')) + '">' +
+            '📞 Call them' +
+          '</a>'
+        : '';
+
+    return (
+        '<div class="kid-result-card">' +
+          '<div class="kid-result-card-title">' + _escape(name) + '</div>' +
+          '<div class="kid-result-card-sub">' + _escape(cat) + (cat && loc ? ' · ' : '') + _escape(loc) + '</div>' +
+          lines.join('') +
+          whyHtml +
+          '<div class="kid-lead-actions">' +
+            primaryBtn +
+            callBtn +
+            '<a class="kid-lead-act is-lookup" href="' + _escape(googleUrl) + '" target="_blank" rel="noopener">' +
+              '🔎 Look them up' +
+            '</a>' +
+            '<a class="kid-lead-act is-map" href="' + _escape(mapsUrl) + '" target="_blank" rel="noopener">' +
+              '🗺 Open map' +
+            '</a>' +
+            '<a class="kid-lead-act is-fb" href="' + _escape(facebookUrl) + '" target="_blank" rel="noopener">' +
+              '📘 Find Facebook' +
+            '</a>' +
+            '<button type="button" class="kid-lead-act is-save" data-kid-action="lead_save" data-kid-lead-idx="' + idx + '">' +
+              '✓ Save to my list' +
+            '</button>' +
+            '<button type="button" class="kid-lead-act is-skip" data-kid-action="lead_skip" data-kid-lead-idx="' + idx + '">' +
+              '✕ Skip' +
+            '</button>' +
+          '</div>' +
+        '</div>'
     );
 }
 
@@ -10116,6 +10212,33 @@ async function _kidRunFindClients(requestText, whereText) {
 }
 
 // ----- SEND NOTE for a specific lead -----------------------------------
+// Save a candidate to the real leads list via the v9.1 convert endpoint.
+// Updates the button label in-place so the user sees feedback.
+async function _kidSaveLead(lead, btn) {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '… saving';
+    btn.disabled = true;
+    try {
+        const cid = lead.id;
+        if (!cid) throw new Error('no candidate id');
+        const r = await fetch('/api/lead-candidates/' + encodeURIComponent(cid) + '/convert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+        });
+        if (!r.ok) {
+            const d = await r.json().catch(() => ({}));
+            throw new Error(d.detail || ('http ' + r.status));
+        }
+        btn.innerHTML = '✓ Saved';
+        btn.classList.add('is-done');
+    } catch (err) {
+        btn.innerHTML = '⚠ ' + (err.message || 'save failed');
+        btn.disabled = false;
+        setTimeout(() => { btn.innerHTML = orig; }, 3000);
+    }
+}
+
 function _kidOpenSendNoteForLead(lead) {
     // Pre-fill a draft from agency profile defaults + lead info
     const to = (lead.email || '').trim();
