@@ -10094,7 +10094,7 @@ async function _kidRunFindClients(requestText, whereText) {
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
         // Pull the top picks from the candidate queue
-        const picksRes = await fetch('/api/lead-candidates/picks?k=24');
+        const picksRes = await fetch('/api/lead-candidates/picks?k=50');
         const picksJ = await picksRes.json();
         const allPicks = picksJ.picks || [];
         // Filter picks to match the user's requested area, so stale picks
