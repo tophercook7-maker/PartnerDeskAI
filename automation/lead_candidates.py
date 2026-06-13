@@ -207,9 +207,17 @@ def compute_score(c: dict) -> tuple[int, str]:
         s += 2
     email = (c.get("email") or "").strip()
     phone = (c.get("phone") or "").strip()
+    facebook = (c.get("facebook_url") or "").strip()
+    instagram = (c.get("instagram_url") or "").strip()
     if email:
         s += 2
     if phone:
+        s += 1
+    # v13.0.8: social pages are real outreach channels. Facebook gets
+    # nearly the weight of email (DMs open-rate is comparable); IG +1.
+    if facebook:
+        s += 2
+    if instagram:
         s += 1
     if c.get("is_local_service") is True:
         s += 1
@@ -217,8 +225,8 @@ def compute_score(c: dict) -> tuple[int, str]:
         s += 1
     if c.get("is_corporate") is True:
         s -= 3
-    # "no contact info"  → no email AND no phone
-    if not email and not phone:
+    # "no contact info"  → no email AND no phone AND no social
+    if not email and not phone and not facebook and not instagram:
         s -= 2
     # "inactive/closed"  → explicit is_active=False
     if c.get("is_active") is False:

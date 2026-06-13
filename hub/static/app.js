@@ -9952,9 +9952,10 @@ function _kidStep_findClients() {
             '<div class="kid-wiz-hint">Pick what matters. Or skip — we\'ll show everyone.</div>' +
             '<form data-kid-form>' +
               '<div class="kid-wiz-checks">' +
-                _kidCheckHtml('no_website',    'No website (best for our offer)', f.no_website) +
-                _kidCheckHtml('has_email',     'Has an email on file',            f.has_email) +
-                _kidCheckHtml('facebook_only', 'Just a Facebook page',            f.facebook_only) +
+                _kidCheckHtml('contactable',   '✓ Only show ones I can actually reach (email, phone, or Facebook)', f.contactable !== false) +
+                _kidCheckHtml('has_email',     '✉ Has an email on file',          f.has_email) +
+                _kidCheckHtml('has_facebook',  '📘 Has a Facebook page',          f.has_facebook) +
+                _kidCheckHtml('no_website',    '🌐 No website (good fit for our offer)', f.no_website) +
               '</div>' +
               '<button type="submit" class="kid-wiz-next">Find them →</button>' +
             '</form>'
@@ -9987,7 +9988,7 @@ function _kidStep_findClients() {
         const filters = [];
         if (a.no_website)    filters.push('no website');
         if (a.has_email)     filters.push('with email');
-        if (a.facebook_only) filters.push('facebook only');
+        if (a.has_facebook)  filters.push('with facebook');
         const filterStr = filters.length ? ' with ' + filters.join(' and ') : '';
         const requestText = 'find me 10 ' + (a.category || 'businesses') + ' in ' +
                             (a.where || 'Hot Springs, AR') + filterStr;
@@ -10090,6 +10091,20 @@ function _kidRenderLeadCard(l, idx) {
         '<div class="kid-lead-contact kid-lead-contact-empty">No contact details on file yet — use Look them up.</div>'
     );
 
+    // Contact-method badges (so the user sees at a glance how they
+    // can reach this business). Each present channel gets a chip.
+    const fb = (l.facebook_url || '').trim();
+    const ig = (l.instagram_url || '').trim();
+    const badges = [];
+    if (email)   badges.push('<span class="kid-lead-badge is-email">✉ Email</span>');
+    if (phone)   badges.push('<span class="kid-lead-badge is-phone">📞 Phone</span>');
+    if (fb)      badges.push('<span class="kid-lead-badge is-fb">📘 Facebook</span>');
+    if (ig)      badges.push('<span class="kid-lead-badge is-ig">📷 Instagram</span>');
+    if (website) badges.push('<span class="kid-lead-badge is-site">🌐 Website</span>');
+    if (!email && !phone && !fb && !ig && !website)
+        badges.push('<span class="kid-lead-badge is-none">no contact yet</span>');
+    const badgesHtml = '<div class="kid-lead-badges">' + badges.join('') + '</div>';
+
     // Why-it's-a-fit
     const why = flags[0] || '';
     const whyHtml = why ? '<div class="kid-result-card-why">' + _escape(why) + '</div>' : '';
@@ -10125,10 +10140,21 @@ function _kidRenderLeadCard(l, idx) {
           '</a>'
         : '';
 
+    // Open the Facebook page directly if we have a URL; otherwise the
+    // "Find Facebook" search button.
+    const realFbBtn = fb
+        ? '<a class="kid-lead-act is-fb" href="' + _escape(fb) + '" target="_blank" rel="noopener">' +
+            '📘 Open Facebook' +
+          '</a>'
+        : '<a class="kid-lead-act is-fb" href="' + _escape(facebookUrl) + '" target="_blank" rel="noopener">' +
+            '📘 Find Facebook' +
+          '</a>';
+
     return (
         '<div class="kid-result-card">' +
           '<div class="kid-result-card-title">' + _escape(name) + '</div>' +
           '<div class="kid-result-card-sub">' + _escape(cat) + (cat && loc ? ' · ' : '') + _escape(loc) + '</div>' +
+          badgesHtml +
           lines.join('') +
           whyHtml +
           '<div class="kid-lead-actions">' +
@@ -10140,9 +10166,7 @@ function _kidRenderLeadCard(l, idx) {
             '<a class="kid-lead-act is-map" href="' + _escape(mapsUrl) + '" target="_blank" rel="noopener">' +
               '🗺 Open map' +
             '</a>' +
-            '<a class="kid-lead-act is-fb" href="' + _escape(facebookUrl) + '" target="_blank" rel="noopener">' +
-              '📘 Find Facebook' +
-            '</a>' +
+            realFbBtn +
             (l._auto_saved
               ? '<span class="kid-lead-act is-save is-done">✓ Already in your list</span>'
               : '<button type="button" class="kid-lead-act is-save" data-kid-action="lead_save" data-kid-lead-idx="' + idx + '">' +
@@ -10228,7 +10252,19 @@ async function _kidRunFindClients(requestText, whereText) {
         const allPicks = picksJ.picks || [];
         // Filter picks to match the user's requested area, so stale picks
         // from earlier sessions in other regions don't mix in.
-        const leads = _kidFilterPicksByWhere(allPicks, whereText).slice(0, 12);
+        let leads = _kidFilterPicksByWhere(allPicks, whereText);
+        // v13.0.8: client-side "contactable" filter — keep only picks
+        // with at least one reachable channel (email / phone / facebook
+        // / instagram). On by default; the user can untick to see all.
+        if (_kid.answers.contactable !== false) {
+            leads = leads.filter((l) =>
+                (l.email||'').trim() ||
+                (l.phone||'').trim() ||
+                (l.facebook_url||'').trim() ||
+                (l.instagram_url||'').trim()
+            );
+        }
+        leads = leads.slice(0, 12);
         // Auto-save every found lead to the main list in the background.
         // Parallel POSTs — if the candidate was already converted, the
         // endpoint either dedupes or 4xx's, which we swallow per-lead.

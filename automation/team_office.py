@@ -1430,6 +1430,12 @@ def _parse_logan_full(text: str) -> dict:
     if any(p in sl for p in ("facebook only", "just facebook", "fb only",
                               "facebook page only")):
         filters.append("facebook_only")
+    # v13.0.8: "has a Facebook page" — different from facebook_only
+    # (which means weak presence, only Facebook). This one is a soft
+    # "any contact channel works" signal.
+    if any(p in sl for p in ("with facebook", "has facebook", "with a facebook",
+                              "facebook page", "fb page")) and "only" not in sl:
+        filters.append("has_facebook")
     if any(p in sl for p in ("weak web", "weak online", "weak presence",
                               "weak site", "thin website", "dated website",
                               "old website", "outdated website")):
@@ -2470,6 +2476,7 @@ def _apply_logan_filters(picks: list[dict], filters: list[str]) -> list[dict]:
         has_site = bool((p.get("website_url") or "").strip())
         has_email = bool((p.get("email") or "").strip())
         has_phone = bool((p.get("phone") or "").strip())
+        has_facebook = bool((p.get("facebook_url") or "").strip())
         flags = p.get("weak_presence_flags") or []
 
         if "no_website" in filters:
@@ -2478,6 +2485,9 @@ def _apply_logan_filters(picks: list[dict], filters: list[str]) -> list[dict]:
                 continue
         if "has_email" in filters:
             if not has_email:
+                continue
+        if "has_facebook" in filters:
+            if not has_facebook:
                 continue
         if "no_email" in filters:
             if has_email:

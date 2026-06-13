@@ -496,9 +496,22 @@ def _map_to_candidate(el: dict, category: str, city_state: str) -> dict | None:
     if not name:
         return None
 
-    phone   = (tags.get("contact:phone") or tags.get("phone") or "").strip()
+    # v13.0.8: pull more contact tags. OSM has contact:* and bare forms.
+    phone   = (tags.get("contact:phone") or tags.get("phone")
+               or tags.get("contact:mobile") or tags.get("mobile") or "").strip()
     email   = (tags.get("contact:email") or tags.get("email") or "").strip()
     website = (tags.get("contact:website") or tags.get("website") or "").strip()
+    facebook  = (tags.get("contact:facebook") or tags.get("facebook")
+                 or tags.get("contact:fb") or "").strip()
+    instagram = (tags.get("contact:instagram") or tags.get("instagram") or "").strip()
+    # Sometimes the value is "@handle" or "page-name" rather than a full
+    # URL — wrap them so the kid-mode action buttons can open them.
+    if facebook and not facebook.lower().startswith(("http://", "https://")):
+        fb_handle = facebook.lstrip("@").strip("/")
+        facebook = f"https://www.facebook.com/{fb_handle}" if fb_handle else ""
+    if instagram and not instagram.lower().startswith(("http://", "https://")):
+        ig_handle = instagram.lstrip("@").strip("/")
+        instagram = f"https://www.instagram.com/{ig_handle}" if ig_handle else ""
 
     street     = (tags.get("addr:street") or "").strip()
     house      = (tags.get("addr:housenumber") or "").strip()
@@ -562,6 +575,8 @@ def _map_to_candidate(el: dict, category: str, city_state: str) -> dict | None:
         "website_status":  website_status,
         "email":           email,
         "phone":           phone,
+        "facebook_url":    facebook,
+        "instagram_url":   instagram,
         "source_url":      source_url,
         "search_url":      search_url,
         "evidence_notes":  evidence,

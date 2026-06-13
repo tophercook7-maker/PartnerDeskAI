@@ -2803,6 +2803,25 @@
             background: #1f2937; border-color: #1f2937;
         }
 
+        /* v13.0.8 — contact-method badges on result cards */
+        .kid-lead-badges {
+            display: flex; flex-wrap: wrap; gap: 0.35rem;
+            margin: 0.2rem 0 0.35rem;
+        }
+        .kid-lead-badge {
+            display: inline-flex; align-items: center;
+            padding: 0.18rem 0.55rem;
+            font-size: 0.82rem; font-weight: 700;
+            border-radius: 999px;
+            border: 1px solid;
+        }
+        .kid-lead-badge.is-email { background: #f0fdf4; color: #14532d; border-color: #86efac; }
+        .kid-lead-badge.is-phone { background: #eff6ff; color: #1e3a8a; border-color: #93c5fd; }
+        .kid-lead-badge.is-fb    { background: #eef2ff; color: #312e81; border-color: #c7d2fe; }
+        .kid-lead-badge.is-ig    { background: #fdf4ff; color: #701a75; border-color: #f0abfc; }
+        .kid-lead-badge.is-site  { background: #f8fafc; color: #475569; border-color: #cbd5e1; }
+        .kid-lead-badge.is-none  { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+
         /* v13.0.5 — drag-drop CSV import zone */
         .kid-drop-zone {
             display: flex; flex-direction: column; align-items: center;
@@ -6054,6 +6073,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=13.0.6"></script>
+    <script src="/static/app.js?v=13.0.8"></script>
 </body>
 </html>
