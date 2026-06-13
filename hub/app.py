@@ -2769,13 +2769,14 @@ async def api_candidates_import_csv(
     # — the rest stay in data/imports/ for future calls or a power-user
     # surface.
     # Empty category = "import everything from the file". csv_import's
-    # discover() treats empty cat_q/city_q as no-op filters, so all rows
-    # with a usable business_name survive. do_it_all caps count at 25.
+    # discover() treats empty cat_q/city_q as no-op filters. The cap
+    # for csv_import is lifted to 5,000 (matches the per-file row cap)
+    # so a whole spreadsheet imports in one tap.
     try:
         result = cand_mod.do_it_all(
             category=(category or "").strip(),
             city_state=(city_state or "").strip(),
-            count=min(max(int(count), 1), 25),
+            count=min(max(int(count), 1), 5_000),
             website_status_target="any local business",
             provider="csv_import",
         )

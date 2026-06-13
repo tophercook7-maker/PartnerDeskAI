@@ -9747,6 +9747,7 @@ function _kidShowHome() {
     document.getElementById('kid-wizard').hidden = true;
     document.getElementById('kid-wizard').innerHTML = '';
     _kid.task = null; _kid.step = 0; _kid.answers = {}; _kid.leads = [];
+    _kid.importedTotal = 0; _kid.importedSkipped = 0; _kid.autoSavedCount = 0;
 }
 
 function _kidShowWizard(html) {
@@ -10003,16 +10004,32 @@ function _kidStep_findClients() {
             '</div>';
         if (leads.length > 0) {
             const saved = _kid.autoSavedCount || 0;
-            html +=
-                '<div class="kid-already-done">' +
-                  '<div class="kid-already-done-icon">✓</div>' +
-                  '<div class="kid-already-done-text">' +
+            const imported = _kid.importedTotal || 0;
+            const dupes    = _kid.importedSkipped || 0;
+            let bannerBody;
+            if (imported > 0) {
+                // Bulk-import flow
+                const extra = imported - leads.length;
+                bannerBody =
+                    '<strong>Done.</strong> Imported ' + imported + ' from your file' +
+                    (dupes ? ' (' + dupes + ' already on file, skipped)' : '') + '. ' +
+                    'Showing the top ' + leads.length + ' below, all saved to your list' +
+                    (withEmail ? ' — ' + withEmail + ' already have an email ready.' : '.') +
+                    (extra > 0
+                      ? ' The other ' + extra + ' are queued in your candidate list — open Power user mode to browse them.'
+                      : '');
+            } else {
+                bannerBody =
                     '<strong>Done.</strong> I saved all ' + saved + ' to your list' +
                     (withEmail ? ' and ' + withEmail + ' have an email ready — tap “Write a note”.' : '.') +
                     (withEmail < leads.length
                       ? ' For the rest, tap <strong>Find their email</strong> or <strong>Call them</strong>.'
-                      : '') +
-                  '</div>' +
+                      : '');
+            }
+            html +=
+                '<div class="kid-already-done">' +
+                  '<div class="kid-already-done-icon">✓</div>' +
+                  '<div class="kid-already-done-text">' + bannerBody + '</div>' +
                 '</div>';
         }
         if (!leads.length) {
@@ -10645,7 +10662,7 @@ async function _kidRunImportList() {
         const qs = '?' + new URLSearchParams({
             category:   _kid.answers.category || '',
             city_state: _kid.answers.where || '',
-            count:      '25',
+            count:      '5000',
         }).toString();
         const r = await fetch('/api/lead-candidates/import-csv' + qs, {
             method: 'POST',
@@ -10654,16 +10671,18 @@ async function _kidRunImportList() {
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail || ('http ' + r.status));
 
+        const imported = (d.discover || {}).added_count || 0;
+        const dups     = (d.discover || {}).skipped_duplicates || 0;
+
         // Pull the freshly imported picks
         const picksRes = await fetch('/api/lead-candidates/picks?k=50');
         const picksJ = await picksRes.json();
         const allPicks = picksJ.picks || [];
-        // Filter by where if the user typed one; otherwise show all
         const leads = (_kid.answers.where
             ? _kidFilterPicksByWhere(allPicks, _kid.answers.where)
-            : allPicks).slice(0, 24);
+            : allPicks).slice(0, 50);
 
-        // Auto-save every found lead (same as Find Clients)
+        // Auto-save every shown lead (same as Find Clients)
         _kid.autoSavedCount = 0;
         await Promise.all(leads.map(async (l) => {
             if (!l.id) return;
@@ -10676,8 +10695,10 @@ async function _kidRunImportList() {
             } catch (_) {}
         }));
         _kid.leads = leads;
+        _kid.importedTotal = imported;
+        _kid.importedSkipped = dups;
         _kid.step = 4;
-        _kid.task = 'find_clients'; // reuse the find_clients result render
+        _kid.task = 'find_clients'; // reuse find_clients result render
         _kidStep_findClients();
     } catch (err) {
         _kidShowWizard(

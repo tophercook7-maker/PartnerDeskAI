@@ -637,10 +637,15 @@ def discover_via_overpass(
     """
     if not isinstance(count, int) or count < 1:
         raise ValueError("count must be a positive integer")
-    if count > MAX_FIND_COUNT:
-        raise ValueError(f"count {count} exceeds limit of {MAX_FIND_COUNT}")
-
     requested = (provider or _discovery_mod.AUTO_NAME).strip().lower()
+    # csv_import is pure local file read — no Overpass, no SERP stubs —
+    # so it doesn't share the same protection budget the OSM chain does.
+    # Cap it at the CSV row cap instead so users can bulk-import a
+    # whole file in one tap.
+    effective_max = 5_000 if requested == "csv_import" else MAX_FIND_COUNT
+    if count > effective_max:
+        raise ValueError(f"count {count} exceeds limit of {effective_max}")
+
     if requested == _discovery_mod.AUTO_NAME:
         chain_names = list(_discovery_mod.DEFAULT_CHAIN)
     else:
