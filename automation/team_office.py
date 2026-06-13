@@ -1298,23 +1298,62 @@ US_STATE_LOOKUP: dict[str, str] = {
 # Top anchor cities per state — for statewide aggregation Logan can
 # fan OSM queries out across these. Picked for population + spread.
 STATE_ANCHOR_CITIES: dict[str, list[str]] = {
+    # v13.0.10: expanded from 4-8 anchors per state to 12-20. Each new
+    # anchor multiplies through the umbrella sub-categories at OSM's
+    # per-query cap (50), so a statewide trade search now produces
+    # hundreds of unique candidates instead of ~25-50.
     "arkansas":    ["Little Rock, AR", "Fayetteville, AR", "Fort Smith, AR", "Conway, AR",
-                    "Hot Springs, AR", "Jonesboro, AR", "Springdale, AR", "Pine Bluff, AR"],
-    "texas":       ["Houston, TX", "Dallas, TX", "Austin, TX", "San Antonio, TX"],
-    "california":  ["Los Angeles, CA", "San Diego, CA", "San Jose, CA", "San Francisco, CA"],
-    "florida":     ["Jacksonville, FL", "Miami, FL", "Tampa, FL", "Orlando, FL"],
-    "new york":    ["New York, NY", "Buffalo, NY", "Rochester, NY", "Albany, NY"],
-    "illinois":    ["Chicago, IL", "Aurora, IL", "Springfield, IL", "Rockford, IL"],
-    "georgia":     ["Atlanta, GA", "Augusta, GA", "Columbus, GA", "Savannah, GA"],
-    "tennessee":   ["Nashville, TN", "Memphis, TN", "Knoxville, TN", "Chattanooga, TN"],
-    "missouri":    ["Kansas City, MO", "St. Louis, MO", "Springfield, MO", "Columbia, MO"],
-    "oklahoma":    ["Oklahoma City, OK", "Tulsa, OK", "Norman, OK", "Broken Arrow, OK"],
-    "louisiana":   ["New Orleans, LA", "Baton Rouge, LA", "Shreveport, LA", "Lafayette, LA"],
-    "mississippi": ["Jackson, MS", "Gulfport, MS", "Hattiesburg, MS", "Tupelo, MS"],
-    "alabama":     ["Birmingham, AL", "Montgomery, AL", "Mobile, AL", "Huntsville, AL"],
-    "kentucky":    ["Louisville, KY", "Lexington, KY", "Bowling Green, KY", "Owensboro, KY"],
-    "north carolina": ["Charlotte, NC", "Raleigh, NC", "Greensboro, NC", "Durham, NC"],
-    "south carolina": ["Charleston, SC", "Columbia, SC", "Greenville, SC", "Myrtle Beach, SC"],
+                    "Hot Springs, AR", "Jonesboro, AR", "Springdale, AR", "Pine Bluff, AR",
+                    "Rogers, AR", "Bentonville, AR", "Bella Vista, AR", "Cabot, AR",
+                    "Searcy, AR", "Russellville, AR", "Paragould, AR", "West Memphis, AR",
+                    "Mountain Home, AR", "Harrison, AR", "Bryant, AR", "Sherwood, AR"],
+    "texas":       ["Houston, TX", "Dallas, TX", "Austin, TX", "San Antonio, TX",
+                    "Fort Worth, TX", "El Paso, TX", "Arlington, TX", "Plano, TX",
+                    "Corpus Christi, TX", "Lubbock, TX", "Garland, TX", "Irving, TX",
+                    "Amarillo, TX", "Frisco, TX", "McKinney, TX", "Waco, TX"],
+    "california":  ["Los Angeles, CA", "San Diego, CA", "San Jose, CA", "San Francisco, CA",
+                    "Fresno, CA", "Sacramento, CA", "Long Beach, CA", "Oakland, CA",
+                    "Bakersfield, CA", "Anaheim, CA", "Santa Ana, CA", "Riverside, CA",
+                    "Stockton, CA", "Irvine, CA", "Chula Vista, CA", "Fremont, CA"],
+    "florida":     ["Jacksonville, FL", "Miami, FL", "Tampa, FL", "Orlando, FL",
+                    "St. Petersburg, FL", "Hialeah, FL", "Tallahassee, FL", "Fort Lauderdale, FL",
+                    "Port St. Lucie, FL", "Cape Coral, FL", "Pembroke Pines, FL", "Hollywood, FL"],
+    "new york":    ["New York, NY", "Buffalo, NY", "Rochester, NY", "Albany, NY",
+                    "Syracuse, NY", "Yonkers, NY", "New Rochelle, NY", "Schenectady, NY",
+                    "Utica, NY", "White Plains, NY", "Mount Vernon, NY", "Binghamton, NY"],
+    "illinois":    ["Chicago, IL", "Aurora, IL", "Springfield, IL", "Rockford, IL",
+                    "Joliet, IL", "Naperville, IL", "Elgin, IL", "Peoria, IL",
+                    "Champaign, IL", "Waukegan, IL", "Cicero, IL", "Bloomington, IL"],
+    "georgia":     ["Atlanta, GA", "Augusta, GA", "Columbus, GA", "Savannah, GA",
+                    "Athens, GA", "Sandy Springs, GA", "Macon, GA", "Roswell, GA",
+                    "Albany, GA", "Johns Creek, GA", "Warner Robins, GA", "Alpharetta, GA"],
+    "tennessee":   ["Nashville, TN", "Memphis, TN", "Knoxville, TN", "Chattanooga, TN",
+                    "Clarksville, TN", "Murfreesboro, TN", "Franklin, TN", "Jackson, TN",
+                    "Johnson City, TN", "Hendersonville, TN", "Kingsport, TN", "Smyrna, TN"],
+    "missouri":    ["Kansas City, MO", "St. Louis, MO", "Springfield, MO", "Columbia, MO",
+                    "Independence, MO", "Lee's Summit, MO", "O'Fallon, MO", "St. Joseph, MO",
+                    "St. Charles, MO", "St. Peters, MO", "Blue Springs, MO", "Joplin, MO"],
+    "oklahoma":    ["Oklahoma City, OK", "Tulsa, OK", "Norman, OK", "Broken Arrow, OK",
+                    "Edmond, OK", "Lawton, OK", "Moore, OK", "Midwest City, OK",
+                    "Enid, OK", "Stillwater, OK", "Muskogee, OK", "Bartlesville, OK"],
+    "louisiana":   ["New Orleans, LA", "Baton Rouge, LA", "Shreveport, LA", "Lafayette, LA",
+                    "Lake Charles, LA", "Kenner, LA", "Bossier City, LA", "Monroe, LA",
+                    "Alexandria, LA", "Houma, LA", "Slidell, LA", "Hammond, LA"],
+    "mississippi": ["Jackson, MS", "Gulfport, MS", "Hattiesburg, MS", "Tupelo, MS",
+                    "Southaven, MS", "Biloxi, MS", "Meridian, MS", "Olive Branch, MS",
+                    "Greenville, MS", "Horn Lake, MS", "Pearl, MS", "Madison, MS"],
+    "alabama":     ["Birmingham, AL", "Montgomery, AL", "Mobile, AL", "Huntsville, AL",
+                    "Tuscaloosa, AL", "Hoover, AL", "Dothan, AL", "Auburn, AL",
+                    "Decatur, AL", "Madison, AL", "Florence, AL", "Vestavia Hills, AL"],
+    "kentucky":    ["Louisville, KY", "Lexington, KY", "Bowling Green, KY", "Owensboro, KY",
+                    "Covington, KY", "Hopkinsville, KY", "Richmond, KY", "Florence, KY",
+                    "Georgetown, KY", "Henderson, KY", "Elizabethtown, KY", "Nicholasville, KY"],
+    "north carolina": ["Charlotte, NC", "Raleigh, NC", "Greensboro, NC", "Durham, NC",
+                       "Winston-Salem, NC", "Fayetteville, NC", "Cary, NC", "Wilmington, NC",
+                       "High Point, NC", "Greenville, NC", "Asheville, NC", "Concord, NC"],
+    "south carolina": ["Charleston, SC", "Columbia, SC", "Greenville, SC", "Myrtle Beach, SC",
+                       "Mount Pleasant, SC", "Rock Hill, SC", "Spartanburg, SC", "Summerville, SC",
+                       "Hilton Head Island, SC", "Sumter, SC", "Goose Creek, SC", "Florence, SC"],
 }
 
 # v12.10: umbrella category terms — when the user says "trade
@@ -2230,11 +2269,12 @@ def _logan_run(
         anchors = STATE_ANCHOR_CITIES.get(state.lower())
         if not anchors:
             anchors = [city] if city else []
-        # Budget split: per (anchor × sub-category) call.
-        total_calls = max(1, len(anchors) * len(query_categories))
-        per_call = max(3, min(per_call_cap, count // total_calls))
-        if "has_email" in filters or "no_website" in filters:
-            per_call = min(per_call_cap, per_call * 2)
+        # v13.0.10: stop dividing by total_calls — that was capping each
+        # per-city call at 3 candidates (count=50 / 72 calls = 0,
+        # max(3,0)=3). OSM caps per-query at 50 internally, so just ask
+        # for the OSM ceiling on every call and let dedup sort it out.
+        # This is what makes "hundreds of leads" possible.
+        per_call = per_call_cap
         for anchor in anchors:
             for sub_cat in query_categories:
                 try:

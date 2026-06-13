@@ -9833,6 +9833,28 @@ document.addEventListener('click', async (e) => {
         if (card) { card.classList.add('is-skipped'); }
         return;
     }
+    if (kind === 'show_more') {
+        e.preventDefault();
+        const all = _kid.allLeads || [];
+        const cur = _kid.shownCount || 0;
+        const next = Math.min(cur + 50, all.length);
+        _kid.shownCount = next;
+        // Auto-save the newly revealed batch in the background
+        const newLeads = all.slice(cur, next);
+        Promise.all(newLeads.map(async (l) => {
+            if (!l.id || l._auto_saved) return;
+            try {
+                const cr = await fetch(
+                    '/api/lead-candidates/' + encodeURIComponent(l.id) + '/convert',
+                    { method: 'POST', headers: { 'Content-Type':'application/json' }, body: '{}' }
+                );
+                if (cr.ok) { l._auto_saved = true; _kid.autoSavedCount = (_kid.autoSavedCount||0) + 1; }
+            } catch (_) {}
+        }));
+        _kid.leads = all.slice(0, next);
+        _kidStep_findClients();
+        return;
+    }
     if (kind === 'swap_to') {
         e.preventDefault();
         const alt = action.dataset.kidAlt;
@@ -10000,7 +10022,11 @@ function _kidStep_findClients() {
         if (a.has_email)     filters.push('with email');
         if (a.has_facebook)  filters.push('with facebook');
         const filterStr = filters.length ? ' with ' + filters.join(' and ') : '';
-        const requestText = 'find me 10 ' + (a.category || 'businesses') + ' in ' +
+        // v13.0.10: request 200 (was 10) so statewide sweeps actually
+        // produce volume. Logan's per-city budget no longer divides by
+        // total_calls, so each anchor city × sub-category gets the full
+        // OSM cap of 25 candidates.
+        const requestText = 'find me 200 ' + (a.category || 'businesses') + ' in ' +
                             (a.where || 'Hot Springs, AR') + filterStr;
         _kidRunFindClients(requestText, a.where || '');
         return;
@@ -10008,10 +10034,16 @@ function _kidStep_findClients() {
     if (_kid.step === 4) {
         // Result list
         const leads = _kid.leads || [];
+        const totalAvailable = (_kid.allLeads || []).length || leads.length;
         const withEmail = leads.filter(l => (l.email || '').trim()).length;
+        const withLikely = leads.filter(l => (l.website_url || '').trim() && !(l.email || '').trim()).length;
+        const emailableTotal = withEmail + withLikely;
         let html = _kidHead(3, 2) +
             '<div class="kid-results-headline">' +
-              'Found ' + leads.length + ' ' + (leads.length === 1 ? 'person' : 'people') + ' to talk to.' +
+              'Found ' + totalAvailable + ' people to talk to.' +
+              (totalAvailable > leads.length
+                ? ' <span class="kid-results-sub">(' + leads.length + ' shown — scroll for more)</span>'
+                : '') +
             '</div>';
         if (leads.length > 0) {
             const saved = _kid.autoSavedCount || 0;
@@ -10019,7 +10051,6 @@ function _kidStep_findClients() {
             const dupes    = _kid.importedSkipped || 0;
             let bannerBody;
             if (imported > 0) {
-                // Bulk-import flow
                 const extra = imported - leads.length;
                 bannerBody =
                     '<strong>Done.</strong> Imported ' + imported + ' from your file' +
@@ -10027,15 +10058,14 @@ function _kidStep_findClients() {
                     'Showing the top ' + leads.length + ' below, all saved to your list' +
                     (withEmail ? ' — ' + withEmail + ' already have an email ready.' : '.') +
                     (extra > 0
-                      ? ' The other ' + extra + ' are queued in your candidate list — open Power user mode to browse them.'
+                      ? ' The other ' + extra + ' are queued — open Power user mode to browse them.'
                       : '');
             } else {
                 bannerBody =
-                    '<strong>Done.</strong> I saved all ' + saved + ' to your list' +
-                    (withEmail ? ' and ' + withEmail + ' have an email ready — tap “Write a note”.' : '.') +
-                    (withEmail < leads.length
-                      ? ' For the rest, tap <strong>Find their email</strong> or <strong>Call them</strong>.'
-                      : '');
+                    '<strong>Done.</strong> Found <strong>' + totalAvailable + '</strong> leads, saved all to your list. ' +
+                    '<strong>' + emailableTotal + ' are emailable</strong>' +
+                    (withLikely ? ' (' + withEmail + ' real emails + ' + withLikely + ' guessed from their website domain — verify before sending)' : '') + '. ' +
+                    'Tap "Write a note" to send.';
             }
             html +=
                 '<div class="kid-already-done">' +
@@ -10054,6 +10084,16 @@ function _kidStep_findClients() {
             html += '<div class="kid-result-cards">';
             leads.forEach((l, idx) => { html += _kidRenderLeadCard(l, idx); });
             html += '</div>';
+        }
+        // Show-more pagination when more leads are queued than displayed
+        const totalAvail = (_kid.allLeads || []).length;
+        const shown = _kid.shownCount || leads.length;
+        if (totalAvail > shown) {
+            html +=
+                '<button type="button" class="kid-show-more" data-kid-action="show_more">' +
+                  'Show ' + Math.min(50, totalAvail - shown) + ' more (' +
+                  (totalAvail - shown) + ' waiting)' +
+                '</button>';
         }
         html += '<button type="button" class="kid-wiz-skip" data-kid-action="home">← Done, back home</button>';
         _kidShowWizard(html);
@@ -10307,16 +10347,12 @@ async function _kidRunFindClients(requestText, whereText) {
         });
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail || 'http ' + r.status);
-        // Pull the top picks from the candidate queue
-        const picksRes = await fetch('/api/lead-candidates/picks?k=50');
+        // v13.0.10: fetch up to 300 picks (was 50) so statewide sweeps
+        // can surface hundreds at a time.
+        const picksRes = await fetch('/api/lead-candidates/picks?k=300');
         const picksJ = await picksRes.json();
         const allPicks = picksJ.picks || [];
-        // Filter picks to match the user's requested area, so stale picks
-        // from earlier sessions in other regions don't mix in.
         let leads = _kidFilterPicksByWhere(allPicks, whereText);
-        // v13.0.8 + 9: "contactable" filter — keep picks with at least
-        // one reachable channel. A website is reachable too because we
-        // can guess info@/contact@/hello@ etc. from the domain.
         if (_kid.answers.contactable !== false) {
             leads = leads.filter((l) =>
                 (l.email||'').trim() ||
@@ -10326,7 +10362,11 @@ async function _kidRunFindClients(requestText, whereText) {
                 (l.website_url||'').trim()
             );
         }
-        leads = leads.slice(0, 12);
+        // Keep ALL contactable leads — the result UI paginates with a
+        // Show more button at 50 per page so the DOM stays light.
+        _kid.allLeads = leads;
+        _kid.shownCount = Math.min(50, leads.length);
+        leads = leads.slice(0, _kid.shownCount);
         // Auto-save every found lead to the main list in the background.
         // Parallel POSTs — if the candidate was already converted, the
         // endpoint either dedupes or 4xx's, which we swallow per-lead.
