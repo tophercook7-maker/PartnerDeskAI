@@ -2626,6 +2626,7 @@
         .kid-tile-video { border-color: #cbd5e1; background: #f8fafc; }
         .kid-tile-yt    { border-color: #fde2e2; background: #fff5f5; }
         .kid-tile-seo   { border-color: #cfe1ff; background: #f0f6ff; }
+        .kid-tile-import { border-color: #d4edda; background: #f3faf5; }
 
         .kid-footer {
             text-align: center;
@@ -2800,6 +2801,41 @@
         .kid-result-card-action:hover { background: #1e4d28; }
         .kid-result-card-action.is-info {
             background: #1f2937; border-color: #1f2937;
+        }
+
+        /* v13.0.5 — drag-drop CSV import zone */
+        .kid-drop-zone {
+            display: flex; flex-direction: column; align-items: center;
+            gap: 0.35rem;
+            padding: 1.6rem 1rem;
+            background: #f8fafc;
+            border: 2.5px dashed #94a3b8; border-radius: 14px;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+            margin-bottom: 0.9rem;
+        }
+        .kid-drop-zone:hover {
+            background: #f1f5f9; border-color: #64748b;
+        }
+        .kid-drop-zone.is-drag {
+            background: #ecfdf5; border-color: #34d399;
+        }
+        .kid-drop-zone.is-picked {
+            background: #f3faf5; border-color: #34d399;
+        }
+        .kid-drop-icon { font-size: 2.6rem; line-height: 1; }
+        .kid-drop-headline {
+            font-size: 1.1rem; font-weight: 700; color: #1f2937;
+        }
+        .kid-drop-sub { font-size: 0.92rem; color: #64748b; }
+        .kid-drop-filename {
+            margin-top: 0.4rem;
+            font-size: 0.95rem; color: #166534; font-weight: 600;
+        }
+        .kid-wiz-row { margin-bottom: 0.7rem; }
+        .kid-wiz-next:disabled {
+            background: #cbd5e1; color: #475569;
+            border-color: #cbd5e1; cursor: not-allowed;
         }
 
         /* v13.0.4 — "I already did it" banner above results */
@@ -4648,6 +4684,10 @@
                     <span class="kid-tile-icon">🔎</span>
                     <span class="kid-tile-label">Check website</span>
                 </button>
+                <button type="button" class="kid-tile kid-tile-import" data-kid-task="import_list">
+                    <span class="kid-tile-icon">📂</span>
+                    <span class="kid-tile-label">Import a list</span>
+                </button>
             </div>
 
             <div class="kid-footer">
@@ -6014,6 +6054,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=13.0.4"></script>
+    <script src="/static/app.js?v=13.0.5"></script>
 </body>
 </html>

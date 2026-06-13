@@ -27,7 +27,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
@@ -2727,6 +2727,64 @@ def api_candidates_do_it_all(body: CandidateFindIn) -> dict:
         raise HTTPException(status_code=400, detail=str(e))
     except overpass_mod.OverpassError as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.post("/api/lead-candidates/import-csv")
+async def api_candidates_import_csv(
+    file: UploadFile = File(...),
+    category: str = "",
+    city_state: str = "",
+    count: int = 25,
+) -> dict:
+    """v13.0.5: kid-mode CSV upload. Drops the uploaded file into
+    data/imports/ then runs the existing v9.4 csv_import provider via
+    do_it_all so the candidate pipeline picks it up the same way Find
+    Clients does. Filename is sanitized and forced into the imports
+    folder — no path traversal."""
+    from pathlib import Path
+    import re
+
+    raw_name = (file.filename or "upload.csv").strip()
+    if not raw_name.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="File must be a .csv")
+
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", raw_name)[-80:] or "upload.csv"
+    imports_dir = Path("data") / "imports"
+    imports_dir.mkdir(parents=True, exist_ok=True)
+    dest = (imports_dir / safe).resolve()
+
+    if not str(dest).startswith(str(imports_dir.resolve())):
+        raise HTTPException(status_code=400, detail="Bad filename")
+
+    data = await file.read()
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (10 MB max)")
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    dest.write_bytes(data)
+
+    # do_it_all caps count at 25; CSV import surfaces the top 25 best
+    # candidates per call. The file itself can still be hundreds of rows
+    # — the rest stay in data/imports/ for future calls or a power-user
+    # surface.
+    # Empty category = "import everything from the file". csv_import's
+    # discover() treats empty cat_q/city_q as no-op filters, so all rows
+    # with a usable business_name survive. do_it_all caps count at 25.
+    try:
+        result = cand_mod.do_it_all(
+            category=(category or "").strip(),
+            city_state=(city_state or "").strip(),
+            count=min(max(int(count), 1), 25),
+            website_status_target="any local business",
+            provider="csv_import",
+        )
+    except (ValueError, KeyError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    result["uploaded_filename"] = safe
+    result["uploaded_size_bytes"] = len(data)
+    return result
 
 
 @app.post("/api/lead-candidates/{cid}/convert")

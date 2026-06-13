@@ -9885,6 +9885,7 @@ async function _kidRunCurrentStep() {
     if (_kid.task === 'make_video')    return _kidStep_makeVideo();
     if (_kid.task === 'video_ideas')   return _kidStep_videoIdeas();
     if (_kid.task === 'check_site')    return _kidStep_checkSite();
+    if (_kid.task === 'import_list')   return _kidStep_importList();
     _kidShowHome();
 }
 
@@ -10538,6 +10539,157 @@ function _kidStep_checkSite() {
         working: 'Checking your website…',
         emoji: '🔎',
     });
+}
+
+// ----- IMPORT A LIST wizard -------------------------------------------
+// v13.0.5: drag-drop or pick a CSV. Auto-imports + auto-saves every
+// row that has a usable business name. Same result UI as Find Clients.
+function _kidStep_importList() {
+    if (_kid.step === 0) {
+        _kidShowWizard(
+            _kidHead(2, 0) +
+            '<div class="kid-wiz-question">Drop in a list. I\'ll do the rest.</div>' +
+            '<div class="kid-wiz-hint">' +
+              'CSV file from anywhere — chamber roster, exported list, hand-built ' +
+              'spreadsheet. I read business name, phone, email, website, category, ' +
+              'and city if your file has them.' +
+            '</div>' +
+            '<label class="kid-drop-zone" id="kid-drop-zone">' +
+              '<input type="file" id="kid-csv-file" accept=".csv,text/csv" hidden>' +
+              '<div class="kid-drop-icon">📂</div>' +
+              '<div class="kid-drop-headline">Tap to choose a CSV</div>' +
+              '<div class="kid-drop-sub">…or drag one onto this box</div>' +
+              '<div class="kid-drop-filename" id="kid-drop-filename"></div>' +
+            '</label>' +
+            '<div class="kid-wiz-row">' +
+              '<input type="text" class="kid-wiz-input" id="kid-imp-cat" ' +
+                'placeholder="Category (optional, e.g. plumbers)" ' +
+                'value="' + _escape(_kid.answers.category || '') + '">' +
+            '</div>' +
+            '<div class="kid-wiz-row">' +
+              '<input type="text" class="kid-wiz-input" id="kid-imp-where" ' +
+                'placeholder="Where (optional, e.g. Hot Springs, AR)" ' +
+                'value="' + _escape(_kid.answers.where || '') + '">' +
+            '</div>' +
+            '<button type="button" class="kid-wiz-next" id="kid-imp-go" disabled>' +
+              'Import & save →' +
+            '</button>'
+        );
+        _kidWireImportZone();
+        return;
+    }
+    if (_kid.step === 1) {
+        _kidShowWizard(
+            _kidHead(2, 1) +
+            '<div class="kid-wiz-working">' +
+              '<div class="kid-wiz-working-icon is-spin">📂</div>' +
+              '<div class="kid-wiz-working-text">Reading your list…</div>' +
+              '<div class="kid-wiz-working-sub">Big lists can take a few seconds.</div>' +
+            '</div>'
+        );
+        _kidRunImportList();
+        return;
+    }
+    if (_kid.step === 2) {
+        // Reuse the Find Clients result render — same _kid.leads shape.
+        _kid.step = 4;
+        _kid.task = 'find_clients';
+        _kidStep_findClients();
+        return;
+    }
+}
+
+function _kidWireImportZone() {
+    const zone = document.getElementById('kid-drop-zone');
+    const file = document.getElementById('kid-csv-file');
+    const name = document.getElementById('kid-drop-filename');
+    const go   = document.getElementById('kid-imp-go');
+    if (!zone || !file || !go) return;
+    const onPicked = () => {
+        if (!file.files || !file.files[0]) return;
+        const f = file.files[0];
+        name.textContent = '📄 ' + f.name + '  (' + Math.ceil(f.size / 1024) + ' KB)';
+        go.disabled = false;
+        zone.classList.add('is-picked');
+    };
+    file.addEventListener('change', onPicked);
+    zone.addEventListener('click', (e) => {
+        if (e.target.tagName !== 'INPUT') file.click();
+    });
+    zone.addEventListener('dragover', (e) => {
+        e.preventDefault(); zone.classList.add('is-drag');
+    });
+    zone.addEventListener('dragleave', () => zone.classList.remove('is-drag'));
+    zone.addEventListener('drop', (e) => {
+        e.preventDefault(); zone.classList.remove('is-drag');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            file.files = e.dataTransfer.files;
+            onPicked();
+        }
+    });
+    go.addEventListener('click', () => {
+        _kid.answers.category = (document.getElementById('kid-imp-cat').value || '').trim();
+        _kid.answers.where    = (document.getElementById('kid-imp-where').value || '').trim();
+        _kid.answers._file    = file.files[0] || null;
+        _kid.step = 1;
+        _kidRunCurrentStep();
+    });
+}
+
+async function _kidRunImportList() {
+    try {
+        const f = _kid.answers._file;
+        if (!f) throw new Error('No file picked');
+        const form = new FormData();
+        form.append('file', f, f.name);
+        const qs = '?' + new URLSearchParams({
+            category:   _kid.answers.category || '',
+            city_state: _kid.answers.where || '',
+            count:      '25',
+        }).toString();
+        const r = await fetch('/api/lead-candidates/import-csv' + qs, {
+            method: 'POST',
+            body: form,
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || ('http ' + r.status));
+
+        // Pull the freshly imported picks
+        const picksRes = await fetch('/api/lead-candidates/picks?k=50');
+        const picksJ = await picksRes.json();
+        const allPicks = picksJ.picks || [];
+        // Filter by where if the user typed one; otherwise show all
+        const leads = (_kid.answers.where
+            ? _kidFilterPicksByWhere(allPicks, _kid.answers.where)
+            : allPicks).slice(0, 24);
+
+        // Auto-save every found lead (same as Find Clients)
+        _kid.autoSavedCount = 0;
+        await Promise.all(leads.map(async (l) => {
+            if (!l.id) return;
+            try {
+                const cr = await fetch(
+                    '/api/lead-candidates/' + encodeURIComponent(l.id) + '/convert',
+                    { method: 'POST', headers: { 'Content-Type':'application/json' }, body: '{}' }
+                );
+                if (cr.ok) { l._auto_saved = true; _kid.autoSavedCount += 1; }
+            } catch (_) {}
+        }));
+        _kid.leads = leads;
+        _kid.step = 4;
+        _kid.task = 'find_clients'; // reuse the find_clients result render
+        _kidStep_findClients();
+    } catch (err) {
+        _kidShowWizard(
+            _kidHead(2, 1) +
+            '<div class="kid-wiz-working">' +
+              '<div class="kid-wiz-working-icon">⚠️</div>' +
+              '<div class="kid-wiz-working-text">Couldn\'t import that file.</div>' +
+              '<div class="kid-wiz-working-sub">' + _escape(err.message || String(err)) + '</div>' +
+            '</div>' +
+            '<button type="button" class="kid-wiz-next" data-kid-action="back">← Try again</button>'
+        );
+    }
 }
 
 // Disable the v12.8 chat-mode load on body.kid-mode so we don't fight
