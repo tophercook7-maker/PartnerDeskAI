@@ -1298,7 +1298,8 @@ US_STATE_LOOKUP: dict[str, str] = {
 # Top anchor cities per state — for statewide aggregation Logan can
 # fan OSM queries out across these. Picked for population + spread.
 STATE_ANCHOR_CITIES: dict[str, list[str]] = {
-    "arkansas":    ["Little Rock, AR", "Fayetteville, AR", "Fort Smith, AR", "Conway, AR"],
+    "arkansas":    ["Little Rock, AR", "Fayetteville, AR", "Fort Smith, AR", "Conway, AR",
+                    "Hot Springs, AR", "Jonesboro, AR", "Springdale, AR", "Pine Bluff, AR"],
     "texas":       ["Houston, TX", "Dallas, TX", "Austin, TX", "San Antonio, TX"],
     "california":  ["Los Angeles, CA", "San Diego, CA", "San Jose, CA", "San Francisco, CA"],
     "florida":     ["Jacksonville, FL", "Miami, FL", "Tampa, FL", "Orlando, FL"],
@@ -1321,21 +1322,21 @@ STATE_ANCHOR_CITIES: dict[str, list[str]] = {
 # a list of sub-categories and runs them all, aggregating. Keys are
 # matched longest-first so "trade business" wins over "trade".
 CATEGORY_UMBRELLAS: dict[str, list[str]] = {
-    "trade businesses":  ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
-    "trade business":    ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
-    "skilled trades":    ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
+    "trade businesses":  ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter", "landscaper", "handyman", "contractor"],
+    "trade business":    ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter", "landscaper", "handyman", "contractor"],
+    "skilled trades":    ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter", "landscaper", "handyman", "contractor"],
     "service businesses":["plumber", "electrician", "hvac", "landscaper", "cleaners", "handyman"],
     "service business":  ["plumber", "electrician", "hvac", "landscaper", "cleaners", "handyman"],
     "local services":    ["plumber", "electrician", "hvac", "landscaper", "cleaners", "handyman"],
     "local service":     ["plumber", "electrician", "hvac", "landscaper", "cleaners", "handyman"],
     "home services":     ["plumber", "electrician", "hvac", "roofer", "painter", "landscaper"],
     "home service":      ["plumber", "electrician", "hvac", "roofer", "painter", "landscaper"],
-    "contractors":       ["plumber", "electrician", "hvac", "roofer", "painter", "carpenter"],
+    "contractors":       ["plumber", "electrician", "hvac", "roofer", "painter", "carpenter", "landscaper", "handyman", "contractor"],
     "contractor":        ["plumber", "electrician", "hvac", "roofer", "painter", "carpenter"],
     "blue collar":       ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
-    "tradesmen":         ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
-    "tradespeople":      ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
-    "trades":            ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
+    "tradesmen":         ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter", "landscaper", "handyman", "contractor"],
+    "tradespeople":      ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter", "landscaper", "handyman", "contractor"],
+    "trades":            ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter", "landscaper", "handyman", "contractor"],
     "trade":             ["plumber", "electrician", "hvac", "roofer", "carpenter", "painter"],
     "small businesses":  ["restaurant", "salon", "cafe", "shop", "boutique"],
     "small business":    ["restaurant", "salon", "cafe", "shop", "boutique"],

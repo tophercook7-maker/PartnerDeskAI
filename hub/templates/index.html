@@ -2802,6 +2802,37 @@
             background: #1f2937; border-color: #1f2937;
         }
 
+        /* v13.0.4 — "I already did it" banner above results */
+        .kid-already-done {
+            display: flex; gap: 0.9rem; align-items: center;
+            background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%);
+            border: 2px solid #86efac;
+            border-radius: 12px;
+            padding: 0.95rem 1.1rem;
+            margin-bottom: 0.9rem;
+            animation: kid-banner-in 0.45s ease-out;
+        }
+        .kid-already-done-icon {
+            flex: 0 0 auto;
+            font-size: 1.9rem; line-height: 1;
+            background: #166534; color: #fff;
+            width: 2.4rem; height: 2.4rem; border-radius: 999px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800;
+            box-shadow: 0 2px 6px rgba(22,101,52,0.25);
+        }
+        .kid-already-done-text {
+            font-size: 1.02rem; color: #14532d; line-height: 1.45;
+        }
+        .kid-already-done-text strong { color: #14532d; }
+        @keyframes kid-banner-in {
+            0%   { opacity: 0; transform: translateY(-6px) scale(0.98); }
+            100% { opacity: 1; transform: translateY(0)    scale(1); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .kid-already-done { animation: none; }
+        }
+
         /* v13.0.3 — per-lead contact lines + action grid */
         .kid-lead-contact {
             font-size: 0.95rem; color: #1f2937;
@@ -5983,6 +6014,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=13.0.3"></script>
+    <script src="/static/app.js?v=13.0.4"></script>
 </body>
 </html>

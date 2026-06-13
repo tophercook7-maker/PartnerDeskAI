@@ -9995,10 +9995,25 @@ function _kidStep_findClients() {
     if (_kid.step === 4) {
         // Result list
         const leads = _kid.leads || [];
+        const withEmail = leads.filter(l => (l.email || '').trim()).length;
         let html = _kidHead(3, 2) +
             '<div class="kid-results-headline">' +
               'Found ' + leads.length + ' ' + (leads.length === 1 ? 'person' : 'people') + ' to talk to.' +
             '</div>';
+        if (leads.length > 0) {
+            const saved = _kid.autoSavedCount || 0;
+            html +=
+                '<div class="kid-already-done">' +
+                  '<div class="kid-already-done-icon">✓</div>' +
+                  '<div class="kid-already-done-text">' +
+                    '<strong>Done.</strong> I saved all ' + saved + ' to your list' +
+                    (withEmail ? ' and ' + withEmail + ' have an email ready — tap “Write a note”.' : '.') +
+                    (withEmail < leads.length
+                      ? ' For the rest, tap <strong>Find their email</strong> or <strong>Call them</strong>.'
+                      : '') +
+                  '</div>' +
+                '</div>';
+        }
         if (!leads.length) {
             html +=
                 '<div class="kid-result-card">' +
@@ -10110,9 +10125,11 @@ function _kidRenderLeadCard(l, idx) {
             '<a class="kid-lead-act is-fb" href="' + _escape(facebookUrl) + '" target="_blank" rel="noopener">' +
               '📘 Find Facebook' +
             '</a>' +
-            '<button type="button" class="kid-lead-act is-save" data-kid-action="lead_save" data-kid-lead-idx="' + idx + '">' +
-              '✓ Save to my list' +
-            '</button>' +
+            (l._auto_saved
+              ? '<span class="kid-lead-act is-save is-done">✓ Already in your list</span>'
+              : '<button type="button" class="kid-lead-act is-save" data-kid-action="lead_save" data-kid-lead-idx="' + idx + '">' +
+                  '✓ Save to my list' +
+                '</button>') +
             '<button type="button" class="kid-lead-act is-skip" data-kid-action="lead_skip" data-kid-lead-idx="' + idx + '">' +
               '✕ Skip' +
             '</button>' +
@@ -10180,8 +10197,6 @@ function _kidFilterPicksByWhere(picks, whereText) {
 async function _kidRunFindClients(requestText, whereText) {
     try {
         // Use the existing /command endpoint with Logan-routing.
-        // Send the full natural-language request — Logan's v12.10 parser
-        // handles count + filters + location.
         const r = await fetch('/api/team-office/command', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -10195,7 +10210,25 @@ async function _kidRunFindClients(requestText, whereText) {
         const allPicks = picksJ.picks || [];
         // Filter picks to match the user's requested area, so stale picks
         // from earlier sessions in other regions don't mix in.
-        _kid.leads = _kidFilterPicksByWhere(allPicks, whereText).slice(0, 12);
+        const leads = _kidFilterPicksByWhere(allPicks, whereText).slice(0, 12);
+        // Auto-save every found lead to the main list in the background.
+        // Parallel POSTs — if the candidate was already converted, the
+        // endpoint either dedupes or 4xx's, which we swallow per-lead.
+        _kid.autoSavedCount = 0;
+        await Promise.all(leads.map(async (l) => {
+            if (!l.id) return;
+            try {
+                const cr = await fetch(
+                    '/api/lead-candidates/' + encodeURIComponent(l.id) + '/convert',
+                    { method: 'POST', headers: { 'Content-Type':'application/json' }, body: '{}' }
+                );
+                if (cr.ok) {
+                    l._auto_saved = true;
+                    _kid.autoSavedCount += 1;
+                }
+            } catch (_) { /* silent — partial save is fine */ }
+        }));
+        _kid.leads = leads;
         _kid.step = 4;
         _kidRunCurrentStep();
     } catch (err) {
