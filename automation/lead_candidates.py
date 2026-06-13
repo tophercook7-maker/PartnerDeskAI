@@ -50,7 +50,13 @@ from urllib.parse import quote_plus
 import json
 import os
 import tempfile
+import threading
 import time
+
+# v13.0.11: serialize load+modify+save sequences so concurrent OSM
+# threads (parallelized in _logan_run) don't clobber each other.
+# Outbound HTTP can run in parallel; persist must be one-at-a-time.
+_PERSIST_LOCK = threading.RLock()
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -669,51 +675,50 @@ def discover_via_overpass(
         website_status_target=website_status_target,
     )
 
-    # Persist the candidates with cross-queue dedup (vs existing rows).
-    items = load()
-    existing_keys = {
-        ((it.get("business_name") or "").strip().lower(),
-         (it.get("city_state") or "").strip().lower())
-        for it in items
-    }
-    added: list[dict] = []
-    skipped_duplicates = 0
-    per_provider_added: dict[str, int] = {}
-    for cand in chain_result["candidates"]:
-        name_key = (cand.get("business_name") or "").strip().lower()
-        city_key = (cand.get("city_state") or "").strip().lower()
-        # Empty-name candidates (research missions) can't collide on
-        # name — dedup them on phrase instead so re-running doesn't
-        # produce duplicates of the same SERP angle.
-        if not name_key:
-            phrase = (cand.get("search_phrase") or "").strip().lower()
-            key = (f"_phrase:{phrase}", city_key)
-        else:
-            key = (name_key, city_key)
-        if key in existing_keys:
-            skipped_duplicates += 1
-            continue
-        existing_keys.add(key)
-        # Make sure every persisted candidate carries search_urls so
-        # the UI's per-card search strip works regardless of provider.
-        if not cand.get("search_urls"):
-            cand["search_urls"] = _search_urls_for(
-                cand.get("category") or category,
-                cand.get("city_state") or city_state,
-                (cand.get("business_name") or "")
-                  or (cand.get("search_phrase") or "")
-                  or (cand.get("category") or category),
-            )
-        cleaned = _clean(cand)
-        cleaned["id"] = _next_id(items + added)
-        cleaned["created_at"] = _now()
-        cleaned["updated_at"] = cleaned["created_at"]
-        added.append(cleaned)
-        ds = cleaned.get("discovery_source") or "manual"
-        per_provider_added[ds] = per_provider_added.get(ds, 0) + 1
-    if added:
-        items.extend(added)
-        _save(items)
+    # v13.0.11: persist under _PERSIST_LOCK so parallel callers don't
+    # clobber each other's saves. The HTTP fetch above (discover_chain)
+    # already finished — only the load → modify → save phase needs
+    # serialization. Critical for the _logan_run parallel sweep.
+    with _PERSIST_LOCK:
+        items = load()
+        existing_keys = {
+            ((it.get("business_name") or "").strip().lower(),
+             (it.get("city_state") or "").strip().lower())
+            for it in items
+        }
+        added: list[dict] = []
+        skipped_duplicates = 0
+        per_provider_added: dict[str, int] = {}
+        for cand in chain_result["candidates"]:
+            name_key = (cand.get("business_name") or "").strip().lower()
+            city_key = (cand.get("city_state") or "").strip().lower()
+            if not name_key:
+                phrase = (cand.get("search_phrase") or "").strip().lower()
+                key = (f"_phrase:{phrase}", city_key)
+            else:
+                key = (name_key, city_key)
+            if key in existing_keys:
+                skipped_duplicates += 1
+                continue
+            existing_keys.add(key)
+            if not cand.get("search_urls"):
+                cand["search_urls"] = _search_urls_for(
+                    cand.get("category") or category,
+                    cand.get("city_state") or city_state,
+                    (cand.get("business_name") or "")
+                      or (cand.get("search_phrase") or "")
+                      or (cand.get("category") or category),
+                )
+            cleaned = _clean(cand)
+            cleaned["id"] = _next_id(items + added)
+            cleaned["created_at"] = _now()
+            cleaned["updated_at"] = cleaned["created_at"]
+            added.append(cleaned)
+            ds = cleaned.get("discovery_source") or "manual"
+            per_provider_added[ds] = per_provider_added.get(ds, 0) + 1
+        if added:
+            items.extend(added)
+            _save(items)
 
     osm_added = per_provider_added.get("osm", 0)
     research_missions_added = per_provider_added.get("research_mission", 0)
@@ -1377,18 +1382,22 @@ def bulk_enrich(ids: list[str]) -> dict:
     Run enrich() against every id. Returns:
       {enriched: [row, ...], failed: [{id, reason}, ...]}
     Per-row errors don't abort the batch.
+
+    v13.0.11: takes the persist lock so concurrent OSM threads doing
+    do_it_all → bulk_enrich don't race on the candidate file.
     """
     if not isinstance(ids, list) or not ids:
         raise ValueError("ids must be a non-empty list")
     enriched: list[dict] = []
     failed: list[dict] = []
-    for cid in ids:
-        try:
-            enriched.append(enrich(cid))
-        except KeyError:
-            failed.append({"id": cid, "reason": "not found"})
-        except (ValueError, OSError) as e:
-            failed.append({"id": cid, "reason": str(e)})
+    with _PERSIST_LOCK:
+        for cid in ids:
+            try:
+                enriched.append(enrich(cid))
+            except KeyError:
+                failed.append({"id": cid, "reason": "not found"})
+            except (ValueError, OSError) as e:
+                failed.append({"id": cid, "reason": str(e)})
     return {"enriched": enriched, "failed": failed}
 
 

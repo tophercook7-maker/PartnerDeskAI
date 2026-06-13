@@ -2269,60 +2269,83 @@ def _logan_run(
         anchors = STATE_ANCHOR_CITIES.get(state.lower())
         if not anchors:
             anchors = [city] if city else []
-        # v13.0.10: stop dividing by total_calls — that was capping each
-        # per-city call at 3 candidates (count=50 / 72 calls = 0,
-        # max(3,0)=3). OSM caps per-query at 50 internally, so just ask
-        # for the OSM ceiling on every call and let dedup sort it out.
-        # This is what makes "hundreds of leads" possible.
         per_call = per_call_cap
-        for anchor in anchors:
-            for sub_cat in query_categories:
-                try:
-                    r = _lc.do_it_all(
-                        category=sub_cat, city_state=anchor, count=per_call,
-                    )
-                    all_picks.extend(r.get("picks") or [])
-                    disc = r.get("discover") or {}
-                    osm_total += int(disc.get("osm_added") or 0)
-                    rm_total  += int(disc.get("research_missions_added") or 0)
-                    sources_run.append((anchor, sub_cat))
-                except Exception:
+        # v13.0.11: parallelize OSM calls. Each call is I/O-bound (HTTP
+        # round-trip to Nominatim + Overpass), so threads work well.
+        # max_workers=6 keeps us under Overpass's informal "2-4
+        # concurrent connections" guidance per client when accounting
+        # for the two-call (Nominatim + Overpass) flow, and gives a
+        # ~6x wall-time speedup. Sequential 180 calls × ~3s = ~9 min;
+        # 6 parallel ~= ~90s.
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        jobs = [(anchor, sub_cat)
+                for anchor in anchors
+                for sub_cat in query_categories]
+        def _one(job):
+            anchor, sub_cat = job
+            try:
+                r = _lc.do_it_all(
+                    category=sub_cat, city_state=anchor, count=per_call,
+                )
+                return (anchor, sub_cat, r, None)
+            except Exception as e:
+                return (anchor, sub_cat, None, e)
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futures = [pool.submit(_one, j) for j in jobs]
+            for fut in as_completed(futures):
+                anchor, sub_cat, r, err = fut.result()
+                if err is not None or r is None:
                     continue
+                all_picks.extend(r.get("picks") or [])
+                disc = r.get("discover") or {}
+                osm_total += int(disc.get("osm_added") or 0)
+                rm_total  += int(disc.get("research_missions_added") or 0)
+                sources_run.append((anchor, sub_cat))
     else:
         # Single-place discovery; loop over sub-categories.
-        per_call = min(per_call_cap, max(3, count // max(1, len(query_categories))))
-        # v13.0.7: OSM's _parse_city_state requires "City, State" form.
-        # Logan's parser splits these into city + state; re-join here so
-        # the OSM call doesn't silently fail and we don't fall straight
-        # through to research_mission stubs.
+        # v13.0.11: parallelize when there are multiple sub-cats too.
+        per_call = per_call_cap if len(query_categories) > 1 else min(
+            per_call_cap, max(3, count))
+        # v13.0.7: re-join "City, ST" for OSM parser.
         place = f"{city}, {state.upper()}" if (city and state) else city
-        for sub_cat in query_categories:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        def _one_sub(sub_cat):
             try:
                 r = _lc.do_it_all(
                     category=sub_cat, city_state=place, count=per_call,
                 )
+                return (sub_cat, r, None)
+            except Exception as e:
+                return (sub_cat, None, e)
+        first_failure_err = None
+        with ThreadPoolExecutor(max_workers=min(6, len(query_categories) or 1)) as pool:
+            futures = [pool.submit(_one_sub, sc) for sc in query_categories]
+            for fut in as_completed(futures):
+                sub_cat, r, err = fut.result()
+                if err is not None:
+                    if first_failure_err is None:
+                        first_failure_err = err
+                    continue
+                if r is None:
+                    continue
                 all_picks.extend(r.get("picks") or [])
                 disc = r.get("discover") or {}
                 osm_total += int(disc.get("osm_added") or 0)
                 rm_total  += int(disc.get("research_missions_added") or 0)
                 sources_run.append((city, sub_cat))
-            except Exception as e:
-                # On hard failure of the FIRST sub-category, surface
-                # the error. If later sub-cats fail, continue silently.
-                if not all_picks and len(sources_run) == 0:
-                    err = append_message({
-                        "role": "logan", "partner": "logan",
-                        "text": (
-                            f"I tried to start in {city} but hit a snag: {e}. "
-                            "Open my section and run Find Leads For Me manually."
-                        ),
-                        "actions": [{"label": "Open Logan", "kind": "scroll",
-                                     "target": "logan-details"}],
-                    })
-                    return {"ok": False, "partner": "logan", "messages": [err],
-                            "documents": [], "work_item": None,
-                            "summary": f"Logan stalled: {e}"}
-                continue
+        if first_failure_err is not None and not all_picks and not sources_run:
+            err = append_message({
+                "role": "logan", "partner": "logan",
+                "text": (
+                    f"I tried to start in {city} but hit a snag: {first_failure_err}. "
+                    "Open my section and run Find Leads For Me manually."
+                ),
+                "actions": [{"label": "Open Logan", "kind": "scroll",
+                             "target": "logan-details"}],
+            })
+            return {"ok": False, "partner": "logan", "messages": [err],
+                    "documents": [], "work_item": None,
+                    "summary": f"Logan stalled: {first_failure_err}"}
 
     # v12.10: dedupe aggregated picks — when umbrellas run multiple
     # sub-categories, the same business can come back more than once.
