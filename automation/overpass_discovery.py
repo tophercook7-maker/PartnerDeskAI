@@ -84,17 +84,47 @@ CATEGORY_TO_OSM: dict[str, list[tuple[str, str]]] = {
     "nails":            [("shop", "beauty")],
     "spa":              [("leisure", "spa"), ("shop", "beauty")],
     "tattoo":           [("shop", "tattoo")],
-    "landscaping":      [("shop", "garden_centre"), ("craft", "gardener")],
-    "landscaper":       [("shop", "garden_centre"), ("craft", "gardener")],
-    "plumber":          [("craft", "plumber")],
-    "plumbing":         [("craft", "plumber")],
-    "electrician":      [("craft", "electrician")],
-    "handyman":         [("craft", "handyman")],
+    # v13.0.7: trade categories — broadened tag coverage. OSM real-world
+    # tagging is inconsistent; widening per-category to 3-5 likely tag
+    # forms typically doubles or triples raw OSM hits per query without
+    # any false positives (each tag form is still narrow). Same shape as
+    # before — just more pairs per category.
+    "landscaping":      [("shop", "garden_centre"), ("craft", "gardener"),
+                         ("landuse", "grass"), ("office", "garden")],
+    "landscaper":       [("shop", "garden_centre"), ("craft", "gardener"),
+                         ("landuse", "grass"), ("office", "garden")],
+    "lawn care":        [("craft", "gardener"), ("shop", "garden_centre")],
+    "tree service":     [("craft", "gardener")],
+    "plumber":          [("craft", "plumber"), ("shop", "plumber"),
+                         ("office", "plumber")],
+    "plumbing":         [("craft", "plumber"), ("shop", "plumber"),
+                         ("office", "plumber")],
+    "electrician":      [("craft", "electrician"), ("shop", "electrical"),
+                         ("office", "electrician")],
+    "electrical":       [("craft", "electrician"), ("shop", "electrical")],
+    "handyman":         [("craft", "handyman"), ("office", "handyman"),
+                         ("craft", "carpenter")],
     "hardware":         [("shop", "hardware"), ("shop", "doityourself")],
-    "hardware store":   [("shop", "hardware")],
-    "carpenter":        [("craft", "carpenter")],
-    "roofer":           [("craft", "roofer")],
-    "hvac":             [("craft", "hvac")],
+    "hardware store":   [("shop", "hardware"), ("shop", "doityourself")],
+    "carpenter":        [("craft", "carpenter"), ("shop", "carpenter"),
+                         ("craft", "cabinet_maker")],
+    "carpentry":        [("craft", "carpenter"), ("craft", "cabinet_maker")],
+    "roofer":           [("craft", "roofer"), ("shop", "roofing")],
+    "roofing":          [("craft", "roofer"), ("shop", "roofing")],
+    "hvac":             [("craft", "heating_engineer"), ("craft", "hvac"),
+                         ("shop", "hvac"), ("office", "hvac")],
+    "heating":          [("craft", "heating_engineer"), ("office", "hvac")],
+    "air conditioning": [("craft", "heating_engineer"), ("office", "hvac")],
+    "contractor":       [("office", "construction"), ("craft", "builder"),
+                         ("craft", "handyman")],
+    "general contractor": [("office", "construction"), ("craft", "builder")],
+    "builder":          [("craft", "builder"), ("office", "construction")],
+    "construction":     [("office", "construction"), ("craft", "builder")],
+    "painter":          [("craft", "painter"), ("shop", "paint")],
+    "painting":         [("craft", "painter")],
+    "flooring":         [("shop", "flooring"), ("craft", "tiler")],
+    "tiler":            [("craft", "tiler"), ("shop", "flooring")],
+    "tile":             [("craft", "tiler"), ("shop", "flooring")],
     "auto repair":      [("shop", "car_repair")],
     "mechanic":         [("shop", "car_repair")],
     "car wash":         [("amenity", "car_wash")],
@@ -346,6 +376,7 @@ def _build_overpass_query_by_area_id(
         ek, ev = _qstr(k), _qstr(v)
         pair_lines.append(f'  node["{ek}"="{ev}"](area.searchArea);')
         pair_lines.append(f'  way["{ek}"="{ev}"](area.searchArea);')
+        pair_lines.append(f'  relation["{ek}"="{ev}"](area.searchArea);')
     body = "\n".join(pair_lines)
     return (
         f"[out:json][timeout:{OVERPASS_QUERY_TIMEOUT_S}];\n"
@@ -375,6 +406,9 @@ def _build_overpass_query_by_bbox(
         pair_lines.append(
             f'  way["{ek}"="{ev}"](around:{radius_m},{lat},{lon});'
         )
+        pair_lines.append(
+            f'  relation["{ek}"="{ev}"](around:{radius_m},{lat},{lon});'
+        )
     body = "\n".join(pair_lines)
     return (
         f"[out:json][timeout:{OVERPASS_QUERY_TIMEOUT_S}];\n"
@@ -398,6 +432,7 @@ def _build_overpass_query(
         ek, ev = _qstr(k), _qstr(v)
         pair_lines.append(f'  node["{ek}"="{ev}"](area.searchArea);')
         pair_lines.append(f'  way["{ek}"="{ev}"](area.searchArea);')
+        pair_lines.append(f'  relation["{ek}"="{ev}"](area.searchArea);')
     body = "\n".join(pair_lines)
     return (
         f"[out:json][timeout:{OVERPASS_QUERY_TIMEOUT_S}];\n"

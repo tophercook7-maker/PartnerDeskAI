@@ -2245,10 +2245,15 @@ def _logan_run(
     else:
         # Single-place discovery; loop over sub-categories.
         per_call = min(per_call_cap, max(3, count // max(1, len(query_categories))))
+        # v13.0.7: OSM's _parse_city_state requires "City, State" form.
+        # Logan's parser splits these into city + state; re-join here so
+        # the OSM call doesn't silently fail and we don't fall straight
+        # through to research_mission stubs.
+        place = f"{city}, {state.upper()}" if (city and state) else city
         for sub_cat in query_categories:
             try:
                 r = _lc.do_it_all(
-                    category=sub_cat, city_state=city, count=per_call,
+                    category=sub_cat, city_state=place, count=per_call,
                 )
                 all_picks.extend(r.get("picks") or [])
                 disc = r.get("discover") or {}
