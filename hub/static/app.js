@@ -9833,6 +9833,16 @@ document.addEventListener('click', async (e) => {
         if (card) { card.classList.add('is-skipped'); }
         return;
     }
+    if (kind === 'swap_to') {
+        e.preventDefault();
+        const alt = action.dataset.kidAlt;
+        const inp = document.getElementById('kid-note-to');
+        if (inp && alt) {
+            inp.value = alt;
+            _kid.answers.to = alt;
+        }
+        return;
+    }
     if (kind === 'send_note_now') {
         e.preventDefault();
         await _kidSendNote();
@@ -10060,6 +10070,34 @@ function _kidCheckHtml(key, label, checked) {
     );
 }
 
+// Most small-business websites accept mail at info@/contact@/hello@.
+// When we have a domain but no email, generate likely candidates so
+// the user has something they can verify in 30 seconds instead of a
+// dead-end "no contact" card. Always labeled "likely — verify".
+function _kidGuessEmails(websiteUrl) {
+    const raw = (websiteUrl || '').trim();
+    if (!raw) return [];
+    let domain = '';
+    try {
+        const u = new URL(raw.startsWith('http') ? raw : 'https://' + raw);
+        domain = (u.hostname || '').replace(/^www\./i, '').toLowerCase();
+    } catch (_) { return []; }
+    if (!domain || domain.indexOf('.') < 0) return [];
+    // Skip obvious aggregators / social sites
+    const blocklist = ['facebook.com', 'instagram.com', 'yelp.com', 'google.com',
+                       'twitter.com', 'x.com', 'linkedin.com', 'youtube.com',
+                       'maps.google.com', 'tiktok.com', 'nextdoor.com'];
+    if (blocklist.some(b => domain.endsWith(b))) return [];
+    // Most-likely-first ordering — info@ wins by a wide margin in SMB land.
+    return [
+        'info@' + domain,
+        'contact@' + domain,
+        'hello@' + domain,
+        'office@' + domain,
+        'sales@' + domain,
+    ];
+}
+
 // Render one result card. Each lead gets 5 big actions, color-coded.
 // Phone/email/website are surfaced as live links so a single tap dials,
 // opens mail, or visits the site. When email is missing the "Write a
@@ -10073,6 +10111,14 @@ function _kidRenderLeadCard(l, idx) {
     const website = (l.website_url || '').trim();
     const flags = l.weak_presence_flags || [];
 
+    // v13.0.9: when there's no real email but a website is on file,
+    // generate likely email patterns from the domain. Most small-biz
+    // websites have info@/contact@/hello@ working. We display them
+    // labeled "likely — verify" so the user knows it's a guess.
+    const likelyEmails = (!email && website) ? _kidGuessEmails(website) : [];
+    // Stash for later use by Write a note / Save flow
+    l._likely_emails = likelyEmails;
+
     // Contact lines — only render the rows we actually have data for.
     const lines = [];
     if (phone) lines.push(
@@ -10083,11 +10129,22 @@ function _kidRenderLeadCard(l, idx) {
         '<div class="kid-lead-contact">✉ <a href="mailto:' + _escape(email) + '">' +
         _escape(email) + '</a></div>'
     );
+    if (!email && likelyEmails.length) {
+        const top = likelyEmails[0];
+        const others = likelyEmails.slice(1, 4).join(', ');
+        lines.push(
+            '<div class="kid-lead-contact kid-lead-likely-email">' +
+              '✉ <a href="mailto:' + _escape(top) + '">' + _escape(top) + '</a> ' +
+              '<span class="kid-likely-tag">likely — verify before sending</span>' +
+              (others ? '<div class="kid-likely-others">also try: ' + _escape(others) + '</div>' : '') +
+            '</div>'
+        );
+    }
     if (website) lines.push(
         '<div class="kid-lead-contact">🌐 <a href="' + _escape(website) + '" target="_blank" rel="noopener">' +
         _escape(website.replace(/^https?:\/\//, '').replace(/\/$/, '')) + '</a></div>'
     );
-    if (!phone && !email && !website) lines.push(
+    if (!phone && !email && !website && !likelyEmails.length) lines.push(
         '<div class="kid-lead-contact kid-lead-contact-empty">No contact details on file yet — use Look them up.</div>'
     );
 
@@ -10097,6 +10154,8 @@ function _kidRenderLeadCard(l, idx) {
     const ig = (l.instagram_url || '').trim();
     const badges = [];
     if (email)   badges.push('<span class="kid-lead-badge is-email">✉ Email</span>');
+    else if (likelyEmails.length)
+                 badges.push('<span class="kid-lead-badge is-likely">✉ Likely email</span>');
     if (phone)   badges.push('<span class="kid-lead-badge is-phone">📞 Phone</span>');
     if (fb)      badges.push('<span class="kid-lead-badge is-fb">📘 Facebook</span>');
     if (ig)      badges.push('<span class="kid-lead-badge is-ig">📷 Instagram</span>');
@@ -10125,9 +10184,11 @@ function _kidRenderLeadCard(l, idx) {
         || ('https://www.google.com/search?q=' + encodeURIComponent('site:facebook.com "' + name + '" "' + loc + '"'));
 
     // Primary action: Write a note if email, otherwise Find their email
-    const primaryBtn = email
+    // Write a note when we have a real OR likely email; otherwise the
+    // search-for-email fallback.
+    const primaryBtn = (email || likelyEmails.length)
         ? '<button type="button" class="kid-lead-act is-primary" data-kid-action="lead_write_note" data-kid-lead-idx="' + idx + '">' +
-            '✉ Write a note' +
+            (email ? '✉ Write a note' : '✉ Draft a note (verify email)') +
           '</button>'
         : '<a class="kid-lead-act is-primary" href="' + _escape(contactFormUrl) + '" target="_blank" rel="noopener">' +
             '📝 Find their email' +
@@ -10253,15 +10314,16 @@ async function _kidRunFindClients(requestText, whereText) {
         // Filter picks to match the user's requested area, so stale picks
         // from earlier sessions in other regions don't mix in.
         let leads = _kidFilterPicksByWhere(allPicks, whereText);
-        // v13.0.8: client-side "contactable" filter — keep only picks
-        // with at least one reachable channel (email / phone / facebook
-        // / instagram). On by default; the user can untick to see all.
+        // v13.0.8 + 9: "contactable" filter — keep picks with at least
+        // one reachable channel. A website is reachable too because we
+        // can guess info@/contact@/hello@ etc. from the domain.
         if (_kid.answers.contactable !== false) {
             leads = leads.filter((l) =>
                 (l.email||'').trim() ||
                 (l.phone||'').trim() ||
                 (l.facebook_url||'').trim() ||
-                (l.instagram_url||'').trim()
+                (l.instagram_url||'').trim() ||
+                (l.website_url||'').trim()
             );
         }
         leads = leads.slice(0, 12);
@@ -10327,8 +10389,12 @@ async function _kidSaveLead(lead, btn) {
 }
 
 function _kidOpenSendNoteForLead(lead) {
-    // Pre-fill a draft from agency profile defaults + lead info
-    const to = (lead.email || '').trim();
+    // Pre-fill a draft from agency profile defaults + lead info.
+    // If no real email is on file, use the top guess and stash the
+    // alternatives so the Send Note screen can offer one-tap swaps.
+    const realEmail = (lead.email || '').trim();
+    const guesses = lead._likely_emails || (lead.website_url ? _kidGuessEmails(lead.website_url) : []);
+    const to = realEmail || guesses[0] || '';
     const subject = 'Quick idea for ' + (lead.business_name || 'your business');
     const body =
         'Hi ' + (lead.business_name || 'there') + ' team,\n\n' +
@@ -10342,6 +10408,8 @@ function _kidOpenSendNoteForLead(lead) {
     _kid.answers = {
         to: to, subject: subject, body: body,
         lead_id: lead.converted_lead_id || '',
+        email_is_guess: !realEmail && !!guesses[0],
+        email_alternates: realEmail ? [] : guesses.slice(1, 4),
     };
     _kid.task = 'send_note';
     _kid.step = 0;
@@ -10358,9 +10426,24 @@ function _kidStep_sendNote() {
             '<form data-kid-form>' +
               '<div class="kid-note-row">' +
                 '<label class="kid-note-label">To</label>' +
-                '<input type="email" class="kid-note-input" ' +
+                '<input type="email" class="kid-note-input" id="kid-note-to" ' +
                   'data-kid-collect="to" value="' + _escape(a.to || '') + '" ' +
                   'placeholder="them@example.com" required>' +
+                (a.email_is_guess
+                  ? '<div class="kid-note-guess-warn">⚠ This email is a guess based on their website. ' +
+                    'Tap <a href="https://www.google.com/search?q=' +
+                    encodeURIComponent('"' + (a.to||'').split('@')[1] + '" contact email') +
+                    '" target="_blank" rel="noopener">verify it</a> before sending. ' +
+                    'If wrong, the message bounces (no harm done, but no reach either).</div>'
+                  : '') +
+                (a.email_alternates && a.email_alternates.length
+                  ? '<div class="kid-note-alts">Also try: ' +
+                    a.email_alternates.map((alt) =>
+                      '<button type="button" class="kid-note-alt" data-kid-action="swap_to" data-kid-alt="' +
+                      _escape(alt) + '">' + _escape(alt) + '</button>'
+                    ).join(' ') +
+                    '</div>'
+                  : '') +
               '</div>' +
               '<div class="kid-note-row">' +
                 '<label class="kid-note-label">Subject</label>' +

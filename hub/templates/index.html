@@ -2803,6 +2803,53 @@
             background: #1f2937; border-color: #1f2937;
         }
 
+        /* v13.0.9 — "likely email" guess from website domain */
+        .kid-lead-likely-email {
+            background: #fff7ed;
+            border: 1px dashed #fbbf24;
+            border-radius: 6px;
+            padding: 0.32rem 0.55rem;
+        }
+        .kid-likely-tag {
+            margin-left: 0.4rem;
+            font-size: 0.78rem; color: #92400e;
+            background: #fef3c7;
+            padding: 0.05rem 0.4rem;
+            border-radius: 999px;
+            font-weight: 700;
+        }
+        .kid-likely-others {
+            font-size: 0.82rem; color: #78350f;
+            margin-top: 0.15rem;
+        }
+        .kid-note-guess-warn {
+            margin-top: 0.4rem;
+            padding: 0.5rem 0.7rem;
+            background: #fef3c7;
+            border: 1.5px solid #fbbf24;
+            border-radius: 6px;
+            font-size: 0.92rem; color: #78350f;
+            line-height: 1.4;
+        }
+        .kid-note-guess-warn a { color: #1d4ed8; font-weight: 700; }
+        .kid-note-alts {
+            margin-top: 0.4rem;
+            display: flex; flex-wrap: wrap;
+            gap: 0.35rem; align-items: center;
+            font-size: 0.85rem; color: #475569;
+        }
+        .kid-note-alt {
+            padding: 0.2rem 0.55rem;
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 999px;
+            font-size: 0.82rem; font-weight: 600;
+            color: #334155;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .kid-note-alt:hover { background: #e2e8f0; }
+
         /* v13.0.8 — contact-method badges on result cards */
         .kid-lead-badges {
             display: flex; flex-wrap: wrap; gap: 0.35rem;
@@ -2816,6 +2863,7 @@
             border: 1px solid;
         }
         .kid-lead-badge.is-email { background: #f0fdf4; color: #14532d; border-color: #86efac; }
+        .kid-lead-badge.is-likely { background: #fff7ed; color: #9a3412; border-color: #fed7aa; }
         .kid-lead-badge.is-phone { background: #eff6ff; color: #1e3a8a; border-color: #93c5fd; }
         .kid-lead-badge.is-fb    { background: #eef2ff; color: #312e81; border-color: #c7d2fe; }
         .kid-lead-badge.is-ig    { background: #fdf4ff; color: #701a75; border-color: #f0abfc; }
@@ -6073,6 +6121,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=13.0.8"></script>
+    <script src="/static/app.js?v=13.0.9"></script>
 </body>
 </html>
