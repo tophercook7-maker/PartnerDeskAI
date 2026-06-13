@@ -41,7 +41,24 @@ import urllib.parse
 import urllib.request
 
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_URL = "https://overpass-api.de/api/interpreter"  # primary (kept for back-compat reads)
+# v13.0.12: mirror list, tried in order on connection-refused / 5xx.
+# Some mirrors don't support area queries (the FR mirror returns
+# "area_tags_local.bin not found"); we skip those by retrying the
+# next one if the first response is empty AND carries a "remark" of
+# "open64" or "runtime error". Kept short and trusted — these are the
+# documented Overpass alternates.
+OVERPASS_MIRRORS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://lz4.overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    "https://overpass.openstreetmap.fr/api/interpreter",
+]
+# Cache of the last-known-good mirror for this process. None until we
+# probe; once set we try this first on every call. Reset on hard 5xx
+# from the cached mirror so a flaky host doesn't pin us forever.
+_LAST_GOOD_MIRROR: str | None = None
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 OVERPASS_HTTP_TIMEOUT_S = 30      # client-side socket timeout
 NOMINATIM_HTTP_TIMEOUT_S = 15
@@ -447,11 +464,12 @@ def _build_overpass_query(
 
 # --- Outbound call ----------------------------------------------------
 
-def _call_overpass(query: str) -> dict:
-    """One read-only HTTPS POST. Returns the parsed JSON response."""
-    data = urllib.parse.urlencode({"data": query}).encode("utf-8")
+def _call_overpass_one(url: str, data: bytes) -> dict:
+    """Single attempt against one mirror. Raises OverpassError on any
+    failure (HTTP non-2xx, transport error, JSON parse error, or a
+    "remark" body indicating the mirror lacks area data)."""
     req = urllib.request.Request(
-        OVERPASS_URL,
+        url,
         data=data,
         headers={
             "User-Agent":   _USER_AGENT,
@@ -465,18 +483,63 @@ def _call_overpass(query: str) -> dict:
             raw = resp.read()
     except urllib.error.HTTPError as e:
         if e.code == 429:
-            raise OverpassError("Overpass rate-limited (429). Try again in a minute.") from e
+            raise OverpassError(f"Overpass rate-limited (429) at {url}.") from e
         if e.code in (504, 408):
-            raise OverpassError(
-                "Overpass query timed out. Try a smaller city or simpler category."
-            ) from e
-        raise OverpassError(f"Overpass HTTP {e.code}: {e.reason}") from e
-    except (urllib.error.URLError, socket.timeout, TimeoutError) as e:
-        raise OverpassError(f"Overpass unreachable: {e}") from e
+            raise OverpassError(f"Overpass timeout at {url}.") from e
+        raise OverpassError(f"Overpass HTTP {e.code} at {url}: {e.reason}") from e
+    except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError) as e:
+        raise OverpassError(f"Overpass unreachable at {url}: {e}") from e
     try:
-        return json.loads(raw.decode("utf-8"))
+        result = json.loads(raw.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        raise OverpassError(f"Overpass returned invalid JSON: {e}") from e
+        raise OverpassError(f"Overpass invalid JSON from {url}: {e}") from e
+    # Some mirrors return 200 but with a "remark" indicating a runtime
+    # error (e.g. FR mirror lacks the area tags database). Treat empty
+    # elements + a runtime-error remark as a failure so we try the next.
+    remark = str(result.get("remark") or "").lower()
+    if not result.get("elements") and any(
+        s in remark for s in ("runtime error", "open64", "file_blocks", "no such file")
+    ):
+        raise OverpassError(f"Overpass mirror {url} lacks area data: {remark[:80]}")
+    return result
+
+
+def _call_overpass(query: str) -> dict:
+    """Read-only HTTPS POST with multi-mirror fallback.
+
+    v13.0.12: tries OVERPASS_MIRRORS in order. Caches the last-known-
+    good mirror for the process so subsequent calls go straight there.
+    On hard failure of the cached mirror, falls back through the rest.
+    Raises OverpassError only if every mirror fails.
+    """
+    global _LAST_GOOD_MIRROR
+    data = urllib.parse.urlencode({"data": query}).encode("utf-8")
+
+    # Build try-order: cached good mirror first (if any), then the rest.
+    mirrors: list[str] = []
+    if _LAST_GOOD_MIRROR and _LAST_GOOD_MIRROR in OVERPASS_MIRRORS:
+        mirrors.append(_LAST_GOOD_MIRROR)
+    for m in OVERPASS_MIRRORS:
+        if m not in mirrors:
+            mirrors.append(m)
+
+    last_err: OverpassError | None = None
+    for url in mirrors:
+        try:
+            result = _call_overpass_one(url, data)
+            _LAST_GOOD_MIRROR = url
+            return result
+        except OverpassError as e:
+            last_err = e
+            # If the cached mirror failed, clear it so the next call
+            # re-probes from the top.
+            if url == _LAST_GOOD_MIRROR:
+                _LAST_GOOD_MIRROR = None
+            continue
+    # All mirrors exhausted
+    if last_err is None:
+        last_err = OverpassError("All Overpass mirrors exhausted (none reachable).")
+    raise last_err
 
 
 # --- Element → candidate dict -----------------------------------------
