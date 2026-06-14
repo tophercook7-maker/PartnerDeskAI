@@ -10224,9 +10224,12 @@ function _kidRenderLeadCard(l, idx) {
         const top = likelyEmails[0];
         const others = likelyEmails.slice(1, 4).join(', ');
         lines.push(
-            '<div class="kid-lead-contact kid-lead-likely-email">' +
-              '✉ <a href="mailto:' + _escape(top) + '">' + _escape(top) + '</a> ' +
-              '<span class="kid-likely-tag">likely — verify before sending</span>' +
+            '<div class="kid-lead-likely-email">' +
+              '<div class="kid-lead-likely-row">' +
+                '<span class="kid-likely-tag">LIKELY</span>' +
+                '✉ <a href="mailto:' + _escape(top) + '">' + _escape(top) + '</a>' +
+              '</div>' +
+              '<div class="kid-likely-sub">Most small-business sites use this pattern. Verify before sending.</div>' +
               (others ? '<div class="kid-likely-others">also try: ' + _escape(others) + '</div>' : '') +
             '</div>'
         );

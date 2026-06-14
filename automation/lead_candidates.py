@@ -681,9 +681,19 @@ def discover_via_overpass(
     # serialization. Critical for the _logan_run parallel sweep.
     with _PERSIST_LOCK:
         items = load()
+        # v13.0.14: dedup on city-only-key so "Little Rock, AR" and
+        # "Little Rock, ARKANSAS" (same business returned via different
+        # call paths) collapse to one. State form varies between
+        # state-anchor calls (use postal code) and single-city wizard
+        # calls (use full state name). Same business in different
+        # states is a rare false-positive but not catastrophic.
+        def _city_only(cs: str) -> str:
+            # Take only the part before the first comma (the city).
+            first = (cs or "").split(",", 1)[0]
+            return first.strip().lower()
         existing_keys = {
             ((it.get("business_name") or "").strip().lower(),
-             (it.get("city_state") or "").strip().lower())
+             _city_only(it.get("city_state") or ""))
             for it in items
         }
         added: list[dict] = []
@@ -691,7 +701,7 @@ def discover_via_overpass(
         per_provider_added: dict[str, int] = {}
         for cand in chain_result["candidates"]:
             name_key = (cand.get("business_name") or "").strip().lower()
-            city_key = (cand.get("city_state") or "").strip().lower()
+            city_key = _city_only(cand.get("city_state") or "")
             if not name_key:
                 phrase = (cand.get("search_phrase") or "").strip().lower()
                 key = (f"_phrase:{phrase}", city_key)

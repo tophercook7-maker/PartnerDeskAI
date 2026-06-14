@@ -2839,24 +2839,40 @@
         }
         .kid-show-more:hover { background: #1e3a8a; }
 
-        /* v13.0.9 — "likely email" guess from website domain */
+        /* v13.0.14 — "likely email" guess from website domain (now louder) */
         .kid-lead-likely-email {
-            background: #fff7ed;
-            border: 1px dashed #fbbf24;
-            border-radius: 6px;
-            padding: 0.32rem 0.55rem;
+            background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+            border: 2px solid #fbbf24;
+            border-radius: 8px;
+            padding: 0.55rem 0.75rem;
+            margin: 0.25rem 0;
         }
+        .kid-lead-likely-row {
+            display: flex; align-items: center; gap: 0.55rem;
+            font-size: 1.02rem;
+        }
+        .kid-lead-likely-row a {
+            color: #92400e; font-weight: 700; text-decoration: none;
+            font-size: 1.05rem;
+        }
+        .kid-lead-likely-row a:hover { text-decoration: underline; }
         .kid-likely-tag {
-            margin-left: 0.4rem;
-            font-size: 0.78rem; color: #92400e;
-            background: #fef3c7;
-            padding: 0.05rem 0.4rem;
+            display: inline-flex; align-items: center;
+            font-size: 0.7rem; color: #fff;
+            background: #d97706;
+            padding: 0.15rem 0.5rem;
             border-radius: 999px;
-            font-weight: 700;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+        }
+        .kid-likely-sub {
+            font-size: 0.82rem; color: #78350f;
+            margin-top: 0.25rem;
         }
         .kid-likely-others {
             font-size: 0.82rem; color: #78350f;
-            margin-top: 0.15rem;
+            margin-top: 0.25rem;
+            font-style: italic;
         }
         .kid-note-guess-warn {
             margin-top: 0.4rem;
@@ -6157,6 +6173,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=13.0.13"></script>
+    <script src="/static/app.js?v=13.0.14"></script>
 </body>
 </html>
