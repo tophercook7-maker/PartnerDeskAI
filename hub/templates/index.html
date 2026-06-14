@@ -2839,40 +2839,44 @@
         }
         .kid-show-more:hover { background: #1e3a8a; }
 
-        /* v13.0.14 — "likely email" guess from website domain (now louder) */
-        .kid-lead-likely-email {
-            background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
-            border: 2px solid #fbbf24;
-            border-radius: 8px;
-            padding: 0.55rem 0.75rem;
-            margin: 0.25rem 0;
+        /* v13.0.15 — "guessed email" framing (loud, explicit) */
+        .kid-lead-guessed {
+            background: linear-gradient(180deg, #fef9c3 0%, #fde68a 100%);
+            border: 3px solid #f59e0b;
+            border-radius: 10px;
+            padding: 0.7rem 0.85rem;
+            margin: 0.35rem 0;
         }
-        .kid-lead-likely-row {
-            display: flex; align-items: center; gap: 0.55rem;
-            font-size: 1.02rem;
-        }
-        .kid-lead-likely-row a {
-            color: #92400e; font-weight: 700; text-decoration: none;
-            font-size: 1.05rem;
-        }
-        .kid-lead-likely-row a:hover { text-decoration: underline; }
-        .kid-likely-tag {
-            display: inline-flex; align-items: center;
-            font-size: 0.7rem; color: #fff;
-            background: #d97706;
-            padding: 0.15rem 0.5rem;
-            border-radius: 999px;
-            font-weight: 800;
+        .kid-guessed-tag {
+            font-size: 0.78rem; font-weight: 900;
+            color: #7c2d12;
             letter-spacing: 0.05em;
+            margin-bottom: 0.4rem;
         }
-        .kid-likely-sub {
-            font-size: 0.82rem; color: #78350f;
-            margin-top: 0.25rem;
+        .kid-guessed-explain {
+            font-size: 0.88rem; color: #78350f;
+            line-height: 1.4;
+            margin-bottom: 0.55rem;
         }
-        .kid-likely-others {
-            font-size: 0.82rem; color: #78350f;
-            margin-top: 0.25rem;
-            font-style: italic;
+        .kid-guess-chips {
+            display: flex; flex-wrap: wrap; gap: 0.35rem;
+        }
+        .kid-guess-chip {
+            font-family: inherit;
+            font-size: 0.88rem; font-weight: 700;
+            color: #7c2d12;
+            background: #fff;
+            border: 2px solid #d97706;
+            border-radius: 999px;
+            padding: 0.3rem 0.7rem;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .kid-guess-chip:hover {
+            background: #fff7ed;
+        }
+        .kid-lead-badge.is-guessed {
+            background: #fef9c3; color: #7c2d12; border-color: #f59e0b;
         }
         .kid-note-guess-warn {
             margin-top: 0.4rem;
@@ -6173,6 +6177,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=13.0.14"></script>
+    <script src="/static/app.js?v=13.0.15"></script>
 </body>
 </html>

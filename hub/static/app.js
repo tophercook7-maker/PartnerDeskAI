@@ -9818,6 +9818,23 @@ document.addEventListener('click', async (e) => {
         if (lead) _kidOpenSendNoteForLead(lead);
         return;
     }
+    if (kind === 'use_guess') {
+        e.preventDefault();
+        const idx = parseInt(action.dataset.kidLeadIdx, 10);
+        const guess = action.dataset.kidGuess;
+        const lead = _kid.leads[idx];
+        if (lead && guess) {
+            // Stash the chosen guess so the Send Note flow knows we
+            // picked it explicitly (and that it's still a guess).
+            const leadCopy = Object.assign({}, lead, {
+                email: '', // keep real-email blank
+                _picked_guess: guess,
+                _likely_emails: lead._likely_emails || [],
+            });
+            _kidOpenSendNoteForLead(leadCopy);
+        }
+        return;
+    }
     if (kind === 'lead_save') {
         e.preventDefault();
         const idx = parseInt(action.dataset.kidLeadIdx, 10);
@@ -10076,9 +10093,11 @@ function _kidStep_findClients() {
             } else {
                 bannerBody =
                     '<strong>Done.</strong> Found <strong>' + totalAvailable + '</strong> leads, saved all to your list. ' +
-                    '<strong>' + emailableTotal + ' are emailable</strong>' +
-                    (withLikely ? ' (' + withEmail + ' real emails + ' + withLikely + ' guessed from their website domain — verify before sending)' : '') + '. ' +
-                    'Tap "Write a note" to send.';
+                    '<strong>' + withEmail + ' have a real email</strong> on file' +
+                    (withLikely
+                      ? '. ' + withLikely + ' more have just a website — I can guess their email (info@, contact@, etc.), ' +
+                        'but you\'ll need to verify before sending.'
+                      : '.');
             }
             html +=
                 '<div class="kid-already-done">' +
@@ -10221,16 +10240,25 @@ function _kidRenderLeadCard(l, idx) {
         _escape(email) + '</a></div>'
     );
     if (!email && likelyEmails.length) {
-        const top = likelyEmails[0];
-        const others = likelyEmails.slice(1, 4).join(', ');
+        // v13.0.15: stronger framing — make it impossible to mistake
+        // the guesses for real data. No mailto link directly; the user
+        // explicitly picks one and acknowledges it's a guess.
+        const allGuessChips = likelyEmails.map((g) =>
+            '<button type="button" class="kid-guess-chip" ' +
+            'data-kid-action="use_guess" data-kid-guess="' + _escape(g) + '" ' +
+            'data-kid-lead-idx="' + idx + '">' +
+            _escape(g) + '</button>'
+        ).join('');
         lines.push(
-            '<div class="kid-lead-likely-email">' +
-              '<div class="kid-lead-likely-row">' +
-                '<span class="kid-likely-tag">LIKELY</span>' +
-                '✉ <a href="mailto:' + _escape(top) + '">' + _escape(top) + '</a>' +
+            '<div class="kid-lead-guessed">' +
+              '<div class="kid-guessed-tag">⚠ I GUESSED THESE — NOT IN OUR DATA</div>' +
+              '<div class="kid-guessed-explain">' +
+                'OSM gave us their website but no email. I made these up ' +
+                'from their domain — most small businesses use these ' +
+                'patterns but yours might not. Pick one and verify it ' +
+                'before sending.' +
               '</div>' +
-              '<div class="kid-likely-sub">Most small-business sites use this pattern. Verify before sending.</div>' +
-              (others ? '<div class="kid-likely-others">also try: ' + _escape(others) + '</div>' : '') +
+              '<div class="kid-guess-chips">' + allGuessChips + '</div>' +
             '</div>'
         );
     }
@@ -10249,7 +10277,7 @@ function _kidRenderLeadCard(l, idx) {
     const badges = [];
     if (email)   badges.push('<span class="kid-lead-badge is-email">✉ Email</span>');
     else if (likelyEmails.length)
-                 badges.push('<span class="kid-lead-badge is-likely">✉ Likely email</span>');
+                 badges.push('<span class="kid-lead-badge is-guessed">⚠ Guessed email</span>');
     if (phone)   badges.push('<span class="kid-lead-badge is-phone">📞 Phone</span>');
     if (fb)      badges.push('<span class="kid-lead-badge is-fb">📘 Facebook</span>');
     if (ig)      badges.push('<span class="kid-lead-badge is-ig">📷 Instagram</span>');
@@ -10278,14 +10306,16 @@ function _kidRenderLeadCard(l, idx) {
         || ('https://www.google.com/search?q=' + encodeURIComponent('site:facebook.com "' + name + '" "' + loc + '"'));
 
     // Primary action: Write a note if email, otherwise Find their email
-    // Write a note when we have a real OR likely email; otherwise the
-    // search-for-email fallback.
-    const primaryBtn = (email || likelyEmails.length)
+    // Real email → Write a note (sends to verified address).
+    // No real email but guesses available → user must pick one explicitly
+    // via the chip row above; the primary action stays "Find their email"
+    // so we don't push a guess at them.
+    const primaryBtn = email
         ? '<button type="button" class="kid-lead-act is-primary" data-kid-action="lead_write_note" data-kid-lead-idx="' + idx + '">' +
-            (email ? '✉ Write a note' : '✉ Draft a note (verify email)') +
+            '✉ Write a note' +
           '</button>'
         : '<a class="kid-lead-act is-primary" href="' + _escape(contactFormUrl) + '" target="_blank" rel="noopener">' +
-            '📝 Find their email' +
+            '📝 Find their real email' +
           '</a>';
 
     // Call button only if we have a phone number
@@ -10483,12 +10513,13 @@ async function _kidSaveLead(lead, btn) {
 }
 
 function _kidOpenSendNoteForLead(lead) {
-    // Pre-fill a draft from agency profile defaults + lead info.
-    // If no real email is on file, use the top guess and stash the
-    // alternatives so the Send Note screen can offer one-tap swaps.
+    // v13.0.15: NEVER auto-fill the To: with a guess. Only fill with
+    // a real OSM-tagged email, OR an explicitly-picked guess from the
+    // result card chip row (lead._picked_guess).
     const realEmail = (lead.email || '').trim();
+    const pickedGuess = (lead._picked_guess || '').trim();
     const guesses = lead._likely_emails || (lead.website_url ? _kidGuessEmails(lead.website_url) : []);
-    const to = realEmail || guesses[0] || '';
+    const to = realEmail || pickedGuess || '';
     const subject = 'Quick idea for ' + (lead.business_name || 'your business');
     const body =
         'Hi ' + (lead.business_name || 'there') + ' team,\n\n' +
@@ -10502,8 +10533,8 @@ function _kidOpenSendNoteForLead(lead) {
     _kid.answers = {
         to: to, subject: subject, body: body,
         lead_id: lead.converted_lead_id || '',
-        email_is_guess: !realEmail && !!guesses[0],
-        email_alternates: realEmail ? [] : guesses.slice(1, 4),
+        email_is_guess: !!pickedGuess && !realEmail,
+        email_alternates: pickedGuess ? guesses.filter(g => g !== pickedGuess).slice(0, 4) : [],
     };
     _kid.task = 'send_note';
     _kid.step = 0;
@@ -10524,11 +10555,15 @@ function _kidStep_sendNote() {
                   'data-kid-collect="to" value="' + _escape(a.to || '') + '" ' +
                   'placeholder="them@example.com" required>' +
                 (a.email_is_guess
-                  ? '<div class="kid-note-guess-warn">⚠ This email is a guess based on their website. ' +
+                  ? '<div class="kid-note-guess-warn">' +
+                    '<strong>⚠ This email is a GUESS — not real data.</strong><br>' +
+                    'OSM had their website but no email on file. I made this up ' +
+                    'from the domain pattern (info@, contact@, etc.). ' +
                     'Tap <a href="https://www.google.com/search?q=' +
                     encodeURIComponent('"' + (a.to||'').split('@')[1] + '" contact email') +
-                    '" target="_blank" rel="noopener">verify it</a> before sending. ' +
-                    'If wrong, the message bounces (no harm done, but no reach either).</div>'
+                    '" target="_blank" rel="noopener"><strong>verify it on Google</strong></a> before sending. ' +
+                    'If wrong, the message bounces.' +
+                    '</div>'
                   : '') +
                 (a.email_alternates && a.email_alternates.length
                   ? '<div class="kid-note-alts">Also try: ' +
