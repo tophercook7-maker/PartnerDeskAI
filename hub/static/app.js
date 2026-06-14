@@ -9833,6 +9833,19 @@ document.addEventListener('click', async (e) => {
         if (card) { card.classList.add('is-skipped'); }
         return;
     }
+    if (kind === 'expand_state') {
+        e.preventDefault();
+        const state = action.dataset.kidState;
+        if (!state) return;
+        // Rerun the wizard's find-clients flow with where = "all over <state>"
+        _kid.answers.where = 'all over ' + state;
+        _kid.answers.contactable = _kid.answers.contactable !== false;
+        _kid.step = 3; // jump to working step
+        _kid.task = 'find_clients';
+        _kid.leads = []; _kid.allLeads = []; _kid.shownCount = 0;
+        _kidStep_findClients();
+        return;
+    }
     if (kind === 'show_more') {
         e.preventDefault();
         const all = _kid.allLeads || [];
@@ -10095,6 +10108,20 @@ function _kidStep_findClients() {
                   (totalAvail - shown) + ' waiting)' +
                 '</button>';
         }
+        // v13.0.13: when results are thin and the user searched a single
+        // city, offer a one-tap statewide expansion. Detects "thin" as
+        // total < 15 and the where input doesn't already mention "all over"
+        // or "statewide". Pulls the state name/code from the typed where.
+        const where = (_kid.answers.where || '').toLowerCase();
+        const isStatewide = /\b(all over|statewide|across)\b/.test(where);
+        const stateGuess = _kidGuessState(where);
+        if (totalAvail < 15 && !isStatewide && stateGuess && _kid.task === 'find_clients') {
+            html +=
+                '<button type="button" class="kid-expand-state" data-kid-action="expand_state" ' +
+                'data-kid-state="' + _escape(stateGuess) + '">' +
+                  '🔎 Search all over ' + _escape(stateGuess) + ' (more results)' +
+                '</button>';
+        }
         html += '<button type="button" class="kid-wiz-skip" data-kid-action="home">← Done, back home</button>';
         _kidShowWizard(html);
         return;
@@ -10108,6 +10135,30 @@ function _kidCheckHtml(key, label, checked) {
           _escape(label) +
         '</label>'
     );
+}
+
+// Map either a state code or a state name found in user-typed
+// location text to a clean state name suitable for "all over X" requests.
+function _kidGuessState(whereText) {
+    const w = (whereText || '').toLowerCase().trim();
+    if (!w) return '';
+    // Full names first (longest-first to avoid "new" matching "new york" prefix)
+    const names = Object.keys(_KID_STATE_MAP).sort((a, b) => b.length - a.length);
+    for (const name of names) {
+        if (w.includes(name)) {
+            return name.split(' ').map(s => s[0].toUpperCase() + s.slice(1)).join(' ');
+        }
+    }
+    // 2-letter codes
+    const codeMatches = w.match(/\b([a-z]{2})\b/g) || [];
+    for (const code of codeMatches) {
+        for (const [name, mapped] of Object.entries(_KID_STATE_MAP)) {
+            if (mapped === code) {
+                return name.split(' ').map(s => s[0].toUpperCase() + s.slice(1)).join(' ');
+            }
+        }
+    }
+    return '';
 }
 
 // Most small-business websites accept mail at info@/contact@/hello@.

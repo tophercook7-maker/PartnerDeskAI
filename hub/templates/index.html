@@ -2803,6 +2803,27 @@
             background: #1f2937; border-color: #1f2937;
         }
 
+        /* v13.0.13 — Search-all-of-state expand button */
+        .kid-expand-state {
+            display: block; width: 100%;
+            margin: 0.9rem 0 0.5rem;
+            padding: 0.95rem 1.2rem;
+            font-size: 1.05rem; font-weight: 700;
+            background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
+            color: #065f46;
+            border: 2px solid #34d399; border-radius: 10px;
+            cursor: pointer; font-family: inherit;
+            transition: transform 0.08s, background 0.12s;
+        }
+        .kid-expand-state:hover {
+            background: linear-gradient(180deg, #d1fae5 0%, #a7f3d0 100%);
+            transform: translateY(-1px);
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .kid-expand-state { transition: none; }
+            .kid-expand-state:hover { transform: none; }
+        }
+
         /* v13.0.10 — Show more pagination on result list */
         .kid-results-sub {
             font-size: 0.95rem; font-weight: 500; color: #64748b;
@@ -6136,6 +6157,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=13.0.10"></script>
+    <script src="/static/app.js?v=13.0.13"></script>
 </body>
 </html>
